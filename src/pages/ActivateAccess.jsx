@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2 } from 'lucide-react';
@@ -85,8 +85,8 @@ export default function ActivateAccess() {
       });
 
       if (signInResult.error) {
-        setInfo('Tu acceso fue activado. Ahora inicia sesion con tu correo y contrasena.');
-        navigate('/login', { replace: true });
+        setInfo('Tu acceso fue activado. Te llevamos al login para entrar con tu nueva contrasena.');
+        navigate(`/login?email=${encodeURIComponent(invite.email)}`, { replace: true });
         return;
       }
 
@@ -131,7 +131,7 @@ export default function ActivateAccess() {
             </div>
             <h2 className="text-xl font-semibold text-slate-900">Acceso activado correctamente</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Tu cuenta ya esta lista. Ya puedes entrar a tu dashboard financiero.
+              Tu cuenta ya esta lista. Te estamos redirigiendo al dashboard.
             </p>
             <button
               type="button"
@@ -217,3 +217,14 @@ export default function ActivateAccess() {
     </div>
   );
 }
+  useEffect(() => {
+    if (!activationDone) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      navigate('/', { replace: true });
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [activationDone, navigate]);
