@@ -76,7 +76,7 @@ const STRIPE_PLANS = {
 // ───────────────────────────────────────────────────────────────
 
 const EMAIL_API_ENDPOINT = import.meta.env.VITE_EMAIL_API_ENDPOINT || '/api/send-email';
-const RESEND_FROM_EMAIL = import.meta.env.VITE_RESEND_FROM_EMAIL || 'hola@ceorentable.com';
+const RESEND_FROM_EMAIL = import.meta.env.VITE_RESEND_FROM_EMAIL || 'CEO Rentable OS <hola@ceorentable.com>';
 
 
 // ───────────────────────────────────────────────────────────────

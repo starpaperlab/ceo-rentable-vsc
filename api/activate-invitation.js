@@ -1,4 +1,4 @@
-import { handleSendEmailPayload } from '../server/sendEmailHandler.js';
+import { handleActivateInvitationPayload } from '../server/activateInvitationHandler.js';
 
 function parseRequestBody(body) {
   if (!body) return {};
@@ -19,15 +19,13 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    res.status(405).json({ success: false, error: 'Método no permitido' });
+    res.status(405).json({ success: false, error: 'Metodo no permitido' });
     return;
   }
 
   const payload = parseRequestBody(req.body);
-  const result = await handleSendEmailPayload(payload, {
-    env: process.env,
-    headers: req.headers || {},
-  });
+  const result = await handleActivateInvitationPayload(payload, { env: process.env });
 
   res.status(result.status).json(result.body);
 }
+

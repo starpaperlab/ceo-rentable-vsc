@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
@@ -15,29 +15,61 @@ export default function ManualPaymentConfirmation() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+
+      const authUser = data?.session?.user || null;
+      setCurrentUser(authUser);
+      setName(authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || '');
+      setEmail(authUser?.email || '');
+      setSessionChecked(true);
+    };
+
+    loadSession();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!currentUser?.id) {
+      toast.error('Debes iniciar sesión para confirmar tu pago manual.');
+      navigate('/login');
+      return;
+    }
+
     if (!email || !name) {
       toast.error('Por favor completa todos los campos');
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const sessionEmail = `${currentUser.email || ''}`.trim().toLowerCase();
+    if (!sessionEmail || normalizedEmail !== sessionEmail) {
+      toast.error('El correo debe coincidir con tu sesión activa.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          email: email.trim(),
-          full_name: name.trim(),
-          role: 'user',
-          plan: 'subscription',
-          has_access: true,
-          created_at: new Date()
-        }, { onConflict: 'email' })
+      const { error } = await supabase.from('leads').insert({
+        name: name.trim(),
+        email: normalizedEmail,
+        source: 'manual_payment',
+        status: 'new',
+      });
 
-      if (error) throw error
+      if (error) throw error;
 
       setStep('success');
       setTimeout(() => navigate('/'), 3000);
@@ -50,11 +82,23 @@ export default function ManualPaymentConfirmation() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex flex-col items-center justify-center px-4 py-10">
+      {sessionChecked && !currentUser ? (
+        <Card className="p-6 max-w-md w-full text-center">
+          <h2 className="text-lg font-semibold">Inicia sesión para continuar</h2>
+          <p className="text-sm text-muted-foreground mt-2">
+            Para confirmar el pago manual debes entrar con la cuenta que compró.
+          </p>
+          <Button className="mt-4 w-full" onClick={() => navigate('/login')}>
+            Ir a login
+          </Button>
+        </Card>
+      ) : null}
+
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="max-w-md w-full"
+        className={`max-w-md w-full ${sessionChecked && !currentUser ? 'hidden' : ''}`}
       >
         <Card className="overflow-hidden shadow-xl border-border">
           {/* Top accent bar */}
@@ -74,14 +118,14 @@ export default function ManualPaymentConfirmation() {
                     Confirmar Pago Manual
                   </h1>
                   <p className="text-sm text-muted-foreground">
-                    Proporciona tus datos y activaremos tu acceso
+                    Proporciona tus datos para validar tu pago manual
                   </p>
                 </div>
 
                 {/* Info box */}
                 <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                   <p className="text-xs text-blue-700 dark:text-blue-400">
-                    Hemos recibido tu transferencia. Completa este formulario para verificar tu identidad y activar el acceso inmediato.
+                    Completa este formulario para validar tu transferencia. La activación se hace al confirmar el pago.
                   </p>
                 </div>
 
@@ -126,7 +170,7 @@ export default function ManualPaymentConfirmation() {
                     ) : (
                       <Check className="h-4 w-4 mr-2" />
                     )}
-                    {loading ? 'Procesando...' : 'Confirmar y activar acceso'}
+                    {loading ? 'Procesando...' : 'Enviar solicitud de validación'}
                   </Button>
                 </form>
 
@@ -147,9 +191,9 @@ export default function ManualPaymentConfirmation() {
                   <Check className="h-8 w-8 text-green-600" />
                 </div>
                 <div className="space-y-2">
-                  <h2 className="font-bold text-lg">¡Acceso activado!</h2>
+                  <h2 className="font-bold text-lg">Solicitud recibida</h2>
                   <p className="text-sm text-muted-foreground">
-                    Hemos enviado un email a <strong>{email}</strong> con los detalles de tu acceso.
+                    Registramos tu comprobante para validación manual. Te avisaremos en <strong>{email}</strong> cuando el acceso quede activo.
                   </p>
                   <p className="text-xs text-muted-foreground pt-2">
                     Serás redirigido en 3 segundos...

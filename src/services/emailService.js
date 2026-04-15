@@ -101,6 +101,7 @@ async function sendViaResend({ to, subject, html, text }) {
     subject,
     html,
     text,
+    scope: 'admin',
   });
 
   if (!result.success) {

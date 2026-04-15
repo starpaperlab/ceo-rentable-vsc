@@ -77,6 +77,29 @@ export default function Login() {
   }, [isPasswordRecovery]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = `${params.get('invite') || ''}`.trim();
+    if (inviteToken) {
+      navigate(`/activar-acceso${window.location.search}`, { replace: true });
+      return;
+    }
+
+    const invitedEmail = `${params.get('email') || ''}`.trim().toLowerCase();
+    if (!invitedEmail) {
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      email: prev.email || invitedEmail,
+    }));
+  }, [navigate]);
+
+  useEffect(() => {
     if (mode === 'reset' && session) {
       clearRecoveryUrl();
     }

@@ -7,11 +7,14 @@ const DEFAULT_CURRENCY = 'USD';
 const DEFAULT_TIMEZONE = 'America/Santo_Domingo';
 const LEGACY_PROFILE_COLUMNS = ['id', 'email', 'full_name'];
 const RECOVERY_INTENT = 'password_recovery';
+const INVITATION_ACCEPT_ENDPOINT = '/api/accept-invitation';
+const ENABLE_ADMIN_EMAIL_FALLBACK =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_ADMIN_EMAIL_FALLBACK === 'true';
 const ENV_ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
   .split(',')
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
-const FALLBACK_ADMIN_EMAILS = new Set(['ceorentable@gmail.com', ...ENV_ADMIN_EMAILS]);
+const FALLBACK_ADMIN_EMAILS = new Set(ENV_ADMIN_EMAILS);
 
 function hasRecoveryParams() {
   if (typeof window === 'undefined') {
@@ -20,6 +23,21 @@ function hasRecoveryParams() {
 
   const payload = `${window.location.search} ${window.location.hash}`.toLowerCase();
   return payload.includes('type=recovery') || payload.includes('mode=reset');
+}
+
+function getInviteParamsFromUrl() {
+  if (typeof window === 'undefined') {
+    return { token: null, email: null };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const token = `${params.get('invite') || ''}`.trim();
+  const email = `${params.get('email') || ''}`.trim().toLowerCase();
+
+  return {
+    token: token || null,
+    email: email || null,
+  };
 }
 
 function formatAuthError(error) {
@@ -107,7 +125,7 @@ function normalizeProfile(authUser, profile = null, overrides = {}) {
   const metadata = authUser?.user_metadata ?? {};
   const isLegacyProfile = isLegacyProfileShape(profile);
   const email = (overrides.email || profile?.email || authUser?.email || '').trim().toLowerCase();
-  const isFallbackAdmin = FALLBACK_ADMIN_EMAILS.has(email);
+  const isFallbackAdmin = ENABLE_ADMIN_EMAIL_FALLBACK && FALLBACK_ADMIN_EMAILS.has(email);
   const fullName =
     overrides.full_name ||
     overrides.fullName ||
@@ -298,19 +316,89 @@ function isMissingApplyInvitationFunction(error) {
   const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
   return (
     error?.code === 'PGRST202' ||
-    message.includes('could not find the function public.apply_pending_invitation')
+    message.includes('could not find the function public.apply_pending_invitation') ||
+    message.includes('could not find the function public.apply_invitation_token')
   );
 }
 
-async function applyPendingInvitationIfAny(authUser) {
-  try {
-    const { data, error } = await supabase.rpc('apply_pending_invitation');
+async function applyInvitationThroughApi(authSession, inviteParams, normalizedUserEmail) {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const accessToken = `${authSession?.access_token || ''}`.trim();
+  const invitationToken = `${inviteParams?.token || ''}`.trim();
+  if (!accessToken || !invitationToken) {
+    return null;
+  }
+
+  const response = await fetch(INVITATION_ACCEPT_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      token: invitationToken,
+      email: inviteParams?.email || normalizedUserEmail || null,
+      accessToken,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = payload?.error || 'No se pudo activar la invitación.';
+    throw new Error(errorMessage);
+  }
+
+  return payload?.data || null;
+}
+
+async function applyPendingInvitationIfAny(authUser, authSession) {
+  const inviteFromUrl = getInviteParamsFromUrl();
+  const normalizedUserEmail = `${authUser?.email || ''}`.trim().toLowerCase();
+  const hasInviteInUrl = Boolean(inviteFromUrl.token || inviteFromUrl.email);
+
+  const tryApplyInvitationToken = async () => {
+    if (!hasInviteInUrl) {
+      return null;
+    }
+
+    if (inviteFromUrl.email && normalizedUserEmail && inviteFromUrl.email !== normalizedUserEmail) {
+      throw new Error('Debes iniciar sesión con el mismo correo que recibió la invitación.');
+    }
+
+    const { data, error } = await supabase.rpc('apply_invitation_token', {
+      p_token: inviteFromUrl.token || null,
+      p_email: inviteFromUrl.email || normalizedUserEmail || null,
+    });
+
     if (error) {
       if (isMissingApplyInvitationFunction(error)) {
         return null;
       }
-      console.warn('No se pudo aplicar invitacion pendiente:', error.message);
-      return null;
+      throw error;
+    }
+
+    return data;
+  };
+
+  try {
+    let data = await tryApplyInvitationToken();
+
+    if (!data?.applied) {
+      const pendingResult = await supabase.rpc('apply_pending_invitation');
+      if (pendingResult.error) {
+        if (!isMissingApplyInvitationFunction(pendingResult.error)) {
+          console.warn('No se pudo aplicar invitacion pendiente:', pendingResult.error.message);
+        }
+      } else {
+        data = pendingResult.data;
+      }
+    }
+
+    if (!data?.applied && hasInviteInUrl) {
+      data = await applyInvitationThroughApi(authSession, inviteFromUrl, normalizedUserEmail);
     }
 
     if (!data?.applied) {
@@ -369,7 +457,7 @@ export function useProvideAuth() {
 
     try {
       let profile = await ensureUserProfile(nextUser, overrides);
-      const invitationProfile = await applyPendingInvitationIfAny(nextUser);
+      const invitationProfile = await applyPendingInvitationIfAny(nextUser, nextSession);
       if (invitationProfile) {
         profile = invitationProfile;
       }

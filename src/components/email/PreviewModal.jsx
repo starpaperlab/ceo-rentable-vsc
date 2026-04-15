@@ -10,7 +10,7 @@ export default function PreviewModal({ template, onClose }) {
   const [vars, setVars] = useState({
     name: 'María', email: 'maria@ejemplo.com', amount: '97.00',
     login_link: 'https://app.ceorentable.com',
-    invite_link: 'https://app.ceorentable.com/login',
+    invite_link: 'https://app.ceorentable.com/activar-acceso',
     subject_line: 'Noticias de CEO Rentable',
     headline: 'Título del email', body_text: 'Aquí va el contenido del correo.',
     cta_text: 'Ver más', cta_url: 'https://app.ceorentable.com',

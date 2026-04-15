@@ -36,12 +36,13 @@ function ensureFooter(html = '') {
 // HELPER: Enviar email via Resend API
 // ───────────────────────────────────────────────────────────────
 
-async function sendEmailViaResend({ to, subject, html, replyTo }) {
+async function sendEmailViaResend({ to, subject, html, replyTo, scope = 'user' }) {
   return sendEmailThroughBackend({
     to,
     subject,
     html: ensureFooter(html),
     replyTo: replyTo || RESEND_FROM_EMAIL,
+    scope,
   });
 }
 
@@ -402,6 +403,7 @@ export async function sendCustomEmail(userId, toEmail, subject, htmlBody) {
     to: toEmail,
     subject,
     html: htmlBody,
+    scope: 'admin',
   });
 
   await logEmailToDatabase(

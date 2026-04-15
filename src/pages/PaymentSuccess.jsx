@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
 export default function PaymentSuccess() {
-  const [status, setStatus] = useState('loading'); // loading | success | error
+  const [status, setStatus] = useState('loading'); // loading | success | pending | error
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -22,20 +22,26 @@ export default function PaymentSuccess() {
 
       setUser(currentUser);
 
-      const { error: profileError } = await supabase
-        .from('users')
-        .update({
-          has_access: true,
-          plan: 'founder',
-          stripe_session_id: sessionId || null,
-        })
-        .eq('id', currentUser.id)
-
-      if (profileError) {
-        throw profileError
+      if (sessionId) {
+        await supabase
+          .from('users')
+          .update({ stripe_session_id: sessionId })
+          .eq('id', currentUser.id);
       }
 
-      setStatus('success');
+      const { data: subscription } = await supabase
+        .from('subscriptions')
+        .select('status')
+        .eq('user_id', currentUser.id)
+        .in('status', ['active', 'trialing'])
+        .maybeSingle();
+
+      if (subscription) {
+        setStatus('success');
+        return;
+      }
+
+      setStatus('pending');
     };
 
     activate().catch(() => setStatus('error'));
@@ -68,6 +74,20 @@ export default function PaymentSuccess() {
     );
   }
 
+  if (status === 'pending') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background px-4">
+        <Card className="p-8 max-w-md text-center space-y-4">
+          <p className="text-lg font-bold text-foreground">Pago en verificación</p>
+          <p className="text-sm text-muted-foreground">
+            Recibimos tu pago y estamos esperando confirmación segura de Stripe. Tu acceso se activará automáticamente cuando el webhook confirme la transacción.
+          </p>
+          <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background px-4">
       <motion.div
@@ -89,7 +109,7 @@ export default function PaymentSuccess() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">¡Pago exitoso!</h1>
             <p className="text-muted-foreground mt-2 text-sm">
-              Bienvenida, <strong>{user?.full_name || user?.email}</strong>. Tu acceso a <strong>CEO Rentable OS™</strong> ha sido activado con plan <span className="text-primary font-semibold">Lifetime</span>.
+              Bienvenida, <strong>{user?.full_name || user?.email}</strong>. Tu acceso a <strong>CEO Rentable OS™</strong> ya fue activado con tu plan de suscripción.
             </p>
           </div>
 

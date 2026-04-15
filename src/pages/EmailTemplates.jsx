@@ -10,8 +10,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import PreviewModal from '@/components/email/PreviewModal';
 import EditTemplateModal from '@/components/email/EditTemplateModal';
 import BroadcastModal from '@/components/email/BroadcastModal';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function EmailTemplates() {
+  const { isAdmin } = useAuth();
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [isNewTemplate, setIsNewTemplate] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
@@ -23,6 +25,7 @@ export default function EmailTemplates() {
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['email-templates'],
     queryFn: () => emailService.getAllTemplates(),
+    enabled: isAdmin?.() === true,
   });
 
   const saveMutation = useMutation({
@@ -52,6 +55,17 @@ export default function EmailTemplates() {
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!isAdmin?.()) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card className="p-6 text-center">
+          <h2 className="text-lg font-semibold">Acceso restringido</h2>
+          <p className="text-sm text-muted-foreground mt-2">Solo cuentas administradoras pueden gestionar templates.</p>
+        </Card>
+      </div>
+    );
   }
 
   return (

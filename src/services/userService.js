@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { sendCustomEmail } from '@/lib/emailService';
+import { buildInvitationEmailHtml, buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
 
 function normalizeEmail(email = '') {
   return `${email}`.trim().toLowerCase();
@@ -17,9 +18,35 @@ function isResendNotConfiguredResult(result) {
   );
 }
 
-function getRolePlan(role = 'user') {
-  if (role === 'admin') return { role: 'admin', plan: 'admin' };
+function getRolePlan() {
   return { role: 'user', plan: 'founder' };
+}
+
+function isMissingUsersSegmentationColumn(error) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return message.includes('access_source') || message.includes('is_lifetime');
+}
+
+async function updateUserWithSegmentation(userId, patch) {
+  const runUpdate = async (nextPatch) =>
+    supabase
+      .from('users')
+      .update(nextPatch)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+  let { data, error } = await runUpdate(patch);
+
+  if (error && isMissingUsersSegmentationColumn(error)) {
+    const fallback = { ...patch };
+    delete fallback.access_source;
+    delete fallback.is_lifetime;
+    ({ data, error } = await runUpdate(fallback));
+  }
+
+  if (error) throw error;
+  return data;
 }
 
 async function getCurrentUserId() {
@@ -44,11 +71,11 @@ async function auditLog(action, targetUserId = null, details = {}) {
 }
 
 export const userService = {
-  async createUserManually({ email, full_name, role = 'user' }) {
+  async createUserManually({ email, full_name }) {
     const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail) throw new Error('Email inválido');
 
-    const { role: safeRole, plan } = getRolePlan(role);
+    const { role: safeRole, plan } = getRolePlan();
 
     const { data: existingUser, error: existingError } = await supabase
       .from('users')
@@ -58,18 +85,14 @@ export const userService = {
     if (existingError) throw existingError;
 
     if (existingUser) {
-      const { data: updated, error: updateError } = await supabase
-        .from('users')
-        .update({
-          full_name: full_name || existingUser.full_name,
-          role: safeRole,
-          plan,
-          has_access: true,
-        })
-        .eq('id', existingUser.id)
-        .select('*')
-        .single();
-      if (updateError) throw updateError;
+      const updated = await updateUserWithSegmentation(existingUser.id, {
+        full_name: full_name || existingUser.full_name,
+        role: safeRole,
+        plan,
+        has_access: true,
+        access_source: 'manual_lifetime',
+        is_lifetime: true,
+      });
 
       const accessEmailResult = await sendCustomEmail(
         await getCurrentUserId(),
@@ -93,8 +116,11 @@ export const userService = {
     }
 
     const token = crypto.randomUUID().replace(/-/g, '');
-    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-    const invitationLink = `${appUrl}/login?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(normalizedEmail)}`;
+    const invitationLink = ensureInvitationLink(
+      buildInvitationLink(token, normalizedEmail),
+      token,
+      normalizedEmail
+    );
 
     const { data: existingInvitation } = await supabase
       .from('user_invitations')
@@ -123,11 +149,17 @@ export const userService = {
     const { data: invitation, error: inviteError } = await invitationQuery.select('*').single();
     if (inviteError) throw inviteError;
 
+    const invitationHtml = buildInvitationEmailHtml({
+      fullName: full_name || normalizedEmail,
+      inviteLink: invitationLink,
+      role: safeRole,
+    });
+
     const invitationEmailResult = await sendCustomEmail(
       await getCurrentUserId(),
       normalizedEmail,
       'Invitación a CEO Rentable OS™',
-      `<p>Hola ${full_name || normalizedEmail},</p><p>Haz clic para aceptar tu invitación:</p><p><a href="${invitationLink}">Aceptar invitación</a></p>`
+      invitationHtml
     );
     if (invitationEmailResult?.success === false && !isResendNotConfiguredResult(invitationEmailResult)) {
       throw new Error(`La invitación se guardó, pero no se pudo enviar el correo: ${invitationEmailResult.error || 'Error desconocido'}`);

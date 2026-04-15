@@ -14,6 +14,27 @@ const STRIPE_PUBLIC_KEY = ENV_CONFIG.stripe.publicKey;
 const STRIPE_PLANS = ENV_CONFIG.stripe.plans;
 const APP_URL = ENV_CONFIG.app.url;
 
+async function updateUserSubscriptionAccess(userId, patch) {
+  let { error } = await supabase
+    .from('users')
+    .update(patch)
+    .eq('id', userId);
+
+  if (error) {
+    const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+    if (message.includes('access_source') || message.includes('is_lifetime')) {
+      const fallback = { ...patch };
+      delete fallback.access_source;
+      delete fallback.is_lifetime;
+      ({ error } = await supabase.from('users').update(fallback).eq('id', userId));
+    }
+  }
+
+  if (error) {
+    throw error;
+  }
+}
+
 // ───────────────────────────────────────────────────────────────
 // 1️⃣ CREAR SESIÓN DE CHECKOUT (Cliente compra suscripción)
 // ───────────────────────────────────────────────────────────────
@@ -147,10 +168,13 @@ export async function handleStripeWebhook(event) {
           });
 
         // 4. Activar acceso del usuario
-        await supabase
-          .from('users')
-          .update({ has_access: true })
-          .eq('id', userId);
+        await updateUserSubscriptionAccess(userId, {
+          has_access: true,
+          role: 'user',
+          plan: 'subscription',
+          access_source: 'stripe_purchase',
+          is_lifetime: false,
+        });
 
         console.log('✅ Pago procesado para usuario:', userId);
         break;
@@ -217,10 +241,13 @@ export async function handleStripeWebhook(event) {
             .eq('user_id', userData.user_id);
 
           // Desactivar acceso
-          await supabase
-            .from('users')
-            .update({ has_access: false })
-            .eq('id', userData.user_id);
+          await updateUserSubscriptionAccess(userData.user_id, {
+            has_access: false,
+            role: 'user',
+            plan: 'subscription',
+            access_source: 'stripe_purchase',
+            is_lifetime: false,
+          });
 
           console.log('❌ Suscripción cancelada para usuario:', userData.user_id);
         }

@@ -1,4 +1,4 @@
-import { handleSendEmailPayload } from '../server/sendEmailHandler.js';
+import { handleAcceptInvitationPayload } from '../server/acceptInvitationHandler.js';
 
 function parseRequestBody(body) {
   if (!body) return {};
@@ -24,10 +24,11 @@ export default async function handler(req, res) {
   }
 
   const payload = parseRequestBody(req.body);
-  const result = await handleSendEmailPayload(payload, {
+  const result = await handleAcceptInvitationPayload(payload, {
     env: process.env,
     headers: req.headers || {},
   });
 
   res.status(result.status).json(result.body);
 }
+

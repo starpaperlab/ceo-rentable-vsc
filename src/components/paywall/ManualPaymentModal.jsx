@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,25 @@ export default function ManualPaymentModal({ onClose }) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      const authUser = data?.session?.user || null;
+      setCurrentUser(authUser);
+      setEmail(authUser?.email || '');
+      setName(authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || '');
+    };
+
+    loadSession();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!email || !name) {
@@ -20,18 +39,26 @@ export default function ManualPaymentModal({ onClose }) {
       return;
     }
 
+    if (!currentUser?.id) {
+      toast.error('Debes iniciar sesión para confirmar el pago.');
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const sessionEmail = `${currentUser.email || ''}`.trim().toLowerCase();
+    if (!sessionEmail || normalizedEmail !== sessionEmail) {
+      toast.error('El correo debe coincidir con tu sesión activa.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          email: email.trim(),
-          full_name: name.trim(),
-          role: 'user',
-          plan: 'subscription',
-          has_access: true,
-          created_at: new Date()
-        }, { onConflict: 'email' });
+      const { error } = await supabase.from('leads').insert({
+        name: name.trim(),
+        email: normalizedEmail,
+        source: 'manual_payment',
+        status: 'new',
+      });
 
       if (error) throw error;
       setStep('success');
@@ -59,7 +86,7 @@ export default function ManualPaymentModal({ onClose }) {
             <>
               <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                 <p className="text-sm text-blue-700 dark:text-blue-400">
-                  Proporciona tus datos y confirmaremos tu acceso una vez verificado el pago.
+                  Proporciona tus datos y registraremos la solicitud de validación manual del pago.
                 </p>
               </div>
 
@@ -91,7 +118,7 @@ export default function ManualPaymentModal({ onClose }) {
                 </Button>
                 <Button className="flex-1" onClick={handleSubmit} disabled={loading}>
                   {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
-                  Confirmar pago
+                  Enviar validación
                 </Button>
               </div>
             </>
@@ -102,9 +129,9 @@ export default function ManualPaymentModal({ onClose }) {
               <div className="w-16 h-16 bg-green-100 dark:bg-green-950/30 rounded-full flex items-center justify-center mx-auto">
                 <Check className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="font-bold text-lg">¡Acceso activado!</h3>
+              <h3 className="font-bold text-lg">Solicitud enviada</h3>
               <p className="text-sm text-muted-foreground">
-                Hemos enviado un email a <strong>{email}</strong> con los detalles de tu acceso.
+                Registramos la solicitud de validación manual para <strong>{email}</strong>. Te notificaremos cuando el acceso esté activo.
               </p>
               <p className="text-xs text-muted-foreground">Cerrando en 3 segundos...</p>
             </div>

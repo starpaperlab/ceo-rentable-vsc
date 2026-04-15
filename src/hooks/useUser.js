@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { sendCustomEmail } from '@/lib/emailService';
+import { buildInvitationEmailHtml, buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
 
 function normalizeEmail(email = '') {
   return `${email}`.trim().toLowerCase();
@@ -50,41 +51,35 @@ function adminTableError(error) {
   return error;
 }
 
-function getRolePlan(role) {
-  if (role === 'admin') {
-    return { role: 'admin', plan: 'admin' };
-  }
+function getRolePlan() {
   return { role: 'user', plan: 'founder' };
 }
 
-function getInviteLink(token, email) {
-  const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-  return `${appUrl}/login?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+function isMissingUsersSegmentationColumn(error) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return message.includes('access_source') || message.includes('is_lifetime');
 }
 
-function buildInvitationEmailHtml({ fullName, inviteLink, role }) {
-  return `
-    <div style="font-family: Inter, Arial, sans-serif; background:#F7F3EE; padding:24px; color:#1f1f1f;">
-      <div style="max-width:620px; margin:0 auto; background:#ffffff; border:1px solid #f0e6dd; border-radius:14px; overflow:hidden;">
-        <div style="background:#D45387; color:#fff; padding:20px 24px;">
-          <h1 style="margin:0; font-size:20px;">Invitación a CEO Rentable OS™</h1>
-        </div>
-        <div style="padding:24px;">
-          <p style="font-size:14px;">Hola <strong>${fullName || 'emprendedora'}</strong>,</p>
-          <p style="font-size:14px; line-height:1.55;">
-            Te invitamos a ingresar a <strong>CEO Rentable OS™</strong> con rol <strong>${role === 'admin' ? 'Admin' : 'Usuario'}</strong>.
-          </p>
-          <a href="${inviteLink}" style="display:inline-block; background:#D45387; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-size:14px; font-weight:600;">
-            Aceptar invitación
-          </a>
-          <p style="margin-top:18px; font-size:12px; color:#6f6f6f;">
-            Si el botón no abre, copia este link:<br/>
-            <span style="word-break:break-all;">${inviteLink}</span>
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
+async function updateUserWithSegmentation(userId, patch) {
+  const runUpdate = async (nextPatch) =>
+    supabase
+      .from('users')
+      .update(nextPatch)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+  let { data, error } = await runUpdate(patch);
+
+  if (error && isMissingUsersSegmentationColumn(error)) {
+    const fallback = { ...patch };
+    delete fallback.access_source;
+    delete fallback.is_lifetime;
+    ({ data, error } = await runUpdate(fallback));
+  }
+
+  if (error) throw error;
+  return data;
 }
 
 async function safeInsertAuditLog(payload) {
@@ -97,13 +92,13 @@ async function safeInsertAuditLog(payload) {
   }
 }
 
-async function inviteOrActivateUser({ email, full_name, role = 'user' }) {
+async function inviteOrActivateUser({ email, full_name }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     throw new Error('Debes indicar un email válido.');
   }
 
-  const { role: safeRole, plan } = getRolePlan(role);
+  const { role: safeRole, plan } = getRolePlan();
   const { data: authData } = await supabase.auth.getUser();
   const adminId = authData?.user?.id || null;
 
@@ -115,18 +110,14 @@ async function inviteOrActivateUser({ email, full_name, role = 'user' }) {
   if (existingError) throw existingError;
 
   if (existingUser) {
-    const { data: updated, error: updateError } = await supabase
-      .from('users')
-      .update({
-        full_name: full_name || existingUser.full_name,
-        role: safeRole,
-        plan,
-        has_access: true,
-      })
-      .eq('id', existingUser.id)
-      .select('*')
-      .single();
-    if (updateError) throw updateError;
+    const updated = await updateUserWithSegmentation(existingUser.id, {
+      full_name: full_name || existingUser.full_name,
+      role: safeRole,
+      plan,
+      has_access: true,
+      access_source: 'manual_lifetime',
+      is_lifetime: true,
+    });
 
     const accessEmailResult = await sendCustomEmail(
       adminId,
@@ -175,7 +166,11 @@ async function inviteOrActivateUser({ email, full_name, role = 'user' }) {
   }
 
   const invitationToken = crypto.randomUUID().replace(/-/g, '');
-  const invitationLink = getInviteLink(invitationToken, normalizedEmail);
+  const invitationLink = ensureInvitationLink(
+    buildInvitationLink(invitationToken, normalizedEmail),
+    invitationToken,
+    normalizedEmail
+  );
 
   const invitationPayload = {
     email: normalizedEmail,
@@ -278,10 +273,16 @@ export function useAdminDirectory() {
   return useQuery({
     queryKey: ['admin-directory'],
     queryFn: async () => {
-      const { data: users, error: usersError } = await supabase
+      let { data: users, error: usersError } = await supabase
         .from('users')
-        .select('id,email,full_name,role,plan,has_access,created_at,last_login_at')
+        .select('id,email,full_name,role,plan,has_access,access_source,is_lifetime,created_at,last_login_at')
         .order('created_at', { ascending: false });
+      if (usersError && isMissingUsersSegmentationColumn(usersError)) {
+        ({ data: users, error: usersError } = await supabase
+          .from('users')
+          .select('id,email,full_name,role,plan,has_access,created_at,last_login_at')
+          .order('created_at', { ascending: false }));
+      }
       if (usersError) throw usersError;
 
       const { data: invitations, error: invitationsError } = await supabase
@@ -318,6 +319,8 @@ export function useAdminDirectory() {
           role: user.role || 'user',
           plan: user.plan || 'free',
           has_access: user.has_access === true,
+          access_source: user.access_source || 'legacy',
+          is_lifetime: user.is_lifetime === true,
           access_status: user.has_access ? 'active' : 'no_access',
           invitation_status: invitation?.status || null,
           created_at: user.created_at,
@@ -341,6 +344,8 @@ export function useAdminDirectory() {
           role: invitation.role || 'user',
           plan: invitation.plan || 'free',
           has_access: invitation.has_access === true,
+          access_source: 'manual_invitation_pending',
+          is_lifetime: true,
           access_status: invitation.status === 'pending' ? 'pending' : 'invited',
           invitation_status: invitation.status || 'pending',
           created_at: invitation.created_at,
@@ -367,7 +372,16 @@ export function useUpdateUser() {
 
   return useMutation({
     mutationFn: async ({ userId, updates }) => {
-      const { error } = await supabase.from('users').update(updates).eq('id', userId);
+      const safeUpdates = { ...updates };
+
+      if (safeUpdates.access_source === 'manual_lifetime') {
+        safeUpdates.role = 'user';
+        safeUpdates.plan = safeUpdates.plan && safeUpdates.plan !== 'admin' ? safeUpdates.plan : 'founder';
+        safeUpdates.has_access = true;
+        safeUpdates.is_lifetime = true;
+      }
+
+      const { error } = await supabase.from('users').update(safeUpdates).eq('id', userId);
       if (error) throw error;
       return true;
     },
@@ -406,7 +420,11 @@ export function useResendInvitation() {
         .single();
       if (error) throw adminTableError(error);
 
-      const invitationLink = invitation.invitation_link || getInviteLink(invitation.invitation_token, invitation.email);
+      const invitationLink = ensureInvitationLink(
+        invitation.invitation_link,
+        invitation.invitation_token,
+        invitation.email
+      );
       const html = buildInvitationEmailHtml({
         fullName: invitation.full_name,
         inviteLink: invitationLink,
@@ -426,6 +444,7 @@ export function useResendInvitation() {
       const { error: updateError } = await supabase
         .from('user_invitations')
         .update({
+          invitation_link: invitationLink,
           status: 'pending',
           sent_count: (invitation.sent_count || 0) + 1,
           last_sent_at: new Date().toISOString(),

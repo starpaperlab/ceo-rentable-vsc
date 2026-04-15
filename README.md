@@ -55,8 +55,12 @@ cp .env.example .env.local
 
 ```bash
 # 1. Ve a Supabase Dashboard → SQL Editor
-# 2. Copia contenido de SETUP_SUPABASE.sql
-# 3. Ejecuta el script
+# 2. Ejecuta primero:
+#    supabase/sql/ADMIN_PANEL_PRODUCTION_SETUP.sql
+# 3. Ejecuta después:
+#    supabase/sql/PRODUCTION_SECURITY_HARDENING.sql
+# 4. Verifica con:
+#    supabase/sql/PRODUCTION_SECURITY_AUDIT_CHECKS.sql
 ```
 
 ### 4. Ejecutar Dev Server
@@ -191,6 +195,26 @@ npm run lint
 Card: 4242 4242 4242 4242
 Exp: 12/25
 CVC: 123
+```
+
+## ⚡ Deploy Rápido (GitHub → Vercel)
+
+Usa este flujo desde terminal para subir cambios y disparar deploy automático en Vercel:
+
+```bash
+# Validación + add + commit + push a main
+npm run deploy:main -- "feat: tu mensaje"
+
+# Variante rápida (omite lint/build)
+npm run deploy:main:fast -- "fix: ajuste urgente"
+```
+
+Requisitos:
+
+```bash
+# Debe existir remote origin y rama main
+git remote -v
+git branch --show-current
 ```
 
 ---

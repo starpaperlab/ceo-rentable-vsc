@@ -4,6 +4,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
 import PaymentSuccess from './pages/PaymentSuccess';
 import Acceso from './pages/Acceso';
+import ActivateAccess from './pages/ActivateAccess';
 import PaymentCancel from './pages/PaymentCancel';
 import ManualPaymentConfirmation from './pages/ManualPaymentConfirmation';
 import EmailLogs from './pages/EmailLogs';
@@ -17,6 +18,7 @@ import Login from '@/pages/Login';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AccessGuard from '@/components/shared/AccessGuard';
+import AdminRouteGuard from '@/components/shared/AdminRouteGuard';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -31,6 +33,16 @@ const GuardedLayoutWrapper = ({ children, currentPageName }) => (
     <LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper>
   </AccessGuard>
 );
+
+const GuardedAdminLayoutWrapper = ({ children, currentPageName = 'AdminPanel' }) => (
+  <AccessGuard>
+    <AdminRouteGuard>
+      <LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper>
+    </AdminRouteGuard>
+  </AccessGuard>
+);
+
+const ADMIN_PAGES = new Set(['AdminPanel']);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, user } = useAuth();
@@ -50,6 +62,7 @@ const AuthenticatedApp = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/diagnostico" element={<Diagnostico />} />
       <Route path="/acceso" element={<Acceso />} />
+      <Route path="/activar-acceso" element={<ActivateAccess />} />
       <Route path="/paywall" element={<Paywall />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
       <Route path="/payment-cancel" element={<PaymentCancel />} />
@@ -68,13 +81,33 @@ const AuthenticatedApp = () => {
               path={`/${path}`}
               element={
                 <GuardedLayoutWrapper currentPageName={path}>
-                  <Page />
+                  {ADMIN_PAGES.has(path) ? (
+                    <AdminRouteGuard>
+                      <Page />
+                    </AdminRouteGuard>
+                  ) : (
+                    <Page />
+                  )}
                 </GuardedLayoutWrapper>
               }
             />
           ))}
-          <Route path="/admin/emails" element={<EmailLogs />} />
-          <Route path="/admin/email-templates" element={<EmailTemplates />} />
+          <Route
+            path="/admin/emails"
+            element={
+              <GuardedAdminLayoutWrapper currentPageName="AdminPanel">
+                <EmailLogs />
+              </GuardedAdminLayoutWrapper>
+            }
+          />
+          <Route
+            path="/admin/email-templates"
+            element={
+              <GuardedAdminLayoutWrapper currentPageName="AdminPanel">
+                <EmailTemplates />
+              </GuardedAdminLayoutWrapper>
+            }
+          />
           <Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><Learn /></GuardedLayoutWrapper>} />
           <Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><Agenda /></GuardedLayoutWrapper>} />
         </>

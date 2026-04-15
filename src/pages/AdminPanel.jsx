@@ -102,6 +102,7 @@ function SetupRequiredAlert() {
 function UserEditModal({ row, onClose, onSave, isSaving }) {
   const [role, setRole] = useState(row.role || 'user');
   const [hasAccess, setHasAccess] = useState(row.has_access === true);
+  const isManualLifetime = row.access_source === 'manual_lifetime';
 
   return (
     <div className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4">
@@ -127,9 +128,14 @@ function UserEditModal({ row, onClose, onSave, isSaving }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="user">Usuario</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
+              {!isManualLifetime ? <SelectItem value="admin">Admin</SelectItem> : null}
             </SelectContent>
           </Select>
+          {isManualLifetime ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Este usuario fue creado como manual lifetime y no puede elevarse a admin desde este flujo.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between border rounded-lg px-3 py-2">
@@ -152,7 +158,15 @@ function UserEditModal({ row, onClose, onSave, isSaving }) {
           <Button
             className="h-8 text-xs"
             style={{ backgroundColor: BRAND_PRIMARY }}
-            onClick={() => onSave({ role, has_access: hasAccess, plan: role === 'admin' ? 'admin' : row.plan || 'founder' })}
+            onClick={() =>
+              onSave({
+                role: isManualLifetime ? 'user' : role,
+                has_access: hasAccess,
+                plan: isManualLifetime ? 'founder' : role === 'admin' ? 'admin' : row.plan || 'founder',
+                access_source: isManualLifetime ? 'manual_lifetime' : row.access_source,
+                is_lifetime: isManualLifetime ? true : row.is_lifetime,
+              })
+            }
             disabled={isSaving}
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -174,7 +188,6 @@ export default function AdminPanel() {
   const [inviteForm, setInviteForm] = useState({
     full_name: '',
     email: '',
-    role: 'user',
   });
   const [editingRow, setEditingRow] = useState(null);
 
@@ -354,7 +367,7 @@ export default function AdminPanel() {
         }
       }
 
-      setInviteForm({ full_name: '', email: '', role: inviteForm.role });
+      setInviteForm({ full_name: '', email: '' });
     } catch (err) {
       toast.error(err.message || 'No se pudo procesar la invitación.');
     }
@@ -404,7 +417,7 @@ export default function AdminPanel() {
             </h2>
 
             <form className="space-y-3 mt-3" onSubmit={handleInvite}>
-              <div className="grid md:grid-cols-3 gap-3">
+              <div className="grid md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-semibold">Nombre *</Label>
                   <Input
@@ -426,22 +439,10 @@ export default function AdminPanel() {
                     required
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-semibold">Rol *</Label>
-                  <Select value={inviteForm.role} onValueChange={(value) => setInviteForm((prev) => ({ ...prev, role: value }))}>
-                    <SelectTrigger className="h-9 mt-1 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">Usuario</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
 
               <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                Se enviará un email de invitación. La usuaria aparecerá activa cuando complete registro/inicio de sesión.
+                Los accesos creados desde aquí se registran como usuarias manuales lifetime (rol usuario, sin permisos admin).
               </div>
 
               <div className="flex justify-end">
@@ -524,6 +525,9 @@ export default function AdminPanel() {
                         <td className="px-3 py-2.5">
                           <p className="font-medium text-sm">{row.full_name}</p>
                           <p className="text-xs text-muted-foreground">{row.email}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Segmento: {row.access_source || 'legacy'} {row.is_lifetime ? '· lifetime' : ''}
+                          </p>
                         </td>
                         <td className="px-3 py-2.5">
                           <RoleBadge role={row.role} />
