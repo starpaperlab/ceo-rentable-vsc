@@ -1,0 +1,22 @@
+{
+  "name": "CEO Rentable OS™",
+  "short_name": "CEO Rentable",
+  "description": "Plataforma financiera para emprendedoras",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a0d12",
+  "theme_color": "#D94F8A",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/brand/isotipo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/isotipo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
