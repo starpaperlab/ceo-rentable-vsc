@@ -6,8 +6,16 @@ import { ensureDbUserRecord } from '@/lib/ensureDbUser'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ArrowRight, AlertCircle } from 'lucide-react'
+import { ArrowRight, AlertCircle, Store, Package2, Settings2 } from 'lucide-react'
 import { hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership'
+
+function isOnConflictTargetError(error) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
+  return (
+    error?.code === '42P10' ||
+    message.includes('no unique or exclusion constraint matching the on conflict specification')
+  )
+}
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -33,6 +41,9 @@ export default function Onboarding() {
   }
 
   const margin = calculateMargin()
+  const progress = ((step + 1) / 3) * 100
+  const inputClassName =
+    'h-12 rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#D45387]/25 focus:border-[#D45387]'
 
   const handleStep0 = () => {
     if (!formData.business_name.trim()) {
@@ -134,10 +145,100 @@ export default function Onboarding() {
         if (error) throw error
       }
 
+      const saveConfigWithoutOnConflict = async (payload) => {
+        const nowIso = new Date().toISOString()
+
+        const findExistingByUserId = async () => {
+          if (!payload.user_id) return null
+
+          const { data, error } = await supabase
+            .from('business_config')
+            .select('id')
+            .eq('user_id', payload.user_id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          if (error) throw error
+          return data?.[0]?.id || null
+        }
+
+        const findExistingByCreatedBy = async () => {
+          if (!payload.created_by) return null
+
+          const { data, error } = await supabase
+            .from('business_config')
+            .select('id')
+            .eq('created_by', payload.created_by)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          if (error) throw error
+          return data?.[0]?.id || null
+        }
+
+        let existingId = null
+
+        try {
+          existingId = await findExistingByUserId()
+        } catch (lookupByUserError) {
+          if (
+            !isMissingColumnError(lookupByUserError, 'business_config.user_id') &&
+            !isMissingColumnError(lookupByUserError, 'user_id')
+          ) {
+            throw lookupByUserError
+          }
+        }
+
+        if (!existingId) {
+          try {
+            existingId = await findExistingByCreatedBy()
+          } catch (lookupByCreatedByError) {
+            if (
+              !isMissingColumnError(lookupByCreatedByError, 'business_config.created_by') &&
+              !isMissingColumnError(lookupByCreatedByError, 'created_by')
+            ) {
+              throw lookupByCreatedByError
+            }
+          }
+        }
+
+        if (existingId) {
+          const updatePayload = {
+            business_name: payload.business_name,
+            currency: payload.currency,
+            quarterly_goal: payload.quarterly_goal,
+            target_margin_pct: payload.target_margin_pct,
+            updated_at: nowIso,
+          }
+
+          const { error } = await supabase
+            .from('business_config')
+            .update(updatePayload)
+            .eq('id', existingId)
+
+          if (error) throw error
+          return
+        }
+
+        const insertPayload = {
+          ...payload,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }
+
+        const { error } = await supabase
+          .from('business_config')
+          .insert(insertPayload)
+
+        if (error) throw error
+      }
+
       try {
         await upsertConfig(configPayload)
       } catch (configError) {
-        if (
+        if (isOnConflictTargetError(configError)) {
+          await saveConfigWithoutOnConflict(configPayload)
+        } else if (
           isMissingColumnError(configError, 'business_config.user_id') ||
           isMissingColumnError(configError, 'user_id') ||
           isMissingColumnError(configError, 'business_config.created_by') ||
@@ -214,12 +315,45 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F7F3EE] via-white to-pink-50 flex items-center justify-center p-4">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#F7F3EE] via-[#fffdfd] to-[#F7E6EF] flex items-center justify-center p-4">
+      <div className="pointer-events-none absolute -top-32 -left-28 h-72 w-72 rounded-full bg-[#D45387]/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[#D45387]/12 blur-3xl" />
+
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="w-full max-w-md"
+        className="w-full max-w-xl"
       >
+        <div className="mb-4 flex justify-center">
+          <div className="inline-flex items-center gap-3 rounded-2xl border border-[#EED8E3] bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
+            <img
+              src="/brand/isotipo.png"
+              alt="CEO Rentable OS"
+              className="h-9 w-9 object-contain"
+            />
+            <div className="leading-tight">
+              <p className="text-sm font-bold text-[#D45387]">CEO Rentable OS™</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Plataforma financiera</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-[#EDD6E2] bg-white/95 p-6 shadow-[0_30px_80px_rgba(212,83,135,0.16)] sm:p-8">
+          <div className="mb-6">
+            <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <span>Paso {step + 1} de 3</span>
+              <span>{step === 0 ? 'Negocio' : step === 1 ? 'Producto' : 'Configuración'}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-[#F2E7ED]">
+              <motion.div
+                initial={false}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className="h-full rounded-full bg-gradient-to-r from-[#D45387] to-[#C63C77]"
+              />
+            </div>
+          </div>
+
         <AnimatePresence mode="wait">
           {/* STEP 0: Nombre del negocio */}
           {step === 0 && (
@@ -229,31 +363,33 @@ export default function Onboarding() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-2xl p-8 shadow-lg border border-pink-100"
+              className="space-y-6"
             >
-              <div className="text-center mb-6">
-                <h1 className="text-3xl font-black text-gray-900">
-                  Bienvenida a<br />
-                  <span className="text-[#D45387]">CEO Rentable</span>
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
+                  <Store className="h-6 w-6" />
+                </div>
+                <h1 className="text-3xl font-black text-slate-900">
+                  Bienvenida a <span className="text-[#D45387]">CEO Rentable</span>
                 </h1>
-                <p className="text-gray-600 mt-2 text-sm">Configura tu negocio en 3 pasos</p>
+                <p className="mt-2 text-sm text-slate-600">Configura tu negocio en menos de 2 minutos.</p>
               </div>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
                     ¿Cómo se llama tu negocio?
                   </label>
                   <Input
                     placeholder="Ej: Mi Tienda Online"
                     value={formData.business_name}
                     onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-                    className="h-12 border-2 border-gray-200 focus:border-[#D45387] focus:ring-0"
+                    className={inputClassName}
                   />
                 </div>
 
                 {error && (
-                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700">{error}</p>
                   </div>
@@ -261,7 +397,7 @@ export default function Onboarding() {
 
                 <Button
                   onClick={handleStep0}
-                  className="w-full h-12 bg-[#D45387] hover:bg-[#C03A76] text-white font-bold"
+                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76]"
                 >
                   Continuar <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
@@ -277,32 +413,32 @@ export default function Onboarding() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-2xl p-8 shadow-lg border border-pink-100"
+              className="space-y-5"
             >
-              <div className="text-center mb-6">
-                <div className="w-10 h-10 rounded-full bg-[#D45387]/10 flex items-center justify-center mx-auto mb-3">
-                  <span className="text-lg">2/3</span>
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
+                  <Package2 className="h-6 w-6" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Tu primer producto</h2>
-                <p className="text-gray-600 text-sm mt-1">Vamos a crear el primero juntos</p>
+                <h2 className="text-2xl font-bold text-slate-900">Tu primer producto</h2>
+                <p className="text-sm text-slate-600 mt-1">Este dato alimenta tus análisis desde el primer día.</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
                     Nombre del producto
                   </label>
                   <Input
                     placeholder="Ej: Camiseta Premium"
                     value={formData.first_product_name}
                     onChange={(e) => setFormData({ ...formData, first_product_name: e.target.value })}
-                    className="h-11 border-2 border-gray-200 focus:border-[#D45387]"
+                    className={inputClassName}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">
                       Precio de venta
                     </label>
                     <Input
@@ -310,11 +446,11 @@ export default function Onboarding() {
                       placeholder="0.00"
                       value={formData.first_product_price}
                       onChange={(e) => setFormData({ ...formData, first_product_price: e.target.value })}
-                      className="h-11 border-2 border-gray-200 focus:border-[#D45387]"
+                      className={inputClassName}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">
                       Costo
                     </label>
                     <Input
@@ -322,22 +458,22 @@ export default function Onboarding() {
                       placeholder="0.00"
                       value={formData.first_product_cost}
                       onChange={(e) => setFormData({ ...formData, first_product_cost: e.target.value })}
-                      className="h-11 border-2 border-gray-200 focus:border-[#D45387]"
+                      className={inputClassName}
                     />
                   </div>
                 </div>
 
                 {margin !== null && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                     <p className="text-sm">
-                      <span className="text-gray-600">Margen: </span>
+                      <span className="text-slate-600">Margen estimado: </span>
                       <span className="font-bold text-emerald-600">{margin.toFixed(1)}%</span>
                     </p>
                   </div>
                 )}
 
                 {error && (
-                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700">{error}</p>
                   </div>
@@ -345,7 +481,7 @@ export default function Onboarding() {
 
                 <Button
                   onClick={handleStep1}
-                  className="w-full h-12 bg-[#D45387] hover:bg-[#C03A76] text-white font-bold"
+                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76]"
                 >
                   Continuar <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
@@ -361,25 +497,25 @@ export default function Onboarding() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-2xl p-8 shadow-lg border border-pink-100"
+              className="space-y-5"
             >
-              <div className="text-center mb-6">
-                <div className="w-10 h-10 rounded-full bg-[#D45387]/10 flex items-center justify-center mx-auto mb-3">
-                  <span className="text-lg">3/3</span>
+              <div className="text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
+                  <Settings2 className="h-6 w-6" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Casi listo</h2>
-                <p className="text-gray-600 text-sm mt-1">Confirma tu moneda y zona horaria</p>
+                <h2 className="text-2xl font-bold text-slate-900">Casi listo</h2>
+                <p className="text-sm text-slate-600 mt-1">Confirma tu moneda y zona horaria para personalizar reportes.</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
                     Moneda
                   </label>
                   <select
                     value={formData.currency}
                     onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full h-11 px-3 border-2 border-gray-200 rounded-lg focus:border-[#D45387] focus:ring-0"
+                    className="h-12 w-full rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:border-[#D45387] focus:outline-none focus:ring-2 focus:ring-[#D45387]/25"
                   >
                     <option value="DOP">RD$ (Peso Dominicano)</option>
                     <option value="USD">$ (Dólar USD)</option>
@@ -388,13 +524,13 @@ export default function Onboarding() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
                     Zona horaria
                   </label>
                   <select
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                    className="w-full h-11 px-3 border-2 border-gray-200 rounded-lg focus:border-[#D45387] focus:ring-0"
+                    className="h-12 w-full rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:border-[#D45387] focus:outline-none focus:ring-2 focus:ring-[#D45387]/25"
                   >
                     <option value="America/Santo_Domingo">Santo Domingo (AST)</option>
                     <option value="America/New_York">Nueva York (EST)</option>
@@ -404,14 +540,14 @@ export default function Onboarding() {
                 </div>
 
                 {error && (
-                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-red-700">{error}</p>
                   </div>
                 )}
 
                 {saving && (
-                  <div className="flex items-center justify-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                     <p className="text-sm text-blue-700">Configurando tu negocio...</p>
                   </div>
@@ -420,7 +556,7 @@ export default function Onboarding() {
                 <Button
                   onClick={handleSubmit}
                   disabled={saving}
-                  className="w-full h-12 bg-[#D45387] hover:bg-[#C03A76] text-white font-bold disabled:opacity-50"
+                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76] disabled:opacity-50"
                 >
                   {saving ? 'Un momento...' : '¡Comenzar!'}
                 </Button>
@@ -428,6 +564,7 @@ export default function Onboarding() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </motion.div>
     </div>
   )
