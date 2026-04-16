@@ -204,7 +204,7 @@ export default function Onboarding() {
 
       // 3. Redirigir al dashboard
       setTimeout(() => {
-        navigate('/dashboard')
+        navigate('/Dashboard')
       }, 1500)
     } catch (err) {
       console.error('Onboarding error:', err)

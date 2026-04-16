@@ -52,7 +52,7 @@ export default function Paywall() {
   // Redirigir si ya tiene acceso
   useEffect(() => {
     if (userProfile?.has_access) {
-      navigate('/dashboard')
+      navigate('/Dashboard')
     }
   }, [userProfile, navigate])
 

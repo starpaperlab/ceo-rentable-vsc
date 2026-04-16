@@ -44,6 +44,18 @@ const GuardedAdminLayoutWrapper = ({ children, currentPageName = 'AdminPanel' })
 
 const ADMIN_PAGES = new Set(['AdminPanel']);
 
+const GuardedPageElement = ({ path, Page }) => (
+  <GuardedLayoutWrapper currentPageName={path}>
+    {ADMIN_PAGES.has(path) ? (
+      <AdminRouteGuard>
+        <Page />
+      </AdminRouteGuard>
+    ) : (
+      <Page />
+    )}
+  </GuardedLayoutWrapper>
+);
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, user } = useAuth();
 
@@ -75,23 +87,26 @@ const AuthenticatedApp = () => {
               <MainPage />
             </GuardedLayoutWrapper>
           } />
-          {Object.entries(Pages).map(([path, Page]) => (
-            <Route
-              key={path}
-              path={`/${path}`}
-              element={
-                <GuardedLayoutWrapper currentPageName={path}>
-                  {ADMIN_PAGES.has(path) ? (
-                    <AdminRouteGuard>
-                      <Page />
-                    </AdminRouteGuard>
-                  ) : (
-                    <Page />
-                  )}
-                </GuardedLayoutWrapper>
-              }
-            />
-          ))}
+          {Object.entries(Pages).flatMap(([path, Page]) => {
+            const element = <GuardedPageElement path={path} Page={Page} />;
+            const canonicalPath = `/${path}`;
+            const lowerPath = `/${path.toLowerCase()}`;
+
+            if (canonicalPath === lowerPath) {
+              return (
+                <Route
+                  key={path}
+                  path={canonicalPath}
+                  element={element}
+                />
+              );
+            }
+
+            return [
+              <Route key={path} path={canonicalPath} element={element} />,
+              <Route key={`${path}-lower`} path={lowerPath} element={element} />,
+            ];
+          })}
           <Route
             path="/admin/emails"
             element={

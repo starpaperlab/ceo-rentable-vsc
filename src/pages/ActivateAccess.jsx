@@ -102,6 +102,18 @@ export default function ActivateAccess() {
     navigate('/', { replace: true });
   };
 
+  useEffect(() => {
+    if (!activationDone) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      navigate('/', { replace: true });
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [activationDone, navigate]);
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-10"
@@ -217,14 +229,3 @@ export default function ActivateAccess() {
     </div>
   );
 }
-  useEffect(() => {
-    if (!activationDone) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      navigate('/', { replace: true });
-    }, 1200);
-
-    return () => window.clearTimeout(timer);
-  }, [activationDone, navigate]);
