@@ -11,6 +11,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
 
   const docNumber = type === 'invoice' ? doc.invoice_number : doc.quote_number;
   const docLabel = type === 'invoice' ? 'FACTURA' : 'COTIZACIÓN';
+  const recipientLabel = type === 'invoice' ? 'FACTURADO A' : 'COTIZADO PARA';
   const brandColor = doc.brand_color || '#D94F8A';
   const fontFamily = doc.font_family || 'Inter';
   const fontUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;600;700&display=swap`;
@@ -69,7 +70,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
 
           {/* Client */}
           <div style={{ backgroundColor: `${brandColor}15`, borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
-            <p style={{ fontSize: '10px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 0' }}>Facturado a</p>
+            <p style={{ fontSize: '10px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 0' }}>{recipientLabel}</p>
             <p style={{ fontSize: '15px', fontWeight: 'bold', color: '#222', margin: '0 0 4px 0' }}>{doc.client_name || '-'}</p>
             {doc.client_email && <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>{doc.client_email}</p>}
             {doc.client_phone && <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>📞 {doc.client_phone}</p>}

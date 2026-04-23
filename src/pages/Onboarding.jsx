@@ -9,6 +9,42 @@ import { Input } from '@/components/ui/input'
 import { ArrowRight, AlertCircle, Store, Package2, Settings2 } from 'lucide-react'
 import { hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership'
 
+const ONBOARDING_AUDIT_SEED_KEY = 'ceo_onboarding_audit_seed'
+
+function persistAuditSeed({ userId, userEmail, seed }) {
+  if (typeof window === 'undefined') return
+
+  const normalizedEmail = `${userEmail || ''}`.trim().toLowerCase()
+  const payload = JSON.stringify(seed)
+
+  window.localStorage.setItem(ONBOARDING_AUDIT_SEED_KEY, payload)
+  if (userId) {
+    window.localStorage.setItem(`${ONBOARDING_AUDIT_SEED_KEY}:${userId}`, payload)
+  }
+  if (normalizedEmail) {
+    window.localStorage.setItem(`${ONBOARDING_AUDIT_SEED_KEY}:${normalizedEmail}`, payload)
+  }
+}
+
+function buildAuditSeed(formData) {
+  const price = parseFloat(formData.first_product_price || 0)
+  const cost = parseFloat(formData.first_product_cost || 0)
+
+  return {
+    source: 'onboarding',
+    name: formData.first_product_name.trim(),
+    type: 'fisico',
+    price: Number.isFinite(price) ? `${price}` : '',
+    materials: Number.isFinite(cost) ? `${cost}` : '',
+    hidden: '',
+    time: '',
+    hourly: '',
+    commission: '',
+    ads: '',
+    created_at: new Date().toISOString(),
+  }
+}
+
 function isOnConflictTargetError(error) {
   const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
   return (
@@ -63,6 +99,13 @@ export default function Onboarding() {
       setError('Por favor ingresa precio y costo')
       return
     }
+
+    persistAuditSeed({
+      userId: user?.id,
+      userEmail: user?.email,
+      seed: buildAuditSeed(formData),
+    })
+
     setError(null)
     setStep(2)
   }
@@ -80,6 +123,14 @@ export default function Onboarding() {
       const price = parseFloat(formData.first_product_price)
       const cost = parseFloat(formData.first_product_cost)
       const marginPct = ((price - cost) / price) * 100
+      const auditSeed = buildAuditSeed(formData)
+
+      // Guardamos seed primero para asegurar handoff hacia Rentabilidad
+      persistAuditSeed({
+        userId: user.id,
+        userEmail: user.email,
+        seed: auditSeed,
+      })
 
       // 1) Asegurar perfil base en users
       await ensureDbUserRecord({
@@ -303,14 +354,26 @@ export default function Onboarding() {
         }
       }
 
-      // 3. Redirigir al dashboard
-      setTimeout(() => {
-        navigate('/Dashboard')
-      }, 1500)
+      navigate('/Profitability', { state: { onboardingAuditSeed: auditSeed, fromOnboarding: true } })
     } catch (err) {
       console.error('Onboarding error:', err)
-      setError(err.message || 'Error completando onboarding')
-      setSaving(false)
+      const auditSeed = buildAuditSeed(formData)
+
+      persistAuditSeed({
+        userId: user?.id,
+        userEmail: user?.email,
+        seed: auditSeed,
+      })
+
+      // Fallback: aunque falle una escritura secundaria, permitimos continuar
+      // al panel de auditoría con los datos cargados para no bloquear onboarding.
+      navigate('/Profitability', {
+        state: {
+          onboardingAuditSeed: auditSeed,
+          fromOnboarding: true,
+          onboardingWarning: err?.message || 'Continuamos a rentabilidad con guardado parcial.',
+        },
+      })
     }
   }
 
