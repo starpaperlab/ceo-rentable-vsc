@@ -179,6 +179,23 @@ function findApprovalUrl(orderPayload = {}) {
   return approve?.href || null;
 }
 
+function normalizeMoney(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric.toFixed(2);
+}
+
+function getPrimaryPurchaseUnit(orderPayload = {}) {
+  const units = Array.isArray(orderPayload?.purchase_units) ? orderPayload.purchase_units : [];
+  return units[0] || {};
+}
+
+function getPrimaryCapture(orderPayload = {}) {
+  const unit = getPrimaryPurchaseUnit(orderPayload);
+  const captures = Array.isArray(unit?.payments?.captures) ? unit.payments.captures : [];
+  return captures[0] || null;
+}
+
 async function createOrderWithPayPal(input, { env = process.env, fetchImpl = fetch } = {}) {
   const auth = await getPayPalAccessToken({ env, fetchImpl });
   if (!auth.ok) {
@@ -266,6 +283,12 @@ function isMissingTableError(error, tableName = '') {
   );
 }
 
+function isUniqueViolation(error) {
+  const code = `${error?.code || ''}`.trim();
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return code === '23505' || message.includes('duplicate key');
+}
+
 async function savePayPalOrderIfTableExists(input, result, env = process.env) {
   const serviceClient = getSupabaseServiceClient(env);
   if (!serviceClient || !result?.body?.orderId) return;
@@ -286,6 +309,184 @@ async function savePayPalOrderIfTableExists(input, result, env = process.env) {
   if (error && !isMissingTableError(error, 'paypal_orders')) {
     throw error;
   }
+}
+
+async function getPayPalOrder(orderId, paypalAuth, { fetchImpl = fetch } = {}) {
+  const response = await fetchImpl(`${paypalAuth.apiBase}/v2/checkout/orders/${encodeURIComponent(orderId)}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${paypalAuth.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error_description || 'No se pudo consultar la orden PayPal.');
+  }
+  return payload;
+}
+
+async function captureOrderWithPayPal(orderId, paypalAuth, { fetchImpl = fetch } = {}) {
+  const response = await fetchImpl(`${paypalAuth.apiBase}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${paypalAuth.accessToken}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorText = `${payload?.message || ''} ${payload?.name || ''} ${JSON.stringify(payload?.details || [])}`.toLowerCase();
+    if (errorText.includes('already') && errorText.includes('captur')) {
+      return getPayPalOrder(orderId, paypalAuth, { fetchImpl });
+    }
+    throw new Error(payload?.message || payload?.error_description || 'No se pudo capturar la orden PayPal.');
+  }
+  return payload;
+}
+
+async function getLocalPayPalOrder(serviceClient, orderId) {
+  const { data, error } = await serviceClient
+    .from('paypal_orders')
+    .select('*')
+    .eq('paypal_order_id', orderId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+async function findExistingTransactionByCapture(serviceClient, captureId) {
+  if (!captureId) return null;
+
+  const { data, error } = await serviceClient
+    .from('transactions')
+    .select('id')
+    .eq('payment_provider', 'paypal')
+    .eq('provider_capture_id', captureId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+function validateCapturedOrder({ localOrder, paypalOrder }) {
+  if (`${paypalOrder?.status || ''}`.toUpperCase() !== 'COMPLETED') {
+    throw new Error('PayPal no confirmó el pago como COMPLETED.');
+  }
+
+  const unit = getPrimaryPurchaseUnit(paypalOrder);
+  const capture = getPrimaryCapture(paypalOrder);
+
+  if (!capture?.id) {
+    throw new Error('PayPal no devolvió capture_id para la orden completada.');
+  }
+
+  if (`${capture.status || ''}`.toUpperCase() !== 'COMPLETED') {
+    throw new Error('La captura PayPal no está COMPLETED.');
+  }
+
+  const planCode = `${unit?.reference_id || localOrder.plan_code || ''}`.trim().toLowerCase();
+  if (planCode && planCode !== `${localOrder.plan_code || ''}`.trim().toLowerCase()) {
+    throw new Error('El plan PayPal no coincide con la orden local.');
+  }
+
+  const captureAmount = normalizeMoney(capture?.amount?.value);
+  const localAmount = normalizeMoney(localOrder.amount);
+  if (!captureAmount || captureAmount !== localAmount) {
+    throw new Error('El monto PayPal no coincide con la orden local.');
+  }
+
+  const captureCurrency = `${capture?.amount?.currency_code || ''}`.trim().toUpperCase();
+  const localCurrency = `${localOrder.currency || ''}`.trim().toUpperCase();
+  if (!captureCurrency || captureCurrency !== localCurrency) {
+    throw new Error('La moneda PayPal no coincide con la orden local.');
+  }
+
+  return {
+    capture,
+    amount: Number(captureAmount),
+    currency: captureCurrency,
+    planCode: localOrder.plan_code,
+  };
+}
+
+async function activateAccessForPayPalPayment({ serviceClient, userId, localOrder, captureInfo, paypalOrderId }) {
+  const now = new Date().toISOString();
+  const existingTransaction = await findExistingTransactionByCapture(serviceClient, captureInfo.capture.id);
+
+  if (!existingTransaction) {
+    const { error: transactionError } = await serviceClient.from('transactions').insert({
+      user_id: userId,
+      payment_provider: 'paypal',
+      provider_order_id: paypalOrderId,
+      provider_capture_id: captureInfo.capture.id,
+      amount: captureInfo.amount,
+      currency: captureInfo.currency,
+      status: 'completed',
+      description: `Pago PayPal ${localOrder.plan_code}`,
+      metadata: {
+        plan_code: localOrder.plan_code,
+        paypal_order_id: paypalOrderId,
+        paypal_capture_status: captureInfo.capture.status,
+      },
+      created_at: now,
+      updated_at: now,
+    });
+
+    if (transactionError && !isUniqueViolation(transactionError)) throw transactionError;
+  }
+
+  const { error: userError } = await serviceClient
+    .from('users')
+    .update({
+      has_access: true,
+      plan: 'subscription',
+      payment_provider: 'paypal',
+      access_source: 'paypal_payment',
+      updated_at: now,
+    })
+    .eq('id', userId);
+
+  if (userError) throw userError;
+
+  const { error: subscriptionError } = await serviceClient.from('subscriptions').upsert(
+    {
+      user_id: userId,
+      plan_code: localOrder.plan_code,
+      status: 'active',
+      payment_provider: 'paypal',
+      provider_customer_id: null,
+      provider_subscription_id: null,
+      metadata: {
+        paypal_order_id: paypalOrderId,
+        paypal_capture_id: captureInfo.capture.id,
+      },
+      updated_at: now,
+    },
+    { onConflict: 'user_id' }
+  );
+
+  if (subscriptionError) throw subscriptionError;
+
+  const { error: orderError } = await serviceClient
+    .from('paypal_orders')
+    .update({
+      status: 'completed',
+      paypal_capture_id: captureInfo.capture.id,
+      captured_at: now,
+      updated_at: now,
+    })
+    .eq('paypal_order_id', paypalOrderId);
+
+  if (orderError) throw orderError;
+
+  return {
+    alreadyProcessed: Boolean(existingTransaction),
+  };
 }
 
 export async function handleCreatePayPalOrderPayload(payload = {}, options = {}) {
@@ -337,6 +538,125 @@ export async function handleCreatePayPalOrderPayload(payload = {}, options = {})
         success: false,
         code: 'PAYPAL_ORDER_INTERNAL_ERROR',
         error: error?.message || 'Error interno creando orden PayPal.',
+      },
+    };
+  }
+}
+
+export async function handleCapturePayPalOrderPayload(payload = {}, options = {}) {
+  try {
+    const auth = await authenticate(payload, options);
+    if (!auth.ok) {
+      return {
+        ok: false,
+        status: auth.status || 401,
+        body: {
+          success: false,
+          code: 'PAYPAL_CAPTURE_UNAUTHORIZED',
+          error: auth.error || 'No autorizado.',
+        },
+      };
+    }
+
+    const orderId = `${payload.orderId || payload.order_id || payload.token || ''}`.trim();
+    if (!orderId) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          success: false,
+          code: 'PAYPAL_ORDER_REQUIRED',
+          error: 'Falta el ID de la orden PayPal.',
+        },
+      };
+    }
+
+    const serviceClient = getSupabaseServiceClient(options.env || process.env);
+    if (!serviceClient) {
+      return {
+        ok: false,
+        status: 500,
+        body: {
+          success: false,
+          code: 'SUPABASE_SERVICE_NOT_CONFIGURED',
+          error: 'Falta SUPABASE_SERVICE_ROLE_KEY en el servidor.',
+        },
+      };
+    }
+
+    const localOrder = await getLocalPayPalOrder(serviceClient, orderId);
+    if (!localOrder) {
+      return {
+        ok: false,
+        status: 404,
+        body: {
+          success: false,
+          code: 'PAYPAL_ORDER_NOT_FOUND',
+          error: 'No encontramos la orden PayPal en el sistema.',
+        },
+      };
+    }
+
+    if (localOrder.user_id !== auth.user.id) {
+      return {
+        ok: false,
+        status: 403,
+        body: {
+          success: false,
+          code: 'PAYPAL_ORDER_FORBIDDEN',
+          error: 'La orden PayPal no pertenece a tu cuenta.',
+        },
+      };
+    }
+
+    const paypalAuth = await getPayPalAccessToken(options);
+    if (!paypalAuth.ok) {
+      return {
+        ok: false,
+        status: paypalAuth.status || 500,
+        body: {
+          success: false,
+          code: 'PAYPAL_AUTH_FAILED',
+          error: paypalAuth.error,
+        },
+      };
+    }
+
+    let paypalOrder = await getPayPalOrder(orderId, paypalAuth, options);
+    if (`${paypalOrder?.status || ''}`.toUpperCase() !== 'COMPLETED') {
+      paypalOrder = await captureOrderWithPayPal(orderId, paypalAuth, options);
+    }
+
+    const captureInfo = validateCapturedOrder({ localOrder, paypalOrder });
+    const activation = await activateAccessForPayPalPayment({
+      serviceClient,
+      userId: auth.user.id,
+      localOrder,
+      captureInfo,
+      paypalOrderId: orderId,
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        success: true,
+        orderId,
+        captureId: captureInfo.capture.id,
+        amount: captureInfo.amount,
+        currency: captureInfo.currency,
+        status: 'completed',
+        alreadyProcessed: activation.alreadyProcessed,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        success: false,
+        code: 'PAYPAL_CAPTURE_INTERNAL_ERROR',
+        error: error?.message || 'Error interno capturando orden PayPal.',
       },
     };
   }

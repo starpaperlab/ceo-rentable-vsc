@@ -1,8 +1,12 @@
 import { ENV_CONFIG } from '@/config/env';
 import { supabase } from '@/lib/supabase';
 
-function getEndpoint() {
+function getCreateOrderEndpoint() {
   return '/api/paypal/create-order';
+}
+
+function getCaptureOrderEndpoint() {
+  return '/api/paypal/capture-order';
 }
 
 function getAccessTokenFromStorage() {
@@ -46,7 +50,7 @@ export async function createPayPalOrder(planCode) {
     };
   }
 
-  const response = await fetch(getEndpoint(), {
+  const response = await fetch(getCreateOrderEndpoint(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -78,6 +82,58 @@ export async function createPayPalOrder(planCode) {
   };
 }
 
+export async function capturePayPalOrder(orderId) {
+  const normalizedOrderId = `${orderId || ''}`.trim();
+  if (!normalizedOrderId) {
+    return {
+      success: false,
+      code: 'PAYPAL_ORDER_REQUIRED',
+      error: 'Falta el ID de la orden PayPal.',
+    };
+  }
+
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    return {
+      success: false,
+      code: 'AUTH_REQUIRED',
+      error: 'Debes iniciar sesión para confirmar el pago.',
+    };
+  }
+
+  const response = await fetch(getCaptureOrderEndpoint(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      orderId: normalizedOrderId,
+      provider: 'paypal',
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    return {
+      success: false,
+      code: payload?.code || 'PAYPAL_CAPTURE_FAILED',
+      error: payload?.error || 'No se pudo confirmar el pago de PayPal.',
+    };
+  }
+
+  return {
+    success: true,
+    orderId: payload?.orderId || normalizedOrderId,
+    captureId: payload?.captureId || null,
+    amount: payload?.amount ?? null,
+    currency: payload?.currency || null,
+    status: payload?.status || 'completed',
+  };
+}
+
 export default {
   createPayPalOrder,
+  capturePayPalOrder,
 };

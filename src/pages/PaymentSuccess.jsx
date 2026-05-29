@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { capturePayPalOrder } from '@/lib/paypalService';
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,11 +10,17 @@ export default function PaymentSuccess() {
   const [status, setStatus] = useState('loading'); // loading | success | pending | error
   const [user, setUser] = useState(null);
   const [provider, setProvider] = useState('paypal');
+  const [message, setMessage] = useState('Confirmando tu pago...');
+  const hasProcessedRef = useRef(false);
 
   useEffect(() => {
     const verifyAccess = async () => {
+      if (hasProcessedRef.current) return;
+      hasProcessedRef.current = true;
+
       const params = new URLSearchParams(window.location.search);
       const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
+      const orderId = `${params.get('order_id') || params.get('orderId') || params.get('token') || ''}`.trim();
       setProvider(nextProvider || 'paypal');
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -24,6 +31,21 @@ export default function PaymentSuccess() {
 
       setUser(currentUser);
 
+      if (nextProvider === 'paypal' && orderId) {
+        setStatus('loading');
+        setMessage('Procesando confirmación segura de PayPal...');
+        const capture = await capturePayPalOrder(orderId);
+        if (!capture.success) {
+          setMessage(capture.error || 'No pudimos confirmar el pago con PayPal.');
+          setStatus('error');
+          return;
+        }
+
+        setStatus('success');
+        return;
+      }
+
+      setMessage('Verificando tu acceso...');
       const { data: profile } = await supabase
         .from('users')
         .select('has_access, plan')
@@ -45,7 +67,10 @@ export default function PaymentSuccess() {
       setStatus('pending');
     };
 
-    verifyAccess().catch(() => setStatus('error'));
+    verifyAccess().catch((error) => {
+      setMessage(error?.message || 'No pudimos verificar tu pago.');
+      setStatus('error');
+    });
   }, []);
 
   const goToDashboard = () => {
@@ -57,7 +82,7 @@ export default function PaymentSuccess() {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground text-sm">Activando tu acceso...</p>
+          <p className="text-muted-foreground text-sm">{message}</p>
         </div>
       </div>
     );
@@ -68,7 +93,7 @@ export default function PaymentSuccess() {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Card className="p-8 max-w-md text-center space-y-4">
           <p className="text-lg font-bold text-foreground">Algo salió mal</p>
-          <p className="text-sm text-muted-foreground">No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.</p>
+          <p className="text-sm text-muted-foreground">{message || 'No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.'}</p>
           <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
         </Card>
       </div>
