@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
-import { ArrowRight, CheckCircle2, Zap, AlertCircle } from 'lucide-react'
+import { createPayPalOrder } from '@/lib/paypalService'
+import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react'
 
 const PLANS = [
   {
@@ -45,6 +46,7 @@ const PLANS = [
 export default function Paywall() {
   const navigate = useNavigate()
   const { user, userProfile } = useAuth()
+  const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
 
   // Redirigir si ya tiene acceso
@@ -60,8 +62,25 @@ export default function Paywall() {
       return
     }
 
-    console.info('PayPal checkout pendiente de implementar', { planId })
-    setError('PayPal será la nueva pasarela de pago. El checkout se activará en la siguiente fase de migración.')
+    setLoading((prev) => ({ ...prev, [planId]: true }))
+    setError(null)
+
+    try {
+      const result = await createPayPalOrder(planId)
+      const approvalUrl = result.approvalUrl || result.approval_url
+
+      if (result.success && approvalUrl) {
+        window.location.href = approvalUrl
+        return
+      }
+
+      setError(result.error || 'No se pudo crear la orden de PayPal.')
+    } catch (err) {
+      console.error('PayPal order error:', err)
+      setError('Error creando la orden de PayPal. Por favor intenta nuevamente.')
+    } finally {
+      setLoading((prev) => ({ ...prev, [planId]: false }))
+    }
   }
 
   return (
@@ -135,15 +154,25 @@ export default function Paywall() {
                 {/* CTA Button */}
                 <Button
                   onClick={() => handleCheckout(plan.id)}
+                  disabled={loading[plan.id]}
                   className={`w-full h-12 font-bold text-base rounded-xl mb-8 flex items-center justify-center gap-2 transition-all ${
                     plan.recommended
                       ? 'bg-gradient-to-r from-[#D45387] to-purple-500 hover:shadow-lg text-white border-0'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-900 border-0'
                   } disabled:opacity-50`}
                 >
-                  {plan.recommended ? <Zap className="w-4 h-4" /> : <ShoppingCart className="w-4 h-4" />}
-                  {plan.cta}
-                  <ArrowRight className="w-4 h-4" />
+                  {loading[plan.id] ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Creando orden...
+                    </>
+                  ) : (
+                    <>
+                      {plan.recommended ? <Zap className="w-4 h-4" /> : <ShoppingCart className="w-4 h-4" />}
+                      {plan.cta}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </Button>
 
                 {/* Features */}
