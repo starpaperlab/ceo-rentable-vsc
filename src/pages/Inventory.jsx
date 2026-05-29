@@ -14,7 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Package, ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Monitor, Wrench } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import {
+  deleteOwnedRowById,
+  fetchOwnedRows,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 
 const TABS = [
   { key: 'fisicos', label: 'Fisicos', icon: Package },
@@ -126,11 +132,14 @@ export default function Inventory() {
       }
 
       if (editingItem?.id) {
-        const { error } = await supabase
-          .from('inventory_items')
-          .update(payload)
-          .eq('id', editingItem.id);
-        if (error) throw error;
+        await updateOwnedRowById({
+          table: 'inventory_items',
+          id: editingItem.id,
+          payload,
+          ownerId,
+          ownerEmail,
+          adminMode,
+        });
         return;
       }
 
@@ -159,8 +168,13 @@ export default function Inventory() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('inventory_items').delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table: 'inventory_items',
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
@@ -185,11 +199,14 @@ export default function Inventory() {
       const delta = movement.type === 'salida' ? -qty : qty;
       const nextStock = Math.max(0, (item.current_stock || 0) + delta);
 
-      const { error: stockError } = await supabase
-        .from('inventory_items')
-        .update({ current_stock: nextStock })
-        .eq('id', item.id);
-      if (stockError) throw stockError;
+      await updateOwnedRowById({
+        table: 'inventory_items',
+        id: item.id,
+        payload: { current_stock: nextStock },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
 
       await insertOwned('inventory_movements', addOwnerToPayload({
         inventory_item_id: item.id,

@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { useCurrency } from '@/components/shared/CurrencyContext';
@@ -20,7 +19,7 @@ const REPORTS_TOUR_STEPS = [
 ];
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { fetchOwnedRows } from '@/lib/supabaseOwnership';
+import { fetchOwnedRows, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 const TABS = [
   { id: 'inventory', label: 'Inventario', icon: Package },
@@ -101,12 +100,14 @@ export default function Reports() {
 
   const markPaidMutation = useMutation({
     mutationFn: async (invoiceId) => {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: 'paid' })
-        .eq('id', invoiceId);
-
-      if (error) throw error;
+      await updateOwnedRowById({
+        table: 'invoices',
+        id: invoiceId,
+        payload: { status: 'paid' },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

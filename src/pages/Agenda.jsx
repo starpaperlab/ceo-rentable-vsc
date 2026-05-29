@@ -15,7 +15,13 @@ import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2 } from 'lucide-re
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import {
+  deleteOwnedRowById,
+  fetchOwnedRows,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 
 const INITIAL_FORM = {
   client_name: '',
@@ -116,14 +122,14 @@ export default function Agenda() {
   };
 
   const safeUpdate = async (table, id, payload) => {
-    const { data, error } = await supabase
-      .from(table)
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    return updateOwnedRowById({
+      table,
+      id,
+      payload,
+      ownerId,
+      ownerEmail,
+      adminMode,
+    });
   };
 
   const getOwnedSingleByField = async (table, field, value) => {
@@ -305,8 +311,13 @@ export default function Agenda() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('appointments').delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table: 'appointments',
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments'] });

@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Configuración 🛠️', description: 'Aquí ajustas los datos de tu negocio: nombre, moneda, metas y el branding que aparece en tus facturas y cotizaciones.' },
@@ -111,11 +111,14 @@ export default function AppSettings() {
 
       const runSave = async (safePayload) => {
         if (config.id) {
-          const { error } = await supabase
-            .from('business_config')
-            .update(safePayload)
-            .eq('id', config.id);
-          if (error) throw error;
+          await updateOwnedRowById({
+            table: 'business_config',
+            id: config.id,
+            payload: safePayload,
+            ownerId,
+            ownerEmail,
+            adminMode,
+          });
           return;
         }
 

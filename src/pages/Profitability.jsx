@@ -21,10 +21,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  deleteOwnedRowById,
   extractMissingColumnFromError,
   fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
+  updateOwnedRowById,
 } from '@/lib/supabaseOwnership';
 
 const ANALYSIS_TABLE = 'product_analysis';
@@ -425,11 +427,14 @@ export default function Profitability() {
     try {
       const table = analysisSource === ANALYSIS_TABLE ? ANALYSIS_TABLE : 'products';
       const nextStatus = table === ANALYSIS_TABLE ? 'approved' : 'en_analisis';
-      const { error } = await supabase
-        .from(table)
-        .update({ status: nextStatus })
-        .eq('id', id);
-      if (error) throw error;
+      await updateOwnedRowById({
+        table,
+        id,
+        payload: { status: nextStatus },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
       toast.success('Producto aprobado para sincronización');
       await loadAnalysis();
     } catch (error) {
@@ -448,16 +453,23 @@ export default function Profitability() {
           product_type: item.product_type,
           status: 'active',
         });
-        await supabase
-          .from(ANALYSIS_TABLE)
-          .update({ status: 'synced' })
-          .eq('id', item.id);
+        await updateOwnedRowById({
+          table: ANALYSIS_TABLE,
+          id: item.id,
+          payload: { status: 'synced' },
+          ownerId,
+          ownerEmail,
+          adminMode,
+        });
       } else {
-        const { error } = await supabase
-          .from('products')
-          .update({ status: 'active' })
-          .eq('id', item.id);
-        if (error) throw error;
+        await updateOwnedRowById({
+          table: 'products',
+          id: item.id,
+          payload: { status: 'active' },
+          ownerId,
+          ownerEmail,
+          adminMode,
+        });
       }
 
       toast.success('Sincronizado al catálogo');
@@ -470,8 +482,13 @@ export default function Profitability() {
   const deleteItem = async (id) => {
     try {
       const table = analysisSource === ANALYSIS_TABLE ? ANALYSIS_TABLE : 'products';
-      const { error } = await supabase.from(table).delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table,
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
       toast.success('Registro eliminado');
       await loadAnalysis();
     } catch (error) {

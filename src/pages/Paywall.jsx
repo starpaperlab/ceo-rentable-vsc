@@ -66,10 +66,12 @@ export default function Paywall() {
     setError(null)
 
     try {
-      const result = await createCheckoutSession(planId, user.id)
+      const result = await createCheckoutSession(planId, user.id, { email: user.email || null })
 
       if (result.success && result.url) {
         window.location.href = result.url
+      } else if (result.fallbackUrl) {
+        window.open(result.fallbackUrl, '_blank')
       } else {
         setError(result.error || 'Error creando sesión de pago')
       }

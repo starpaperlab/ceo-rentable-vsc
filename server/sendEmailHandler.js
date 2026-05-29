@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_FROM_EMAIL = 'hola@ceorentable.com';
@@ -6,6 +7,112 @@ const DEFAULT_FROM_NAME = 'CEO Rentable OS';
 
 let supabaseAnonClient = null;
 let supabaseServiceClient = null;
+
+function resolveRequestId(payload = {}, options = {}) {
+  const fromOptions = `${options?.requestId || ''}`.trim();
+  if (fromOptions) return fromOptions;
+
+  const headers = options?.headers || {};
+  const fromHeaders =
+    headers['x-request-id'] ||
+    headers['X-Request-Id'] ||
+    headers['x-correlation-id'] ||
+    headers['X-Correlation-Id'];
+  const normalizedHeader = `${fromHeaders || ''}`.trim();
+  if (normalizedHeader) return normalizedHeader;
+
+  const fromPayload = `${payload?.requestId || payload?.request_id || ''}`.trim();
+  if (fromPayload) return fromPayload;
+
+  return randomUUID();
+}
+
+const LOG_MESSAGE_MAX_LEN = 300;
+const EMAIL_MASK_REGEX = /\b([A-Z0-9._%+-]{1,64})@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
+const BEARER_MASK_REGEX = /(bearer\s+)[a-z0-9\-._~+/]+=*/gi;
+const JWT_MASK_REGEX = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+const API_KEY_MASK_REGEX = /\b(sk_(live|test)_[A-Za-z0-9]+|re_[A-Za-z0-9._-]+|AIza[0-9A-Za-z\-_]{20,})\b/g;
+const TOKEN_ASSIGNMENT_REGEX = /\b(token|access_token|refresh_token|api[_-]?key|authorization)\s*[:=]\s*["']?([A-Za-z0-9\-._~+/=]{8,})["']?/gi;
+
+function sanitizeLogString(value = '') {
+  try {
+    let sanitized = `${value || ''}`;
+
+    sanitized = sanitized.replace(EMAIL_MASK_REGEX, (_, local, domain) => {
+      const safeLocal = local.length <= 2 ? '**' : `${local.slice(0, 2)}***`;
+      return `${safeLocal}@${domain}`;
+    });
+
+    sanitized = sanitized.replace(BEARER_MASK_REGEX, '$1***');
+    sanitized = sanitized.replace(JWT_MASK_REGEX, '[JWT_MASKED]');
+    sanitized = sanitized.replace(API_KEY_MASK_REGEX, '[API_KEY_MASKED]');
+    sanitized = sanitized.replace(TOKEN_ASSIGNMENT_REGEX, '$1=[MASKED]');
+
+    if (sanitized.length > LOG_MESSAGE_MAX_LEN) {
+      sanitized = `${sanitized.slice(0, LOG_MESSAGE_MAX_LEN)}...[truncated]`;
+    }
+
+    return sanitized;
+  } catch (_) {
+    return '[SANITIZE_FAILED]';
+  }
+}
+
+function sanitizeLogData(data = {}) {
+  try {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return data;
+    }
+
+    const sanitized = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value == null) {
+        sanitized[key] = value;
+        continue;
+      }
+
+      if (typeof value === 'string') {
+        sanitized[key] = sanitizeLogString(value);
+        continue;
+      }
+
+      if (typeof value === 'object') {
+        sanitized[key] = sanitizeLogString(JSON.stringify(value));
+        continue;
+      }
+
+      sanitized[key] = value;
+    }
+
+    return sanitized;
+  } catch (_) {
+    return { sanitize_error: true };
+  }
+}
+
+function bestEffortLog(eventName, data = {}, level = 'info') {
+  try {
+    const safeData = sanitizeLogData(data);
+    const record = {
+      event_name: eventName,
+      timestamp: new Date().toISOString(),
+      ...safeData,
+    };
+    const line = JSON.stringify(record);
+
+    if (level === 'error') {
+      console.error(line);
+      return;
+    }
+    if (level === 'warn') {
+      console.warn(line);
+      return;
+    }
+    console.info(line);
+  } catch (_) {
+    // Best-effort logging: nunca bloquear el flujo de envío
+  }
+}
 
 function normalizeRecipients(to) {
   if (Array.isArray(to)) {
@@ -261,10 +368,40 @@ export async function sendEmailWithResend(payload = {}, { env = process.env, fet
 }
 
 export async function handleSendEmailPayload(payload = {}, options = {}) {
+  const requestId = resolveRequestId(payload, options);
+  const startedAt = Date.now();
+  const scope = `${payload?.scope || 'user'}`.toLowerCase();
+  const recipientCount = normalizeRecipients(payload?.to).length;
+
+  bestEffortLog('email.send.attempt', {
+    request_id: requestId,
+    scope,
+    recipient_count: recipientCount,
+  });
+
+  const logResult = (result, { userId = null, role = null } = {}) => {
+    const success = Boolean(result?.ok ?? result?.body?.success);
+    bestEffortLog(
+      'email.send.result',
+      {
+        request_id: requestId,
+        scope,
+        recipient_count: recipientCount,
+        user_id: userId,
+        role,
+        status: result?.status ?? null,
+        success,
+        code: result?.body?.code || null,
+        duration_ms: Date.now() - startedAt,
+      },
+      success ? 'info' : 'warn'
+    );
+  };
+
   try {
     const authCheck = await authenticateEmailRequest(payload, options);
     if (!authCheck.ok) {
-      return {
+      const result = {
         ok: false,
         status: authCheck.status || 401,
         body: {
@@ -273,11 +410,29 @@ export async function handleSendEmailPayload(payload = {}, options = {}) {
           error: authCheck.error || 'No autorizado',
         },
       };
+      logResult(result, { userId: null, role: null });
+      return result;
     }
 
-    return await sendEmailWithResend(payload, options);
+    const result = await sendEmailWithResend(payload, options);
+    logResult(result, { userId: authCheck.userId || null, role: authCheck.role || null });
+    return result;
   } catch (error) {
-    return {
+    bestEffortLog(
+      'api.error',
+      {
+        request_id: requestId,
+        endpoint: '/api/send-email',
+        scope,
+        recipient_count: recipientCount,
+        error_code: 'SEND_EMAIL_INTERNAL_ERROR',
+        error_message: error?.message || 'Error interno enviando email.',
+        duration_ms: Date.now() - startedAt,
+      },
+      'error'
+    );
+
+    const result = {
       ok: false,
       status: 500,
       body: {
@@ -286,5 +441,7 @@ export async function handleSendEmailPayload(payload = {}, options = {}) {
         error: error?.message || 'Error interno enviando email.',
       },
     };
+    logResult(result, { userId: null, role: null });
+    return result;
   }
 }

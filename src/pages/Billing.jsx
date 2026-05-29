@@ -15,7 +15,7 @@ import PreviewModal from '@/components/billing/PreviewModal';
 import OverdueDashboard from '@/components/billing/OverdueDashboard';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useAuth } from '@/lib/AuthContext';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import { deleteOwnedRowById, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Facturacion', description: 'Registra ventas con facturas y da seguimiento a cobros pendientes.' },
@@ -122,8 +122,13 @@ export default function Billing() {
 
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('invoices').delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table: 'invoices',
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -133,8 +138,13 @@ export default function Billing() {
 
   const deleteQuoteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('quotes').delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table: 'quotes',
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
@@ -265,7 +275,12 @@ export default function Billing() {
         </TabsList>
 
         <TabsContent value="overdue" className="mt-4">
-          <OverdueDashboard invoices={sortedInvoices} />
+          <OverdueDashboard
+            invoices={sortedInvoices}
+            ownerId={ownerId}
+            ownerEmail={ownerEmail}
+            adminMode={adminMode}
+          />
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">

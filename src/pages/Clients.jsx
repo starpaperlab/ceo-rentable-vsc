@@ -12,7 +12,7 @@ import { Search, Plus, Loader2 } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import { deleteOwnedRowById, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Gestión de Clientes 👥', description: 'Tu base de clientes es uno de tus activos más valiosos. Aquí registras cada cliente, cuánto te ha comprado y su categoría.' },
@@ -137,8 +137,14 @@ export default function Clients() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }) => {
       const payload = normalizeClientPayload(data);
-      const { error } = await supabase.from('clients').update(payload).eq('id', id);
-      if (error) throw error;
+      await updateOwnedRowById({
+        table: 'clients',
+        id,
+        payload,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -153,8 +159,13 @@ export default function Clients() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase.from('clients').delete().eq('id', id);
-      if (error) throw error;
+      await deleteOwnedRowById({
+        table: 'clients',
+        id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });

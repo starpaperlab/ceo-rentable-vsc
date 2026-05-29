@@ -6,6 +6,44 @@ import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+const PROD_APP_URL = 'https://app.ceorentable.com';
+const LOCALHOST_URL_REGEX = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?/gi;
+const RELATIVE_LOGO_REGEX = /(src\s*=\s*["'])\/brand\/isotipo\.png(["'])/gi;
+
+function normalizeOrigin(raw = '') {
+  const value = `${raw || ''}`.trim();
+  if (!value) return '';
+  try {
+    return new URL(value).origin.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function isLocalOrigin(url = '') {
+  const lower = `${url || ''}`.toLowerCase();
+  return lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('0.0.0.0');
+}
+
+function resolvePreviewBaseUrl() {
+  const configured = normalizeOrigin(import.meta.env.VITE_PUBLIC_APP_URL || import.meta.env.VITE_APP_URL);
+  const runtime = typeof window !== 'undefined' ? normalizeOrigin(window.location.origin) : '';
+  const isDev = import.meta.env.DEV === true;
+
+  if (configured && (!isLocalOrigin(configured) || isDev)) return configured;
+  if (runtime && (!isLocalOrigin(runtime) || isDev)) return runtime;
+  return PROD_APP_URL;
+}
+
+function normalizePreviewHtmlAssets(html = '') {
+  const baseUrl = resolvePreviewBaseUrl();
+  let normalized = `${html || ''}`;
+  if (!normalized) return '';
+  normalized = normalized.replace(LOCALHOST_URL_REGEX, baseUrl);
+  normalized = normalized.replace(RELATIVE_LOGO_REGEX, `$1${baseUrl}/brand/isotipo.png$2`);
+  return normalized;
+}
+
 export default function PreviewModal({ template, onClose }) {
   const [vars, setVars] = useState({
     name: 'María', email: 'maria@ejemplo.com', amount: '97.00',
@@ -22,8 +60,7 @@ export default function PreviewModal({ template, onClose }) {
     Object.entries(vars).reduce((acc, [k, v]) => acc.replace(new RegExp(`{{${k}}}`, 'g'), v), str || '');
 
   const htmlSource =
-    template?.html_content ||
-    template?.html_body ||
+    normalizePreviewHtmlAssets(template?.html_content || template?.html_body || '') ||
     (template?.body ? `<pre style="font-family:Inter,Arial,sans-serif;white-space:pre-wrap;">${template.body}</pre>` : '');
 
   return (

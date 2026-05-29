@@ -142,7 +142,7 @@ export async function fetchOwnedRows({
 }) {
   if (!table) throw new Error('Tabla requerida para fetchOwnedRows');
 
-  if (!adminMode && !ownerId) {
+  if (!adminMode && !ownerId && !ownerEmail) {
     return [];
   }
 
@@ -215,14 +215,10 @@ export async function fetchOwnedRows({
     return [];
   }
 
-  const fallbackQuery = applyEqFilters(
-    supabase.from(table).select('*'),
-    filters
-  );
-  const { data, error } = await fallbackQuery;
-  if (isMissingTableError(error, table)) return [];
-  if (error) throw error;
-  return sortRows(data || [], orderBy, ascending);
+  // Seguridad: nunca devolver filas sin filtro de ownership.
+  // Si no hay columnas de ownership disponibles o fallan ambas estrategias,
+  // devolvemos vacío para evitar mezclar datos entre usuarias.
+  return [];
 }
 
 export function withOwner(payload, { ownerId, ownerEmail }) {
@@ -231,4 +227,106 @@ export function withOwner(payload, { ownerId, ownerEmail }) {
     user_id: ownerId || null,
     created_by: ownerEmail || null,
   };
+}
+
+function assertOwnerContext({ ownerId, ownerEmail, adminMode }) {
+  if (adminMode) return;
+  if (ownerId) return;
+  if (ownerEmail) return;
+  throw new Error('Sesión sin contexto de propiedad (owner). Recarga e intenta de nuevo.');
+}
+
+async function runScopedMutation({
+  table,
+  id,
+  mode, // 'update' | 'delete'
+  payload = null,
+  ownerId,
+  ownerEmail,
+  adminMode = false,
+}) {
+  if (!table) throw new Error('Tabla requerida');
+  if (!id) throw new Error('ID requerido');
+
+  assertOwnerContext({ ownerId, ownerEmail, adminMode });
+
+  const run = async (ownerColumn, ownerValue) => {
+    let query = supabase.from(table);
+    query = mode === 'update' ? query.update(payload) : query.delete();
+    query = query.eq('id', id);
+    if (ownerColumn && ownerValue) {
+      query = query.eq(ownerColumn, ownerValue);
+    }
+    const { data, error } = await query.select('id');
+    if (error) throw error;
+    return data || [];
+  };
+
+  if (adminMode) {
+    const rows = await run(null, null);
+    if (rows.length === 0) {
+      throw new Error('Registro no encontrado.');
+    }
+    return rows[0];
+  }
+
+  if (ownerId) {
+    try {
+      const rows = await run('user_id', ownerId);
+      if (rows.length > 0) return rows[0];
+    } catch (error) {
+      if (!isMissingColumnError(error, `${table}.user_id`) && !isMissingColumnError(error, 'user_id')) {
+        throw error;
+      }
+    }
+  }
+
+  if (ownerEmail) {
+    try {
+      const rows = await run('created_by', ownerEmail);
+      if (rows.length > 0) return rows[0];
+    } catch (error) {
+      if (!isMissingColumnError(error, `${table}.created_by`) && !isMissingColumnError(error, 'created_by')) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('No autorizado o registro no encontrado para tu cuenta.');
+}
+
+export async function updateOwnedRowById({
+  table,
+  id,
+  payload,
+  ownerId,
+  ownerEmail,
+  adminMode = false,
+}) {
+  return runScopedMutation({
+    table,
+    id,
+    mode: 'update',
+    payload,
+    ownerId,
+    ownerEmail,
+    adminMode,
+  });
+}
+
+export async function deleteOwnedRowById({
+  table,
+  id,
+  ownerId,
+  ownerEmail,
+  adminMode = false,
+}) {
+  return runScopedMutation({
+    table,
+    id,
+    mode: 'delete',
+    ownerId,
+    ownerEmail,
+    adminMode,
+  });
 }

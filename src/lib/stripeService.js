@@ -13,6 +13,8 @@ import { ENV_CONFIG } from '@/config/env';
 const STRIPE_PUBLIC_KEY = ENV_CONFIG.stripe.publicKey;
 const STRIPE_PLANS = ENV_CONFIG.stripe.plans;
 const APP_URL = ENV_CONFIG.app.url;
+const STRIPE_LEGACY_PAYMENT_LINK =
+  import.meta.env.VITE_STRIPE_PAYMENT_LINK || 'https://buy.stripe.com/14A8wQa635hvdfaf2q4gg00';
 
 async function updateUserSubscriptionAccess(userId, patch) {
   let { error } = await supabase
@@ -45,7 +47,7 @@ async function updateUserSubscriptionAccess(userId, patch) {
  * @param {string} userId - ID del usuario autenticado
  * @returns {object} { sessionId, clientSecret }
  */
-export async function createCheckoutSession(planKey, userId) {
+export async function createCheckoutSession(planKey, userId, options = {}) {
   if (!STRIPE_PUBLIC_KEY) {
     throw new Error('Stripe no configurado');
   }
@@ -61,50 +63,46 @@ export async function createCheckoutSession(planKey, userId) {
   const plan = STRIPE_PLANS[planKey];
 
   try {
-    // En una aplicación real, esto se haría desde un backend/Edge Function
-    // porque no puedes exponer la Stripe Secret Key en el frontend
-    // Por ahora, retornamos instrucciones para implementar esto
+    const sessionData = await supabase.auth.getSession();
+    const accessToken = sessionData?.data?.session?.access_token || null;
 
-    // TODO: Implementar como Edge Function en Supabase
-    // POST /functions/v1/create-stripe-session
     const response = await fetch(`${APP_URL}/api/stripe/create-session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({
-        userId,
         planKey,
-        planName: plan.name,
-        amount: plan.price * 100, // Centavos
-        currency: plan.currency.toLowerCase(),
+        userId,
+        email: options?.email || null,
       }),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error creando sesión de Stripe');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.url) {
+      return {
+        success: false,
+        error: data?.error || data?.message || 'Error creando sesión de pago',
+        fallbackUrl: STRIPE_LEGACY_PAYMENT_LINK,
+      };
     }
 
-    const data = await response.json();
-    
-    // Guardar sesión pendiente en Supabase
-    await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        amount: plan.price,
-        currency: plan.currency,
-        status: 'pending',
-        description: `Suscripción ${plan.name}`,
-      });
-
     return {
-      sessionId: data.sessionId,
-      clientSecret: data.clientSecret,
+      success: true,
+      sessionId: data.sessionId || null,
+      url: data.url,
       publishableKey: STRIPE_PUBLIC_KEY,
+      plan,
+      fallbackUrl: STRIPE_LEGACY_PAYMENT_LINK,
     };
   } catch (error) {
     console.error('❌ Error Stripe:', error.message);
-    throw error;
+    return {
+      success: false,
+      error: error.message || 'Error inesperado en checkout',
+      fallbackUrl: STRIPE_LEGACY_PAYMENT_LINK,
+    };
   }
 }
 

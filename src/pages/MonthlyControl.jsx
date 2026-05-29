@@ -12,7 +12,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Plus, Lock, Unlock, Loader2, CalendarCheck, TrendingUp, TrendingDown } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import {
+  fetchOwnedRows,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Control Mensual 📅', description: 'Registra tus ingresos y gastos cada mes. Es el hábito más importante para saber si tu negocio es realmente rentable.' },
@@ -103,11 +108,14 @@ export default function MonthlyControl() {
 
   const toggleClose = useMutation({
     mutationFn: async ({ id, isClosed }) => {
-      const { error } = await supabase
-        .from('monthly_records')
-        .update({ is_closed: !isClosed })
-        .eq('id', id);
-      if (error) throw error;
+      await updateOwnedRowById({
+        table: 'monthly_records',
+        id,
+        payload: { is_closed: !isClosed },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monthly-records'] });

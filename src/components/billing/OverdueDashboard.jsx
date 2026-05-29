@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { AlertTriangle, Mail, CheckCircle, Clock, TrendingDown } from 'lucide-re
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { toast } from 'sonner';
 import { differenceInDays, parseISO } from 'date-fns';
+import { updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 function getDaysOverdue(invoice) {
   const ref = invoice.due_date || invoice.date;
@@ -20,7 +20,7 @@ function getOverdueBadge(days) {
   return { label: `+${days}d`, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-300' };
 }
 
-export default function OverdueDashboard({ invoices }) {
+export default function OverdueDashboard({ invoices, ownerId = null, ownerEmail = '', adminMode = false }) {
   const { formatMoney } = useCurrency()
   const queryClient = useQueryClient()
   const [sending, setSending] = useState({})
@@ -37,11 +37,14 @@ export default function OverdueDashboard({ invoices }) {
 
   const markOverdueMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: 'overdue' })
-        .eq('id', id);
-      if (error) throw error;
+      await updateOwnedRowById({
+        table: 'invoices',
+        id,
+        payload: { status: 'overdue' },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
     onError: (error) => toast.error(`No se pudo marcar vencida: ${error.message}`),
@@ -49,11 +52,14 @@ export default function OverdueDashboard({ invoices }) {
 
   const markPaidMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: 'paid' })
-        .eq('id', id);
-      if (error) throw error;
+      await updateOwnedRowById({
+        table: 'invoices',
+        id,
+        payload: { status: 'paid' },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
@@ -73,15 +79,17 @@ export default function OverdueDashboard({ invoices }) {
 
     try {
       // Actualizar estado en Supabase (emailService se integrará luego)
-      const { error } = await supabase
-        .from('invoices')
-        .update({
+      await updateOwnedRowById({
+        table: 'invoices',
+        id: invoice.id,
+        payload: {
           reminder_sent_at: new Date().toISOString(),
           status: 'overdue',
-        })
-        .eq('id', invoice.id)
-
-      if (error) throw error
+        },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      })
 
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
       toast.success(`Recordatorio registrado para ${invoice.client_email}`)

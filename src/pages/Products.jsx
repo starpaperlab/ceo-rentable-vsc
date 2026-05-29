@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCurrency } from '@/components/shared/CurrencyContext'
 import { Card } from '@/components/ui/card'
@@ -14,7 +13,7 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/AuthContext'
 import PageTour from '@/components/shared/PageTour'
-import { fetchOwnedRows } from '@/lib/supabaseOwnership'
+import { deleteOwnedRowById, fetchOwnedRows } from '@/lib/supabaseOwnership'
 
 const TOUR_STEPS = [
   { title: 'Catálogo de Productos 📦', description: 'Aquí vive tu base de datos de productos y servicios con precio, margen y estado.' },
@@ -53,11 +52,13 @@ export default function Products() {
   // 🗑 DELETE
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id)
-      if (error) throw error
+      await deleteOwnedRowById({
+        table: 'products',
+        id,
+        ownerId: user?.id || userProfile?.id || null,
+        ownerEmail,
+        adminMode,
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })

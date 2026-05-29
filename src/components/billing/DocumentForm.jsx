@@ -11,7 +11,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
 import { Save, X, Eye, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import {
+  fetchOwnedRows,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 import LineItemsTable from './LineItemsTable';
 import TotalsPanel from './TotalsPanel';
 import PreviewModal from './PreviewModal';
@@ -226,31 +231,14 @@ export default function DocumentForm({
   };
 
   const updateOwnedRow = async (tableName, rowId, payload) => {
-    const { error } = await supabase
-      .from(tableName)
-      .update(payload)
-      .eq('id', rowId);
-
-    if (error && (
-      isMissingColumnError(error, `${tableName}.user_id`) ||
-      isMissingColumnError(error, 'user_id') ||
-      isMissingColumnError(error, `${tableName}.created_by`) ||
-      isMissingColumnError(error, 'created_by')
-    )) {
-      const fallbackPayload = { ...payload };
-      delete fallbackPayload.user_id;
-      delete fallbackPayload.created_by;
-
-      const { error: retryError } = await supabase
-        .from(tableName)
-        .update(fallbackPayload)
-        .eq('id', rowId);
-
-      if (retryError) throw retryError;
-      return;
-    }
-
-    if (error) throw error;
+    await updateOwnedRowById({
+      table: tableName,
+      id: rowId,
+      payload,
+      ownerId,
+      ownerEmail,
+      adminMode,
+    });
   };
 
   const fetchOwnedInventory = async () => {
@@ -290,14 +278,18 @@ export default function DocumentForm({
 
       const safeData = sanitizeDocumentPayload(data);
       const payload = adminMode ? { ...safeData } : { ...safeData, ...getOwnerPayload() };
-      const table = supabase.from(entityTable);
 
       let saved;
       if (doc?.id) {
         await updateOwnedRow(entityTable, doc.id, payload);
-        const { data: updatedData, error: fetchError } = await table.select().eq('id', doc.id).single();
-        if (fetchError) throw fetchError;
-        saved = updatedData;
+        const updatedRows = await fetchOwnedRows({
+          table: entityTable,
+          ownerId,
+          ownerEmail,
+          adminMode,
+          filters: [{ column: 'id', value: doc.id }],
+        });
+        saved = updatedRows?.[0] || null;
       } else {
         saved = await insertOwnedRow(entityTable, payload);
       }
@@ -313,11 +305,14 @@ export default function DocumentForm({
           if (match) {
             const qty = parseFloat(lineItem.quantity) || 1;
             const newStock = Math.max(0, (match.current_stock || 0) - qty);
-            const { error: updateError } = await supabase
-              .from('inventory_items')
-              .update({ current_stock: newStock })
-              .eq('id', match.id);
-            if (updateError) throw updateError;
+            await updateOwnedRowById({
+              table: 'inventory_items',
+              id: match.id,
+              payload: { current_stock: newStock },
+              ownerId,
+              ownerEmail,
+              adminMode,
+            });
 
             const movementPayload = {
               inventory_item_id: match.id,

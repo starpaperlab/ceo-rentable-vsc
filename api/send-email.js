@@ -1,4 +1,5 @@
 import { handleSendEmailPayload } from '../server/sendEmailHandler.js';
+import { randomUUID } from 'node:crypto';
 
 function parseRequestBody(body) {
   if (!body) return {};
@@ -12,7 +13,20 @@ function parseRequestBody(body) {
   return body;
 }
 
+function resolveRequestId(headers = {}) {
+  const existing =
+    headers['x-request-id'] ||
+    headers['X-Request-Id'] ||
+    headers['x-correlation-id'] ||
+    headers['X-Correlation-Id'];
+  const normalized = `${existing || ''}`.trim();
+  return normalized || randomUUID();
+}
+
 export default async function handler(req, res) {
+  const requestId = resolveRequestId(req.headers || {});
+  res.setHeader('x-request-id', requestId);
+
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;
@@ -27,6 +41,7 @@ export default async function handler(req, res) {
   const result = await handleSendEmailPayload(payload, {
     env: process.env,
     headers: req.headers || {},
+    requestId,
   });
 
   res.status(result.status).json(result.body);

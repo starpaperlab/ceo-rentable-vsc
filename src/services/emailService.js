@@ -2,8 +2,51 @@ import { supabase } from '@/lib/supabase';
 import { ENV_CONFIG } from '@/config/env';
 import { sendEmailThroughBackend } from '@/lib/emailApiClient';
 
-const APP_URL = (ENV_CONFIG.app?.url || 'http://localhost:5173').replace(/\/$/, '');
+const PROD_APP_URL = 'https://app.ceorentable.com';
+
+function normalizeOrigin(raw = '') {
+  const value = `${raw || ''}`.trim();
+  if (!value) return '';
+  try {
+    return new URL(value).origin.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function isLocalOrigin(url = '') {
+  const value = `${url || ''}`.toLowerCase();
+  return value.includes('localhost') || value.includes('127.0.0.1') || value.includes('0.0.0.0');
+}
+
+function resolveAppUrl() {
+  const configured = normalizeOrigin(ENV_CONFIG.app?.url || import.meta.env.VITE_PUBLIC_APP_URL || import.meta.env.VITE_APP_URL);
+  const runtime = typeof window !== 'undefined' ? normalizeOrigin(window.location.origin) : '';
+  const isDev = import.meta.env.DEV === true;
+
+  if (configured && (!isLocalOrigin(configured) || isDev)) return configured;
+  if (runtime && (!isLocalOrigin(runtime) || isDev)) return runtime;
+  return PROD_APP_URL;
+}
+
+const APP_URL = resolveAppUrl();
 const BRAND_LOGO_URL = `${APP_URL}/brand/isotipo.png`;
+
+const LOCALHOST_URL_REGEX = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?/gi;
+const RELATIVE_LOGO_REGEX = /(src\s*=\s*["'])\/brand\/isotipo\.png(["'])/gi;
+
+function normalizeTemplateHtmlAssets(html = '') {
+  let normalized = `${html || ''}`;
+  if (!normalized) return '';
+  normalized = normalized.replace(LOCALHOST_URL_REGEX, APP_URL);
+  normalized = normalized.replace(RELATIVE_LOGO_REGEX, `$1${BRAND_LOGO_URL}$2`);
+  return normalized;
+}
+
+function pickTemplateHtml(source = {}) {
+  return source?.html_content || source?.html_body || '';
+}
+
 const EMAIL_FOOTER_HTML = `
   <div data-ceo-footer="1" style="text-align:center;margin-top:22px;color:#8a7f85;font-size:12px;line-height:1.5;">
     CEO Rentable OS™ · Tu sistema financiero inteligente<br/>
@@ -21,7 +64,7 @@ function mapStatus(status) {
 
 function normalizeTemplateRow(row = {}) {
   const active = row.active ?? row.is_active ?? true;
-  const htmlBody = ensureFooter(row.html_body || row.html_content || '');
+  const htmlBody = ensureFooter(normalizeTemplateHtmlAssets(pickTemplateHtml(row)));
   const textBody = row.body || row.text_content || '';
 
   return {
@@ -38,7 +81,7 @@ function normalizeTemplateRow(row = {}) {
 
 function normalizeTemplatePayload(input = {}) {
   const active = input.is_active ?? input.active ?? true;
-  const htmlBody = ensureFooter(input.html_body || input.html_content || '');
+  const htmlBody = ensureFooter(normalizeTemplateHtmlAssets(input.html_content || input.html_body || ''));
   const textBody = input.body || input.text_content || '';
 
   return {
@@ -475,7 +518,7 @@ export const emailService = {
     const template = normalizeTemplateRow(templateData);
 
     const subject = interpolate(template.subject, variables);
-    const html = ensureFooter(interpolate(template.html_body || template.html_content || '', variables));
+    const html = ensureFooter(normalizeTemplateHtmlAssets(interpolate(pickTemplateHtml(template), variables)));
     const text = interpolate(template.body || template.text_content || '', variables);
     const userId = options.userId || (await getCurrentUserId());
 
