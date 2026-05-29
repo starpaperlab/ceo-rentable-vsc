@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
-import { createCheckoutSession } from '@/lib/stripeService'
-import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Zap, AlertCircle } from 'lucide-react'
 
 const PLANS = [
   {
@@ -46,7 +45,6 @@ const PLANS = [
 export default function Paywall() {
   const navigate = useNavigate()
   const { user, userProfile } = useAuth()
-  const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
 
   // Redirigir si ya tiene acceso
@@ -62,25 +60,8 @@ export default function Paywall() {
       return
     }
 
-    setLoading((prev) => ({ ...prev, [planId]: true }))
-    setError(null)
-
-    try {
-      const result = await createCheckoutSession(planId, user.id, { email: user.email || null })
-
-      if (result.success && result.url) {
-        window.location.href = result.url
-      } else if (result.fallbackUrl) {
-        window.open(result.fallbackUrl, '_blank')
-      } else {
-        setError(result.error || 'Error creando sesión de pago')
-      }
-    } catch (err) {
-      console.error('Checkout error:', err)
-      setError('Error completando la compra. Por favor intenta nuevamente.')
-    } finally {
-      setLoading((prev) => ({ ...prev, [planId]: false }))
-    }
+    console.info('PayPal checkout pendiente de implementar', { planId })
+    setError('PayPal será la nueva pasarela de pago. El checkout se activará en la siguiente fase de migración.')
   }
 
   return (
@@ -154,25 +135,15 @@ export default function Paywall() {
                 {/* CTA Button */}
                 <Button
                   onClick={() => handleCheckout(plan.id)}
-                  disabled={loading[plan.id]}
                   className={`w-full h-12 font-bold text-base rounded-xl mb-8 flex items-center justify-center gap-2 transition-all ${
                     plan.recommended
                       ? 'bg-gradient-to-r from-[#D45387] to-purple-500 hover:shadow-lg text-white border-0'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-900 border-0'
                   } disabled:opacity-50`}
                 >
-                  {loading[plan.id] ? (
-                    <>
-                      <Loader className="w-4 h-4 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : (
-                    <>
-                      {plan.recommended ? <Zap className="w-4 h-4" /> : <ShoppingCart className="w-4 h-4" />}
-                      {plan.cta}
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  {plan.recommended ? <Zap className="w-4 h-4" /> : <ShoppingCart className="w-4 h-4" />}
+                  {plan.cta}
+                  <ArrowRight className="w-4 h-4" />
                 </Button>
 
                 {/* Features */}
@@ -192,7 +163,7 @@ export default function Paywall() {
         {/* FAQ / Footer */}
         <div className="bg-gray-50 rounded-2xl p-8 border border-gray-200 text-center">
           <p className="text-gray-600 text-sm mb-4">
-            🔐 Pago seguro procesado por Stripe · 🚀 Acceso inmediato · 📧 Factura automática
+            🔐 Pago seguro con PayPal · 🚀 Acceso tras confirmación · 📧 Factura automática
           </p>
           <p className="text-gray-600 text-xs">
             ¿Preguntas? Contactanos:{' '}

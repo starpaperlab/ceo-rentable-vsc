@@ -3,8 +3,6 @@ import { Lock, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeatureGate } from '@/hooks/useFeatureGate';
 
-const PAYMENT_LINK = import.meta.env.VITE_STRIPE_PAYMENT_LINK || 'https://ceorentable.com';
-
 /**
  * FeatureGate — wraps content that requires a specific feature/plan.
  * 
@@ -44,7 +42,9 @@ export default function FeatureGate({ feature, children, fallback, inline = fals
       <Button
         size="sm"
         className="gap-2"
-        onClick={() => window.open(PAYMENT_LINK, '_blank')}
+        onClick={() => {
+          window.location.href = '/paywall';
+        }}
       >
         <Zap className="h-3.5 w-3.5" />
         Activar suscripción

@@ -3,8 +3,8 @@
  * CEO RENTABLE OS™ — STRIPE SERVICE
  * ═══════════════════════════════════════════════════════════════
  *
- * Servicio para gestionar pagos, suscripciones y webhooks de Stripe
- * Integrado con Supabase para sincronizar datos
+ * DEPRECATED: Stripe queda solo como referencia legacy temporal.
+ * No debe usarse en el flujo comercial activo de producción.
  */
 
 import { supabase } from './supabase';
@@ -13,6 +13,8 @@ import { ENV_CONFIG } from '@/config/env';
 const STRIPE_PUBLIC_KEY = ENV_CONFIG.stripe.publicKey;
 const STRIPE_PLANS = ENV_CONFIG.stripe.plans;
 const APP_URL = ENV_CONFIG.app.url;
+const STRIPE_LEGACY_ENABLED =
+  ENV_CONFIG.stripe.legacyEnabled || import.meta.env.VITE_STRIPE_LEGACY_ENABLED === 'true';
 const STRIPE_LEGACY_PAYMENT_LINK =
   import.meta.env.VITE_STRIPE_PAYMENT_LINK || 'https://buy.stripe.com/14A8wQa635hvdfaf2q4gg00';
 
@@ -48,6 +50,14 @@ async function updateUserSubscriptionAccess(userId, patch) {
  * @returns {object} { sessionId, clientSecret }
  */
 export async function createCheckoutSession(planKey, userId, options = {}) {
+  if (!STRIPE_LEGACY_ENABLED) {
+    return {
+      success: false,
+      code: 'STRIPE_LEGACY_DISABLED',
+      error: 'Stripe está desactivado como pasarela activa. PayPal será el nuevo flujo de pago.',
+    };
+  }
+
   if (!STRIPE_PUBLIC_KEY) {
     throw new Error('Stripe no configurado');
   }

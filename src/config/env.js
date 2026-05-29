@@ -26,16 +26,13 @@ if (!SUPABASE_ANON_KEY) {
 // STRIPE
 // ───────────────────────────────────────────────────────────────
 
+const STRIPE_LEGACY_ENABLED = import.meta.env.VITE_STRIPE_LEGACY_ENABLED === 'true';
 const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
 const STRIPE_PLAN_BASICO_ID = import.meta.env.VITE_STRIPE_PLAN_BASICO_ID;
 const STRIPE_PLAN_PRO_ID = import.meta.env.VITE_STRIPE_PLAN_PRO_ID;
 
-if (!STRIPE_PUBLIC_KEY) {
-  console.warn('⚠️ VITE_STRIPE_PUBLIC_KEY no está definida - Stripe deshabilitado');
-}
-
-if (!STRIPE_PLAN_BASICO_ID || !STRIPE_PLAN_PRO_ID) {
-  console.warn('⚠️ IDs de planes de Stripe no definidos');
+if (STRIPE_LEGACY_ENABLED && !STRIPE_PUBLIC_KEY) {
+  console.warn('⚠️ Stripe legacy está activo, pero VITE_STRIPE_PUBLIC_KEY no está definida');
 }
 
 const STRIPE_PLANS = {
@@ -69,6 +66,14 @@ const STRIPE_PLANS = {
     ]
   }
 };
+
+
+// ───────────────────────────────────────────────────────────────
+// PAYPAL
+// ───────────────────────────────────────────────────────────────
+
+const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
+const PAYPAL_ENVIRONMENT = import.meta.env.VITE_PAYPAL_ENVIRONMENT || 'sandbox';
 
 
 // ───────────────────────────────────────────────────────────────
@@ -128,8 +133,16 @@ export const ENV_CONFIG = {
   // Stripe
   stripe: {
     publicKey: STRIPE_PUBLIC_KEY,
-    enabled: !!STRIPE_PUBLIC_KEY,
+    enabled: STRIPE_LEGACY_ENABLED && !!STRIPE_PUBLIC_KEY,
+    legacyEnabled: STRIPE_LEGACY_ENABLED,
     plans: STRIPE_PLANS,
+  },
+
+  // PayPal
+  paypal: {
+    clientId: PAYPAL_CLIENT_ID,
+    environment: PAYPAL_ENVIRONMENT,
+    enabled: !!PAYPAL_CLIENT_ID,
   },
 
   // Resend (Emails)
@@ -161,7 +174,8 @@ export const ENV_CONFIG = {
 if (DEBUG_MODE) {
   console.log('✅ Configuración cargada:', {
     supabase: '✓',
-    stripe: ENV_CONFIG.stripe.enabled ? '✓' : '✗',
+    stripe: ENV_CONFIG.stripe.enabled ? 'legacy ✓' : 'legacy ✗',
+    paypal: ENV_CONFIG.paypal.enabled ? '✓' : '✗',
     resend: ENV_CONFIG.resend.enabled ? '✓' : '✗',
     gemini: ENV_CONFIG.gemini.enabled ? '✓' : '✗',
   });

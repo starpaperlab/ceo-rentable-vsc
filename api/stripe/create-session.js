@@ -23,6 +23,15 @@ export default async function handler(req, res) {
     return;
   }
 
+  if (process.env.STRIPE_LEGACY_ENABLED !== 'true') {
+    res.status(410).json({
+      success: false,
+      code: 'STRIPE_LEGACY_DISABLED',
+      error: 'Stripe está desactivado como pasarela activa. Usa el flujo PayPal.',
+    });
+    return;
+  }
+
   const payload = parseRequestBody(req.body);
   const result = await handleCreateStripeCheckoutSessionPayload(payload, {
     env: process.env,

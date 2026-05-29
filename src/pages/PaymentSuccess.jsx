@@ -8,11 +8,13 @@ import { motion } from 'framer-motion';
 export default function PaymentSuccess() {
   const [status, setStatus] = useState('loading'); // loading | success | pending | error
   const [user, setUser] = useState(null);
+  const [provider, setProvider] = useState('paypal');
 
   useEffect(() => {
-    const activate = async () => {
+    const verifyAccess = async () => {
       const params = new URLSearchParams(window.location.search);
-      const sessionId = params.get('session_id');
+      const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
+      setProvider(nextProvider || 'paypal');
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const currentUser = sessionData?.session?.user;
@@ -22,12 +24,11 @@ export default function PaymentSuccess() {
 
       setUser(currentUser);
 
-      if (sessionId) {
-        await supabase
-          .from('users')
-          .update({ stripe_session_id: sessionId })
-          .eq('id', currentUser.id);
-      }
+      const { data: profile } = await supabase
+        .from('users')
+        .select('has_access, plan')
+        .eq('id', currentUser.id)
+        .maybeSingle();
 
       const { data: subscription } = await supabase
         .from('subscriptions')
@@ -36,7 +37,7 @@ export default function PaymentSuccess() {
         .in('status', ['active', 'trialing'])
         .maybeSingle();
 
-      if (subscription) {
+      if (profile?.has_access || subscription) {
         setStatus('success');
         return;
       }
@@ -44,7 +45,7 @@ export default function PaymentSuccess() {
       setStatus('pending');
     };
 
-    activate().catch(() => setStatus('error'));
+    verifyAccess().catch(() => setStatus('error'));
   }, []);
 
   const goToDashboard = () => {
@@ -67,7 +68,7 @@ export default function PaymentSuccess() {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <Card className="p-8 max-w-md text-center space-y-4">
           <p className="text-lg font-bold text-foreground">Algo salió mal</p>
-          <p className="text-sm text-muted-foreground">No pudimos activar tu acceso automáticamente. Contacta soporte con tu recibo de Stripe.</p>
+          <p className="text-sm text-muted-foreground">No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.</p>
           <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
         </Card>
       </div>
@@ -80,7 +81,7 @@ export default function PaymentSuccess() {
         <Card className="p-8 max-w-md text-center space-y-4">
           <p className="text-lg font-bold text-foreground">Pago en verificación</p>
           <p className="text-sm text-muted-foreground">
-            Recibimos tu pago y estamos esperando confirmación segura de Stripe. Tu acceso se activará automáticamente cuando el webhook confirme la transacción.
+            Estamos esperando confirmación segura de {provider === 'paypal' ? 'PayPal' : 'la pasarela de pago'}. Tu acceso se activará cuando el backend confirme la transacción.
           </p>
           <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
         </Card>
