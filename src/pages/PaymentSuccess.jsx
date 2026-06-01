@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { capturePayPalOrder } from '@/lib/paypalService';
+import { useAuth } from '@/lib/AuthContext';
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
 export default function PaymentSuccess() {
+  const navigate = useNavigate();
+  const { refreshUserProfile } = useAuth();
   const [status, setStatus] = useState('loading'); // loading | success | pending | error
   const [user, setUser] = useState(null);
   const [provider, setProvider] = useState('paypal');
@@ -41,6 +45,14 @@ export default function PaymentSuccess() {
           return;
         }
 
+        setMessage('Actualizando tu acceso...');
+        const refreshedProfile = await refreshUserProfile();
+        if (!refreshedProfile?.has_access) {
+          setMessage('El pago fue confirmado, pero tu acceso aún no aparece actualizado. Intenta entrar al dashboard en unos segundos.');
+          setStatus('pending');
+          return;
+        }
+
         setStatus('success');
         return;
       }
@@ -71,10 +83,10 @@ export default function PaymentSuccess() {
       setMessage(error?.message || 'No pudimos verificar tu pago.');
       setStatus('error');
     });
-  }, []);
+  }, [refreshUserProfile]);
 
   const goToDashboard = () => {
-    window.location.href = '/Dashboard';
+    navigate('/Dashboard', { replace: true });
   };
 
   if (status === 'loading') {

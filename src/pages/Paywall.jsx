@@ -4,14 +4,14 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
+import { ENV_CONFIG } from '@/config/env'
+import { formatRecurringPrice } from '@/lib/currencyFormat'
 import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react'
 
 const PLANS = [
   {
     id: 'basico',
     name: 'Básico',
-    price: 27,
-    currency: 'RD$',
     period: '/mes',
     description: 'Perfecto para empezar',
     features: [
@@ -26,8 +26,6 @@ const PLANS = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 47,
-    currency: 'RD$',
     period: '/mes',
     description: 'Para negocios en crecimiento',
     features: [
@@ -42,6 +40,15 @@ const PLANS = [
     recommended: true,
   },
 ]
+
+function getPlanPrice(planId) {
+  const planConfig = ENV_CONFIG.paypal.plans[planId] || {};
+
+  return {
+    amount: planConfig.amount,
+    currency: planConfig.currency || ENV_CONFIG.paypal.currency,
+  };
+}
 
 export default function Paywall() {
   const navigate = useNavigate()
@@ -116,6 +123,9 @@ export default function Paywall() {
         {/* Plans Grid */}
         <div className="grid md:grid-cols-2 gap-6 mb-12">
           {PLANS.map((plan, idx) => (
+            (() => {
+              const price = getPlanPrice(plan.id)
+              return (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 20 }}
@@ -143,10 +153,10 @@ export default function Paywall() {
 
                 {/* Price */}
                 <div className="mb-8">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-5xl font-black text-gray-900">{plan.price}</span>
-                    <span className="text-gray-600 text-lg font-semibold">{plan.currency}</span>
-                    <span className="text-gray-600 text-sm">{plan.period}</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-5xl font-black text-gray-900">
+                      {formatRecurringPrice(price.amount, price.currency, plan.period)}
+                    </span>
                   </div>
                   <p className="text-gray-600 text-xs mt-2">+ INC (si aplica)</p>
                 </div>
@@ -186,6 +196,8 @@ export default function Paywall() {
                 </div>
               </div>
             </motion.div>
+              )
+            })()
           ))}
         </div>
 

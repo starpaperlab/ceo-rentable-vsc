@@ -136,23 +136,23 @@ function normalizeProfile(authUser, profile = null, overrides = {}) {
     'Usuaria';
   const role = isFallbackAdmin
     ? 'admin'
-    : overrides.role || metadata.role || profile?.role || DEFAULT_ROLE;
+    : overrides.role || profile?.role || metadata.role || DEFAULT_ROLE;
   const plan = isFallbackAdmin
     ? 'admin'
     : overrides.plan ||
-      metadata.plan ||
       profile?.plan ||
+      metadata.plan ||
       (isLegacyProfile ? 'founder' : role === 'admin' ? 'admin' : DEFAULT_PLAN);
   const hasAccess = isFallbackAdmin
     ? true
     : overrides.has_access ??
-      metadata.has_access ??
       profile?.has_access ??
+      metadata.has_access ??
       (isLegacyProfile ? true : role === 'admin');
   const onboardingCompleted =
     overrides.onboarding_completed ??
-    metadata.onboarding_completed ??
     profile?.onboarding_completed ??
+    metadata.onboarding_completed ??
     (isLegacyProfile ? true : false);
 
   return {

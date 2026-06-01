@@ -74,6 +74,9 @@ const STRIPE_PLANS = {
 
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
 const PAYPAL_ENVIRONMENT = import.meta.env.VITE_PAYPAL_ENVIRONMENT || 'sandbox';
+const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || 'USD';
+const PAYPAL_PLAN_BASICO_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_BASICO_AMOUNT || '27.00';
+const PAYPAL_PLAN_PRO_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_PRO_AMOUNT || '47.00';
 
 
 // ───────────────────────────────────────────────────────────────
@@ -143,6 +146,19 @@ export const ENV_CONFIG = {
     clientId: PAYPAL_CLIENT_ID,
     environment: PAYPAL_ENVIRONMENT,
     enabled: !!PAYPAL_CLIENT_ID,
+    currency: PAYPAL_CURRENCY,
+    plans: {
+      basico: {
+        code: 'basico',
+        amount: PAYPAL_PLAN_BASICO_AMOUNT,
+        currency: PAYPAL_CURRENCY,
+      },
+      pro: {
+        code: 'pro',
+        amount: PAYPAL_PLAN_PRO_AMOUNT,
+        currency: PAYPAL_CURRENCY,
+      },
+    },
   },
 
   // Resend (Emails)
