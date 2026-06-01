@@ -15,7 +15,13 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
-import { fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
+import {
+  extractMissingColumnFromError,
+  fetchOwnedRows,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Configuración 🛠️', description: 'Aquí ajustas los datos de tu negocio: nombre, moneda, metas y el branding que aparece en tus facturas y cotizaciones.' },
@@ -81,9 +87,9 @@ export default function AppSettings() {
     fiscal_name: '',
     fiscal_id: '',
     fiscal_address: '',
-    contact_name: '',
+    contact_name: userProfile?.full_name || '',
     contact_title: '',
-    contact_email: '',
+    contact_email: ownerEmail,
     phone_primary: '',
     phone_secondary: '',
     address: '',
@@ -113,9 +119,9 @@ export default function AppSettings() {
         fiscal_name: config.fiscal_name || '',
         fiscal_id: config.fiscal_id || '',
         fiscal_address: config.fiscal_address || '',
-        contact_name: config.contact_name || '',
+        contact_name: config.contact_name || userProfile?.full_name || '',
         contact_title: config.contact_title || '',
-        contact_email: config.contact_email || '',
+        contact_email: config.contact_email || ownerEmail,
         phone_primary: config.phone_primary || '',
         phone_secondary: config.phone_secondary || '',
         address: config.address || config.fiscal_address || '',
@@ -143,6 +149,8 @@ export default function AppSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
+      const skippedColumns = new Set();
+
       if (!adminMode && !ownerId && !ownerEmail) {
         throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
       }
@@ -182,10 +190,31 @@ export default function AppSettings() {
         if (error) throw error;
       };
 
+      const runSaveWithMissingColumnFallback = async (initialPayload) => {
+        const safePayload = { ...initialPayload };
+
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          try {
+            await runSave(safePayload);
+            return;
+          } catch (error) {
+            const missingColumn = extractMissingColumnFromError(error);
+            if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
+              skippedColumns.add(missingColumn);
+              delete safePayload[missingColumn];
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        throw new Error('No se pudo guardar la configuración porque Supabase sigue reportando columnas faltantes.');
+      };
+
       if (config.id) {
         try {
-          await runSave(payload);
-          return;
+          await runSaveWithMissingColumnFallback(payload);
+          return { skippedColumns: Array.from(skippedColumns) };
         } catch (error) {
           if (
             isMissingColumnError(error, 'business_config.user_id') ||
@@ -197,48 +226,53 @@ export default function AppSettings() {
             delete noUserId.user_id;
             delete noUserId.created_by;
             await runSave(noUserId);
-            return;
+            return { skippedColumns: Array.from(skippedColumns) };
           }
           if (hasOwnerConstraintIssue(error, 'business_config')) {
             const noUserId = { ...payload };
             delete noUserId.user_id;
             await runSave(noUserId);
-            return;
+            return { skippedColumns: Array.from(skippedColumns) };
           }
           throw error;
         }
       }
 
       try {
-        await runSave(payload);
+        await runSaveWithMissingColumnFallback(payload);
+        return { skippedColumns: Array.from(skippedColumns) };
       } catch (error) {
         if (isMissingColumnError(error, 'business_config.user_id') || isMissingColumnError(error, 'user_id')) {
           const noUserId = { ...payload };
           delete noUserId.user_id;
           await runSave(noUserId);
-          return;
+          return { skippedColumns: Array.from(skippedColumns) };
         }
 
         if (isMissingColumnError(error, 'business_config.created_by') || isMissingColumnError(error, 'created_by')) {
           const noCreatedBy = { ...payload };
           delete noCreatedBy.created_by;
           await runSave(noCreatedBy);
-          return;
+          return { skippedColumns: Array.from(skippedColumns) };
         }
 
         if (hasOwnerConstraintIssue(error, 'business_config')) {
           const noUserId = { ...payload };
           delete noUserId.user_id;
           await runSave(noUserId);
-          return;
+          return { skippedColumns: Array.from(skippedColumns) };
         }
 
         throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['business-config'] });
       setCurrency(form.currency);
+      if (result?.skippedColumns?.length > 0) {
+        toast.warning(`Configuración guardada parcialmente. Faltan columnas en Supabase: ${result.skippedColumns.join(', ')}`);
+        return;
+      }
       toast.success('Configuración guardada');
     },
     onError: (error) => {

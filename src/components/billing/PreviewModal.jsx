@@ -44,6 +44,8 @@ export default function PreviewModal({ document: doc, type, onClose }) {
     doc.linkedin_url,
     doc.whatsapp_url,
   ].filter(Boolean);
+  const signerName = doc.contact_name || doc.company_name || 'Firma autorizada';
+  const signerMeta = [doc.contact_title, doc.contact_email].filter(Boolean).join(' · ');
 
   const handleExportPDF = async () => {
     await generateBillingDocumentPdf({ doc, type, symbol });
@@ -107,7 +109,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
           </div>
 
           {/* Client */}
-          <div style={{ backgroundColor: `${brandColor}15`, borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
+          <div style={{ backgroundColor: `${brandColor}12`, borderRadius: '10px', padding: '16px', marginBottom: '24px', border: `1px solid ${brandColor}26` }}>
             <p style={{ fontSize: '10px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 0' }}>{recipientLabel}</p>
             <p style={{ fontSize: '15px', fontWeight: 'bold', color: '#222', margin: '0 0 4px 0' }}>{doc.client_name || '-'}</p>
             {doc.client_email && <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>{doc.client_email}</p>}
@@ -115,24 +117,24 @@ export default function PreviewModal({ document: doc, type, onClose }) {
           </div>
 
           {/* Table */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, marginBottom: '24px' }}>
             <thead>
-              <tr style={{ backgroundColor: brandColor }}>
-                <th style={{ textAlign: 'left', padding: '10px 12px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>Descripción</th>
-                <th style={{ textAlign: 'right', padding: '10px 12px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>Precio</th>
-                <th style={{ textAlign: 'right', padding: '10px 12px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>Cant.</th>
-                <th style={{ textAlign: 'right', padding: '10px 12px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>Total</th>
+              <tr style={{ backgroundColor: `${brandColor}14` }}>
+                <th style={{ textAlign: 'left', padding: '11px 12px', color: brandColor, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.7px', borderTopLeftRadius: '10px', borderBottom: `1px solid ${brandColor}25` }}>Descripción</th>
+                <th style={{ textAlign: 'right', padding: '11px 12px', color: brandColor, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.7px', borderBottom: `1px solid ${brandColor}25` }}>Precio</th>
+                <th style={{ textAlign: 'right', padding: '11px 12px', color: brandColor, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.7px', borderBottom: `1px solid ${brandColor}25` }}>Cant.</th>
+                <th style={{ textAlign: 'right', padding: '11px 12px', color: brandColor, fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.7px', borderTopRightRadius: '10px', borderBottom: `1px solid ${brandColor}25` }}>Total</th>
               </tr>
             </thead>
             <tbody>
               {validItems.map((item, i) => (
-                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#f8f8f8' : '#ffffff' }}>
-                  <td style={{ padding: '10px 12px', fontSize: '13px', color: '#333' }}>{item.description}</td>
-                  <td style={{ padding: '10px 12px', fontSize: '13px', color: '#555', textAlign: 'right' }}>
+                <tr key={i} style={{ backgroundColor: '#ffffff' }}>
+                  <td style={{ padding: '12px', fontSize: '13px', color: '#333', borderBottom: '1px solid #ece7e2' }}>{item.description}</td>
+                  <td style={{ padding: '12px', fontSize: '13px', color: '#555', textAlign: 'right', borderBottom: '1px solid #ece7e2' }}>
                     {symbol}{(parseFloat(item.unit_price) || 0).toLocaleString()}
                   </td>
-                  <td style={{ padding: '10px 12px', fontSize: '13px', color: '#555', textAlign: 'right' }}>{item.quantity}</td>
-                  <td style={{ padding: '10px 12px', fontSize: '13px', fontWeight: '600', color: '#222', textAlign: 'right' }}>
+                  <td style={{ padding: '12px', fontSize: '13px', color: '#555', textAlign: 'right', borderBottom: '1px solid #ece7e2' }}>{item.quantity}</td>
+                  <td style={{ padding: '12px', fontSize: '13px', fontWeight: '700', color: '#222', textAlign: 'right', borderBottom: '1px solid #ece7e2' }}>
                     {symbol}{((parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 0)).toLocaleString()}
                   </td>
                 </tr>
@@ -179,7 +181,10 @@ export default function PreviewModal({ document: doc, type, onClose }) {
             </p>
             {doc.doc_show_signature && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '28px' }}>
-                <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>Firma autorizada</div>
+                <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>
+                  <strong style={{ color: '#555' }}>{signerName}</strong>
+                  {signerMeta && <span style={{ display: 'block', marginTop: '2px' }}>{signerMeta}</span>}
+                </div>
                 <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>Aceptado por cliente</div>
               </div>
             )}

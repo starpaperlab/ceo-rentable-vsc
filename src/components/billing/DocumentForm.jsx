@@ -176,6 +176,7 @@ export default function DocumentForm({
   totalCount,
   ownerId = null,
   ownerEmail = '',
+  ownerName = '',
   adminMode = false,
 }) {
   const queryClient = useQueryClient();
@@ -208,9 +209,9 @@ export default function DocumentForm({
     fiscal_name: doc?.fiscal_name || config?.fiscal_name || '',
     fiscal_id: doc?.fiscal_id || config?.fiscal_id || '',
     fiscal_address: doc?.fiscal_address || config?.fiscal_address || config?.address || '',
-    contact_name: doc?.contact_name || config?.contact_name || '',
+    contact_name: doc?.contact_name || config?.contact_name || ownerName || ownerEmail || '',
     contact_title: doc?.contact_title || config?.contact_title || '',
-    contact_email: doc?.contact_email || config?.contact_email || '',
+    contact_email: doc?.contact_email || config?.contact_email || ownerEmail || '',
     phone_primary: doc?.phone_primary || config?.phone_primary || '',
     phone_secondary: doc?.phone_secondary || config?.phone_secondary || '',
     address: doc?.address || config?.address || config?.fiscal_address || '',

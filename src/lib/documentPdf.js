@@ -8,11 +8,11 @@ const PAGE = {
 };
 
 const TABLE = {
-  headerHeight: 9,
-  rowMinHeight: 10,
+  headerHeight: 11,
+  rowMinHeight: 12,
   lineHeight: 4.8,
-  cellPaddingX: 3,
-  cellPaddingY: 3.2,
+  cellPaddingX: 3.5,
+  cellPaddingY: 4,
 };
 
 const COLUMNS = {
@@ -188,6 +188,9 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
     const logoHeight = addLogo(pdf, logoImage, logoX, y, doc);
     const companyDetails = getCompanyDetails(doc);
 
+    pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.roundedRect(PAGE.marginX, y - 4, 34, 2, 1, 1, 'F');
+
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(15);
     pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
@@ -211,24 +214,29 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
       companyY += lineParts.length * 4;
     });
 
+    pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.roundedRect(pageWidth - PAGE.marginX - 48, y - 2, 48, 13, 2.5, 2.5, 'F');
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(24);
-    pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
-    pdf.text(meta.label, pageWidth - PAGE.marginX, y + 6, { align: 'right' });
+    pdf.setFontSize(12);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(meta.label, pageWidth - PAGE.marginX - 24, y + 6.5, { align: 'center' });
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(11);
     pdf.setTextColor(95, 95, 95);
-    pdf.text(`N° ${meta.number || '-'}`, pageWidth - PAGE.marginX, y + 14, { align: 'right' });
+    pdf.text(`N° ${meta.number || '-'}`, pageWidth - PAGE.marginX, y + 18, { align: 'right' });
     pdf.setFontSize(10);
     pdf.setTextColor(140, 140, 140);
-    pdf.text(`Fecha: ${doc.date || '-'}`, pageWidth - PAGE.marginX, y + 21, { align: 'right' });
+    pdf.text(`Fecha: ${doc.date || '-'}`, pageWidth - PAGE.marginX, y + 25, { align: 'right' });
 
-    y = Math.max(y + 34, companyY + 5);
+    y = Math.max(y + 40, companyY + 6);
 
     const clientBg = withAlpha(brandColor, 0.1);
     pdf.setFillColor(clientBg.r, clientBg.g, clientBg.b);
-    pdf.roundedRect(PAGE.marginX, y, pageWidth - PAGE.marginX * 2, 25, 2.5, 2.5, 'F');
+    pdf.roundedRect(PAGE.marginX, y, pageWidth - PAGE.marginX * 2, 27, 3, 3, 'F');
+    pdf.setDrawColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.setLineWidth(0.2);
+    pdf.line(PAGE.marginX, y, PAGE.marginX, y + 27);
 
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8);
@@ -247,7 +255,7 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
       pdf.text(contact, PAGE.marginX + 4, y + 20);
     }
 
-    return y + 34;
+    return y + 36;
   }
 
   pdf.setFont('helvetica', 'bold');
@@ -261,19 +269,25 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
 
 function drawTableHeader(pdf, y, brandRgb) {
   const x = PAGE.marginX;
+  const tableWidth = COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total;
 
-  pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
-  pdf.rect(x, y, COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total, TABLE.headerHeight, 'F');
+  const lightBrand = {
+    r: Math.round(255 - (255 - brandRgb.r) * 0.1),
+    g: Math.round(255 - (255 - brandRgb.g) * 0.1),
+    b: Math.round(255 - (255 - brandRgb.b) * 0.1),
+  };
+  pdf.setFillColor(lightBrand.r, lightBrand.g, lightBrand.b);
+  pdf.roundedRect(x, y, tableWidth, TABLE.headerHeight, 2, 2, 'F');
 
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(9);
-  pdf.setTextColor(255, 255, 255);
-  pdf.text('Descripción', x + TABLE.cellPaddingX, y + 6);
-  pdf.text('Precio', x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + 6, { align: 'right' });
-  pdf.text('Cant.', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + 6, { align: 'right' });
-  pdf.text('Total', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total - TABLE.cellPaddingX, y + 6, { align: 'right' });
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+  pdf.text('DESCRIPCIÓN', x + TABLE.cellPaddingX, y + 7);
+  pdf.text('PRECIO', x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + 7, { align: 'right' });
+  pdf.text('CANT.', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + 7, { align: 'right' });
+  pdf.text('TOTAL', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total - TABLE.cellPaddingX, y + 7, { align: 'right' });
 
-  return y + TABLE.headerHeight;
+  return y + TABLE.headerHeight + 2;
 }
 
 function getRowHeight(pdf, item) {
@@ -291,8 +305,14 @@ function drawTableRow(pdf, item, y, index, symbol) {
   const quantity = Number(item.quantity || 0);
   const total = unitPrice * quantity;
 
-  pdf.setFillColor(index % 2 === 0 ? 248 : 255, index % 2 === 0 ? 248 : 255, index % 2 === 0 ? 248 : 255);
-  pdf.rect(x, y, COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total, rowHeight, 'F');
+  const tableWidth = COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total;
+  if (index % 2 === 0) {
+    pdf.setFillColor(252, 250, 248);
+    pdf.roundedRect(x, y, tableWidth, rowHeight, 1.5, 1.5, 'F');
+  }
+  pdf.setDrawColor(232, 226, 221);
+  pdf.setLineWidth(0.15);
+  pdf.line(x, y + rowHeight, x + tableWidth, y + rowHeight);
 
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
@@ -328,6 +348,11 @@ function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
     doc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0)
   );
   const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? Number(doc.subtotal || 0) + additionalChargesTotal);
+
+  pdf.setDrawColor(230, 224, 218);
+  pdf.setLineWidth(0.2);
+  pdf.line(x, y, x + boxWidth, y);
+  y += 3;
 
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
@@ -374,6 +399,8 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
   const note = doc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '');
   const socialDetails = getSocialDetails(doc);
   const width = pdf.internal.pageSize.getWidth() - PAGE.marginX * 2;
+  const signerName = doc.contact_name || doc.company_name || 'Firma autorizada';
+  const signerMeta = [doc.contact_title, doc.contact_email].filter(Boolean).join(' · ');
 
   pdf.setDrawColor(235, 235, 235);
   pdf.line(PAGE.marginX, y, PAGE.marginX + width, y);
@@ -396,9 +423,15 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
     pdf.line(PAGE.marginX + 96, signatureY, PAGE.marginX + 96 + colWidth, signatureY);
     pdf.setFontSize(8);
     pdf.setTextColor(120, 120, 120);
-    pdf.text('Firma autorizada', PAGE.marginX, signatureY + 5);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(signerName, PAGE.marginX, signatureY + 5);
+    if (signerMeta) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(pdf.splitTextToSize(signerMeta, colWidth), PAGE.marginX, signatureY + 9);
+    }
+    pdf.setFont('helvetica', 'normal');
     pdf.text('Aceptado por cliente', PAGE.marginX + 96, signatureY + 5);
-    y = signatureY + 12;
+    y = signatureY + (signerMeta ? 16 : 12);
   }
 
   if (socialDetails.length > 0) {
