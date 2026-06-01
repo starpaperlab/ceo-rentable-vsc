@@ -23,6 +23,48 @@ const TOUR_STEPS = [
   { title: 'Vencidas', description: 'Identifica rapido facturas atrasadas y registra recordatorios.' },
 ];
 
+const DEFAULT_DOCUMENT_PREFS = {
+  doc_show_socials: true,
+  doc_show_fiscal_id: true,
+  doc_show_address: true,
+  doc_show_contact: true,
+  doc_show_signature: false,
+};
+
+function applyBusinessConfigToDocument(doc = {}, config = {}) {
+  return {
+    ...doc,
+    company_name: doc.company_name || config?.business_name || '',
+    logo_url: doc.logo_url || config?.logo_url || '',
+    logo_size: doc.logo_size || config?.logo_size || 'medium',
+    logo_width: doc.logo_width || config?.logo_width || 24,
+    logo_position: doc.logo_position || config?.logo_position || 'left',
+    brand_color: doc.brand_color || config?.brand_color || '#D94F8A',
+    font_family: doc.font_family || config?.font_family || 'Inter',
+    fiscal_name: doc.fiscal_name || config?.fiscal_name || '',
+    fiscal_id: doc.fiscal_id || config?.fiscal_id || '',
+    fiscal_address: doc.fiscal_address || config?.fiscal_address || config?.address || '',
+    contact_name: doc.contact_name || config?.contact_name || '',
+    contact_title: doc.contact_title || config?.contact_title || '',
+    contact_email: doc.contact_email || config?.contact_email || '',
+    phone_primary: doc.phone_primary || config?.phone_primary || '',
+    phone_secondary: doc.phone_secondary || config?.phone_secondary || '',
+    address: doc.address || config?.address || config?.fiscal_address || '',
+    city_country: doc.city_country || config?.city_country || '',
+    instagram_url: doc.instagram_url || config?.instagram_url || '',
+    facebook_url: doc.facebook_url || config?.facebook_url || '',
+    tiktok_url: doc.tiktok_url || config?.tiktok_url || '',
+    linkedin_url: doc.linkedin_url || config?.linkedin_url || '',
+    website_url: doc.website_url || config?.website_url || '',
+    whatsapp_url: doc.whatsapp_url || config?.whatsapp_url || '',
+    doc_show_socials: doc.doc_show_socials ?? config?.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
+    doc_show_fiscal_id: doc.doc_show_fiscal_id ?? config?.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
+    doc_show_address: doc.doc_show_address ?? config?.doc_show_address ?? DEFAULT_DOCUMENT_PREFS.doc_show_address,
+    doc_show_contact: doc.doc_show_contact ?? config?.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
+    doc_show_signature: doc.doc_show_signature ?? config?.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
+  };
+}
+
 export default function Billing() {
   const queryClient = useQueryClient();
   const { formatMoney } = useCurrency();
@@ -289,7 +331,7 @@ export default function Billing() {
             type="invoice"
             onEdit={(doc) => setEditDoc({ type: 'invoice', doc })}
             onDelete={(id) => deleteInvoiceMutation.mutate(id)}
-            onPreview={(doc) => setPreviewDoc({ ...doc, _type: 'invoice' })}
+            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, config), _type: 'invoice' })}
           />
         </TabsContent>
 
@@ -299,7 +341,7 @@ export default function Billing() {
             type="quote"
             onEdit={(doc) => setEditDoc({ type: 'quote', doc })}
             onDelete={(id) => deleteQuoteMutation.mutate(id)}
-            onPreview={(doc) => setPreviewDoc({ ...doc, _type: 'quote' })}
+            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, config), _type: 'quote' })}
             onConvert={(quote) => convertToInvoiceMutation.mutate(quote)}
           />
         </TabsContent>

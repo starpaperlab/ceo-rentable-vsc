@@ -15,9 +15,35 @@ export default function PreviewModal({ document: doc, type, onClose }) {
   const fontFamily = doc.font_family || 'Inter';
   const fontUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;600;700&display=swap`;
 
-  const taxAmount = doc.tax_enabled ? (doc.subtotal || 0) * ((doc.tax_pct || 0) / 100) : 0;
-  const totalFinal = (doc.subtotal || 0) + taxAmount;
+  const additionalCharges = (doc.additional_charges || []).filter((charge) => charge.name && Number(charge.amount || 0) > 0);
+  const additionalChargesTotal = Number(doc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0));
+  const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? ((doc.subtotal || 0) + additionalChargesTotal));
+  const taxAmount = doc.tax_enabled ? subtotalBeforeTax * ((doc.tax_pct || 0) / 100) : 0;
+  const totalFinal = Number(doc.total_final ?? subtotalBeforeTax + taxAmount);
   const validItems = (doc.line_items || []).filter(i => i.description);
+  const logoWidth = Number(doc.logo_width || 24);
+  const logoPosition = doc.logo_position || 'left';
+  const logoAlign = logoPosition === 'center' ? 'center' : logoPosition === 'right' ? 'flex-end' : 'flex-start';
+  const textAlign = logoPosition === 'center' ? 'center' : logoPosition === 'right' ? 'right' : 'left';
+  const companyDetails = [
+    doc.doc_show_fiscal_id !== false && doc.fiscal_id ? `RNC / ID: ${doc.fiscal_id}` : '',
+    doc.doc_show_address !== false && (doc.address || doc.fiscal_address) ? (doc.address || doc.fiscal_address) : '',
+    doc.doc_show_address !== false && doc.city_country ? doc.city_country : '',
+  ].filter(Boolean);
+  const contactDetails = [
+    doc.doc_show_contact !== false && doc.contact_name ? [doc.contact_name, doc.contact_title].filter(Boolean).join(' · ') : '',
+    doc.doc_show_contact !== false && doc.contact_email ? doc.contact_email : '',
+    doc.doc_show_contact !== false && doc.phone_primary ? doc.phone_primary : '',
+    doc.doc_show_contact !== false && doc.phone_secondary ? doc.phone_secondary : '',
+  ].filter(Boolean);
+  const socialDetails = [
+    doc.website_url,
+    doc.instagram_url,
+    doc.facebook_url,
+    doc.tiktok_url,
+    doc.linkedin_url,
+    doc.whatsapp_url,
+  ].filter(Boolean);
 
   const handleExportPDF = async () => {
     await generateBillingDocumentPdf({ doc, type, symbol });
@@ -44,16 +70,36 @@ export default function PreviewModal({ document: doc, type, onClose }) {
         <div ref={previewRef} style={{ fontFamily: `'${fontFamily}', Arial, sans-serif`, backgroundColor: '#ffffff', padding: '40px', borderRadius: '12px' }}>
           <link rel="stylesheet" href={fontUrl} />
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
-            <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '24px', marginBottom: '32px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: logoAlign, textAlign }}>
               {doc.logo_url && (
-                <img src={doc.logo_url} alt="Logo" style={{ height: '56px', objectFit: 'contain', marginBottom: '8px' }} crossOrigin="anonymous" />
+                <img
+                  src={doc.logo_url}
+                  alt="Logo"
+                  style={{
+                    width: `${logoWidth * 3.6}px`,
+                    maxHeight: '86px',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    marginBottom: '8px',
+                  }}
+                  crossOrigin="anonymous"
+                />
               )}
               <p style={{ fontSize: '18px', fontWeight: 'bold', color: brandColor, margin: 0 }}>
                 {doc.company_name || 'Mi Empresa'}
               </p>
+              {doc.fiscal_name && doc.fiscal_name !== doc.company_name && (
+                <p style={{ fontSize: '12px', color: '#666', margin: '3px 0 0 0' }}>{doc.fiscal_name}</p>
+              )}
+              {companyDetails.map((detail) => (
+                <p key={detail} style={{ fontSize: '11px', color: '#777', margin: '2px 0 0 0' }}>{detail}</p>
+              ))}
+              {contactDetails.length > 0 && (
+                <p style={{ fontSize: '11px', color: '#777', margin: '6px 0 0 0' }}>{contactDetails.join(' · ')}</p>
+              )}
             </div>
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: 'right', minWidth: '150px' }}>
               <p style={{ fontSize: '28px', fontWeight: 'bold', color: brandColor, margin: '0 0 4px 0' }}>{docLabel}</p>
               <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>N° {docNumber}</p>
               <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>Fecha: {doc.date}</p>
@@ -97,10 +143,22 @@ export default function PreviewModal({ document: doc, type, onClose }) {
           {/* Totals */}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <div style={{ width: '240px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
-                <span>Subtotal</span>
-                <span>{symbol}{(doc.subtotal || 0).toLocaleString()}</span>
-              </div>
+	              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
+	                <span>Subtotal productos/servicios</span>
+	                <span>{symbol}{(doc.subtotal || 0).toLocaleString()}</span>
+	              </div>
+	              {additionalCharges.map((charge, index) => (
+	                <div key={`${charge.name}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
+	                  <span>{charge.name}</span>
+	                  <span>{symbol}{Number(charge.amount || 0).toLocaleString()}</span>
+	                </div>
+	              ))}
+	              {additionalChargesTotal > 0 && (
+	                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#333', fontWeight: '600' }}>
+	                  <span>Subtotal antes de impuestos</span>
+	                  <span>{symbol}{subtotalBeforeTax.toLocaleString()}</span>
+	                </div>
+	              )}
               {doc.tax_enabled && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
                   <span>ITBIS / IVA ({doc.tax_pct}%)</span>
@@ -119,6 +177,17 @@ export default function PreviewModal({ document: doc, type, onClose }) {
             <p style={{ fontSize: '11px', color: '#aaa', margin: 0 }}>
               {doc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '')}
             </p>
+            {doc.doc_show_signature && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '28px' }}>
+                <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>Firma autorizada</div>
+                <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>Aceptado por cliente</div>
+              </div>
+            )}
+            {doc.doc_show_socials !== false && socialDetails.length > 0 && (
+              <p style={{ fontSize: '10px', color: '#999', margin: '18px 0 0 0', lineHeight: 1.5 }}>
+                {socialDetails.join(' · ')}
+              </p>
+            )}
           </div>
         </div>
       </div>

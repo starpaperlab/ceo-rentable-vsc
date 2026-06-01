@@ -4,18 +4,42 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 
-export default function TotalsPanel({ subtotal, taxEnabled, taxPct, onTaxEnabledChange, onTaxPctChange }) {
+export default function TotalsPanel({
+  subtotal,
+  additionalCharges = [],
+  additionalChargesTotal = 0,
+  subtotalBeforeTax = subtotal,
+  taxEnabled,
+  taxPct,
+  onTaxEnabledChange,
+  onTaxPctChange,
+}) {
   const { formatMoney } = useCurrency();
-  const taxAmount = taxEnabled ? subtotal * (taxPct / 100) : 0;
-  const totalFinal = subtotal + taxAmount;
+  const taxAmount = taxEnabled ? subtotalBeforeTax * (taxPct / 100) : 0;
+  const totalFinal = subtotalBeforeTax + taxAmount;
+  const visibleCharges = additionalCharges.filter((charge) => charge.name && Number(charge.amount || 0) > 0);
 
   return (
     <div className="space-y-2 border-t border-border pt-4 mt-2">
       {/* Subtotal */}
       <div className="flex items-center justify-between py-1">
-        <span className="text-sm text-muted-foreground">Subtotal</span>
+        <span className="text-sm text-muted-foreground">Subtotal productos/servicios</span>
         <span className="text-sm font-semibold text-foreground">{formatMoney(subtotal)}</span>
       </div>
+
+      {visibleCharges.map((charge, index) => (
+        <div key={`${charge.name}-${index}`} className="flex items-center justify-between py-1">
+          <span className="text-sm text-muted-foreground">{charge.name}</span>
+          <span className="text-sm text-foreground">{formatMoney(charge.amount || 0)}</span>
+        </div>
+      ))}
+
+      {additionalChargesTotal > 0 && (
+        <div className="flex items-center justify-between py-1">
+          <span className="text-sm font-medium text-foreground">Subtotal antes de impuestos</span>
+          <span className="text-sm font-semibold text-foreground">{formatMoney(subtotalBeforeTax)}</span>
+        </div>
+      )}
 
       {/* Tax toggle */}
       <div className="flex items-center justify-between py-1">

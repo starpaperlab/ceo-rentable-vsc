@@ -20,9 +20,49 @@ import {
 import LineItemsTable from './LineItemsTable';
 import TotalsPanel from './TotalsPanel';
 import PreviewModal from './PreviewModal';
+import AdditionalChargesEditor from './AdditionalChargesEditor';
 
 const BRAND_COLORS = ['#D94F8A', '#B57EDC', '#C9A227', '#4CAF50', '#2196F3'];
 const DEFAULT_ITEMS = [{ description: '', unit_price: 0, quantity: 1, total: 0 }];
+const LOGO_SIZE_OPTIONS = {
+  small: 18,
+  medium: 24,
+  large: 34,
+  custom: 24,
+};
+
+const COMPANY_SNAPSHOT_FIELDS = [
+  'fiscal_name',
+  'fiscal_id',
+  'fiscal_address',
+  'contact_name',
+  'contact_title',
+  'contact_email',
+  'phone_primary',
+  'phone_secondary',
+  'address',
+  'city_country',
+  'instagram_url',
+  'facebook_url',
+  'tiktok_url',
+  'linkedin_url',
+  'website_url',
+  'whatsapp_url',
+  'logo_position',
+  'doc_show_socials',
+  'doc_show_fiscal_id',
+  'doc_show_address',
+  'doc_show_contact',
+  'doc_show_signature',
+];
+
+const DEFAULT_DOCUMENT_PREFS = {
+  doc_show_socials: true,
+  doc_show_fiscal_id: true,
+  doc_show_address: true,
+  doc_show_contact: true,
+  doc_show_signature: false,
+};
 
 const GOOGLE_FONTS = [
   { label: 'Inter (Moderna)', value: 'Inter' },
@@ -55,9 +95,46 @@ function sanitizeLineItems(rawItems = []) {
     .filter((item) => item.description.length > 0);
 }
 
+function sanitizeAdditionalCharges(rawCharges = []) {
+  if (!Array.isArray(rawCharges)) return [];
+  return rawCharges
+    .map((charge) => {
+      const name = `${charge?.name || charge?.concept || charge?.label || ''}`.trim();
+      const amount = Number(charge?.amount || 0);
+      return {
+        name,
+        amount: Number.isFinite(amount) ? amount : 0,
+      };
+    })
+    .filter((charge) => charge.name.length > 0 && charge.amount > 0);
+}
+
+function getLogoWidth({ logoSize, logoWidth }) {
+  if (logoSize === 'custom') {
+    const customWidth = Number(logoWidth || 0);
+    return Number.isFinite(customWidth) && customWidth > 0 ? customWidth : LOGO_SIZE_OPTIONS.medium;
+  }
+  return LOGO_SIZE_OPTIONS[logoSize] || LOGO_SIZE_OPTIONS.medium;
+}
+
 function sanitizeDocumentPayload(raw) {
+  const additionalCharges = sanitizeAdditionalCharges(raw?.additional_charges || []);
+  const additionalChargesTotal = additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
+  const subtotal = Number(raw?.subtotal || 0);
+  const subtotalBeforeTax = subtotal + additionalChargesTotal;
+
+  const companySnapshot = COMPANY_SNAPSHOT_FIELDS.reduce((acc, field) => {
+    if (field.startsWith('doc_show_')) {
+      acc[field] = raw?.[field] ?? DEFAULT_DOCUMENT_PREFS[field] ?? false;
+      return acc;
+    }
+    acc[field] = raw?.[field] || null;
+    return acc;
+  }, {});
+
   return {
     ...raw,
+    ...companySnapshot,
     date: raw?.date || new Date().toISOString().slice(0, 10),
     due_date: raw?.due_date || null,
     client_id: raw?.client_id || null,
@@ -66,8 +143,15 @@ function sanitizeDocumentPayload(raw) {
     client_phone: `${raw?.client_phone || ''}`.trim() || null,
     notes: `${raw?.notes || ''}`.trim() || null,
     logo_url: raw?.logo_url || null,
+    logo_size: raw?.logo_size || 'medium',
+    logo_width: getLogoWidth({ logoSize: raw?.logo_size || 'medium', logoWidth: raw?.logo_width }),
+    logo_position: raw?.logo_position || 'left',
+    fiscal_address: raw?.fiscal_address || raw?.address || null,
     line_items: sanitizeLineItems(raw?.line_items || []),
-    subtotal: Number(raw?.subtotal || 0),
+    additional_charges: additionalCharges,
+    additional_charges_total: additionalChargesTotal,
+    subtotal,
+    subtotal_before_tax: subtotalBeforeTax,
     tax_enabled: Boolean(raw?.tax_enabled),
     tax_pct: Number(raw?.tax_pct || 0),
     tax_amount: Number(raw?.tax_amount || 0),
@@ -117,8 +201,33 @@ export default function DocumentForm({
     status: doc?.status || 'pending',
     company_name: doc?.company_name || config?.business_name || '',
     logo_url: doc?.logo_url || config?.logo_url || '',
+    logo_size: doc?.logo_size || config?.logo_size || 'medium',
+    logo_width: doc?.logo_width || config?.logo_width || LOGO_SIZE_OPTIONS.medium,
     brand_color: doc?.brand_color || config?.brand_color || '#D94F8A',
-    font_family: doc?.font_family || 'Inter',
+    font_family: doc?.font_family || config?.font_family || 'Inter',
+    fiscal_name: doc?.fiscal_name || config?.fiscal_name || '',
+    fiscal_id: doc?.fiscal_id || config?.fiscal_id || '',
+    fiscal_address: doc?.fiscal_address || config?.fiscal_address || config?.address || '',
+    contact_name: doc?.contact_name || config?.contact_name || '',
+    contact_title: doc?.contact_title || config?.contact_title || '',
+    contact_email: doc?.contact_email || config?.contact_email || '',
+    phone_primary: doc?.phone_primary || config?.phone_primary || '',
+    phone_secondary: doc?.phone_secondary || config?.phone_secondary || '',
+    address: doc?.address || config?.address || config?.fiscal_address || '',
+    city_country: doc?.city_country || config?.city_country || '',
+    instagram_url: doc?.instagram_url || config?.instagram_url || '',
+    facebook_url: doc?.facebook_url || config?.facebook_url || '',
+    tiktok_url: doc?.tiktok_url || config?.tiktok_url || '',
+    linkedin_url: doc?.linkedin_url || config?.linkedin_url || '',
+    website_url: doc?.website_url || config?.website_url || '',
+    whatsapp_url: doc?.whatsapp_url || config?.whatsapp_url || '',
+    logo_position: doc?.logo_position || config?.logo_position || 'left',
+    doc_show_socials: doc?.doc_show_socials ?? config?.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
+    doc_show_fiscal_id: doc?.doc_show_fiscal_id ?? config?.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
+    doc_show_address: doc?.doc_show_address ?? config?.doc_show_address ?? DEFAULT_DOCUMENT_PREFS.doc_show_address,
+    doc_show_contact: doc?.doc_show_contact ?? config?.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
+    doc_show_signature: doc?.doc_show_signature ?? config?.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
+    additional_charges: doc?.additional_charges?.length > 0 ? doc.additional_charges : [],
   }));
 
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
@@ -127,8 +236,14 @@ export default function DocumentForm({
     form.line_items.reduce((s, i) => s + (parseFloat(i.unit_price || 0) * parseFloat(i.quantity || 0)), 0),
     [form.line_items]
   );
-  const taxAmount = form.tax_enabled ? subtotal * (form.tax_pct / 100) : 0;
-  const totalFinal = subtotal + taxAmount;
+  const additionalCharges = useMemo(() => sanitizeAdditionalCharges(form.additional_charges || []), [form.additional_charges]);
+  const additionalChargesTotal = useMemo(
+    () => additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0),
+    [additionalCharges]
+  );
+  const subtotalBeforeTax = subtotal + additionalChargesTotal;
+  const taxAmount = form.tax_enabled ? subtotalBeforeTax * (form.tax_pct / 100) : 0;
+  const totalFinal = subtotalBeforeTax + taxAmount;
 
   const handleClientSelect = (clientId) => {
     if (clientId === '_manual') { update('client_id', ''); return; }
@@ -345,10 +460,28 @@ export default function DocumentForm({
   });
 
   const handleSave = () => {
-    saveMutation.mutate({ ...form, subtotal, tax_amount: taxAmount, total_final: totalFinal });
+    saveMutation.mutate({
+      ...form,
+      additional_charges: additionalCharges,
+      additional_charges_total: additionalChargesTotal,
+      subtotal,
+      subtotal_before_tax: subtotalBeforeTax,
+      tax_amount: taxAmount,
+      total_final: totalFinal,
+      logo_width: getLogoWidth({ logoSize: form.logo_size, logoWidth: form.logo_width }),
+    });
   };
 
-  const previewData = { ...form, subtotal, tax_amount: taxAmount, total_final: totalFinal };
+  const previewData = {
+    ...form,
+    additional_charges: additionalCharges,
+    additional_charges_total: additionalChargesTotal,
+    subtotal,
+    subtotal_before_tax: subtotalBeforeTax,
+    tax_amount: taxAmount,
+    total_final: totalFinal,
+    logo_width: getLogoWidth({ logoSize: form.logo_size, logoWidth: form.logo_width }),
+  };
 
   return (
     <>
@@ -371,7 +504,14 @@ export default function DocumentForm({
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Logo</Label>
               <div className="mt-2 border-2 border-dashed border-border rounded-lg p-3 text-center min-h-[64px] flex flex-col items-center justify-center">
                 {form.logo_url
-                  ? <img src={form.logo_url} alt="Logo" className="h-10 mx-auto object-contain mb-2" />
+                  ? (
+                    <img
+                      src={form.logo_url}
+                      alt="Logo"
+                      className="max-h-16 mx-auto object-contain mb-2"
+                      style={{ width: `${getLogoWidth({ logoSize: form.logo_size, logoWidth: form.logo_width }) * 3.6}px` }}
+                    />
+                  )
                   : <p className="text-[10px] text-muted-foreground mb-2">Sin logo</p>
                 }
                 <input type="file" accept="image/*" ref={logoInputRef} className="hidden" onChange={handleLogoUpload} />
@@ -429,6 +569,31 @@ export default function DocumentForm({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tamaño del logo</Label>
+                <Select value={form.logo_size} onValueChange={v => update('logo_size', v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="small">Pequeño</SelectItem>
+                    <SelectItem value="medium">Mediano</SelectItem>
+                    <SelectItem value="large">Grande</SelectItem>
+                    <SelectItem value="custom">Personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.logo_size === 'custom' && (
+                  <Input
+                    type="number"
+                    min="12"
+                    max="70"
+                    value={form.logo_width || ''}
+                    onChange={e => update('logo_width', Number(e.target.value || 0))}
+                    className="mt-2 h-8 text-xs"
+                    placeholder="Ancho en mm"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -510,9 +675,22 @@ export default function DocumentForm({
             />
           </div>
 
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">
+              Cargos adicionales
+            </Label>
+            <AdditionalChargesEditor
+              charges={form.additional_charges}
+              onChange={charges => update('additional_charges', charges)}
+            />
+          </div>
+
           {/* Totals */}
           <TotalsPanel
             subtotal={subtotal}
+            additionalCharges={additionalCharges}
+            additionalChargesTotal={additionalChargesTotal}
+            subtotalBeforeTax={subtotalBeforeTax}
             taxEnabled={form.tax_enabled}
             taxPct={form.tax_pct}
             onTaxEnabledChange={v => update('tax_enabled', v)}

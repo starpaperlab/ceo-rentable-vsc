@@ -1,0 +1,73 @@
+-- CEO Rentable OS™
+-- Extended single-company branding/profile fields.
+-- Prepared for a future company_id model without changing current one-company-per-user behavior.
+
+alter table if exists public.business_config
+  add column if not exists contact_name text,
+  add column if not exists contact_title text,
+  add column if not exists contact_email text,
+  add column if not exists phone_primary text,
+  add column if not exists phone_secondary text,
+  add column if not exists address text,
+  add column if not exists city_country text,
+  add column if not exists instagram_url text,
+  add column if not exists facebook_url text,
+  add column if not exists tiktok_url text,
+  add column if not exists linkedin_url text,
+  add column if not exists website_url text,
+  add column if not exists whatsapp_url text,
+  add column if not exists logo_position text not null default 'left',
+  add column if not exists doc_show_socials boolean not null default true,
+  add column if not exists doc_show_fiscal_id boolean not null default true,
+  add column if not exists doc_show_address boolean not null default true,
+  add column if not exists doc_show_contact boolean not null default true,
+  add column if not exists doc_show_signature boolean not null default false;
+
+alter table if exists public.invoices
+  add column if not exists fiscal_name text,
+  add column if not exists fiscal_id text,
+  add column if not exists fiscal_address text,
+  add column if not exists contact_name text,
+  add column if not exists contact_title text,
+  add column if not exists contact_email text,
+  add column if not exists phone_primary text,
+  add column if not exists phone_secondary text,
+  add column if not exists address text,
+  add column if not exists city_country text,
+  add column if not exists instagram_url text,
+  add column if not exists facebook_url text,
+  add column if not exists tiktok_url text,
+  add column if not exists linkedin_url text,
+  add column if not exists website_url text,
+  add column if not exists whatsapp_url text,
+  add column if not exists logo_position text,
+  add column if not exists doc_show_socials boolean,
+  add column if not exists doc_show_fiscal_id boolean,
+  add column if not exists doc_show_address boolean,
+  add column if not exists doc_show_contact boolean,
+  add column if not exists doc_show_signature boolean;
+
+alter table if exists public.quotes
+  add column if not exists fiscal_name text,
+  add column if not exists fiscal_id text,
+  add column if not exists fiscal_address text,
+  add column if not exists contact_name text,
+  add column if not exists contact_title text,
+  add column if not exists contact_email text,
+  add column if not exists phone_primary text,
+  add column if not exists phone_secondary text,
+  add column if not exists address text,
+  add column if not exists city_country text,
+  add column if not exists instagram_url text,
+  add column if not exists facebook_url text,
+  add column if not exists tiktok_url text,
+  add column if not exists linkedin_url text,
+  add column if not exists website_url text,
+  add column if not exists whatsapp_url text,
+  add column if not exists logo_position text,
+  add column if not exists doc_show_socials boolean,
+  add column if not exists doc_show_fiscal_id boolean,
+  add column if not exists doc_show_address boolean,
+  add column if not exists doc_show_contact boolean,
+  add column if not exists doc_show_signature boolean;
+
