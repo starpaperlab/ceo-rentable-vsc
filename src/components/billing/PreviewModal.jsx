@@ -2,8 +2,7 @@ import React, { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, Download } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { generateBillingDocumentPdf } from '@/lib/documentPdf';
 
 export default function PreviewModal({ document: doc, type, onClose }) {
   const { symbol } = useCurrency();
@@ -21,14 +20,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
   const validItems = (doc.line_items || []).filter(i => i.description);
 
   const handleExportPDF = async () => {
-    if (!previewRef.current) return;
-    const canvas = await html2canvas(previewRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, pdf.internal.pageSize.getHeight()));
-    pdf.save(`${docLabel}-${docNumber}.pdf`);
+    await generateBillingDocumentPdf({ doc, type, symbol });
   };
 
   return (

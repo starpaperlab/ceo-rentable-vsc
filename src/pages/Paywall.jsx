@@ -20,7 +20,7 @@ const PLANS = [
       'Reportes mensuales',
       'Soporte por email',
     ],
-    cta: 'Comenzar gratis',
+    cta: 'Elegir Básico',
     recommended: false,
   },
   {
@@ -36,7 +36,7 @@ const PLANS = [
       'Análisis de rentabilidad',
       'Soporte prioritario 24/7',
     ],
-    cta: 'Mejorar a Pro',
+    cta: 'Elegir Pro',
     recommended: true,
   },
 ]
@@ -158,7 +158,9 @@ export default function Paywall() {
                       {formatRecurringPrice(price.amount, price.currency, plan.period)}
                     </span>
                   </div>
-                  <p className="text-gray-600 text-xs mt-2">+ INC (si aplica)</p>
+                  <p className="text-gray-600 text-xs mt-2">
+                    Pago mensual · Procesado de forma segura por PayPal
+                  </p>
                 </div>
 
                 {/* CTA Button */}
@@ -204,7 +206,7 @@ export default function Paywall() {
         {/* FAQ / Footer */}
         <div className="bg-gray-50 rounded-2xl p-8 border border-gray-200 text-center">
           <p className="text-gray-600 text-sm mb-4">
-            🔐 Pago seguro con PayPal · 🚀 Acceso tras confirmación · 📧 Factura automática
+            Pago seguro con PayPal · Acceso inmediato después del pago
           </p>
           <p className="text-gray-600 text-xs">
             ¿Preguntas? Contactanos:{' '}
