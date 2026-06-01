@@ -45,8 +45,22 @@ const NAV_ITEMS = [
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { userProfile, logout, isAdmin } = useAuth();
+  const userEmail = userProfile?.email || '';
+  const userName = userProfile?.full_name || userEmail || 'Usuario';
+  const businessName =
+    userProfile?.business_name ||
+    userProfile?.company_name ||
+    userProfile?.business?.name ||
+    '';
+  const planLabel = userProfile?.plan
+    ? `Plan ${userProfile.plan}`
+    : userProfile?.has_access
+      ? 'Acceso activo'
+      : 'Sin plan activo';
+  const userInitial = `${userName || userEmail || 'U'}`.trim()[0]?.toUpperCase() || 'U';
 
   const handleLogout = async () => {
+    setSidebarOpen(false);
     await logout();
   };
 
@@ -111,11 +125,11 @@ export default function Layout({ children, currentPageName }) {
           <div className="p-4 border-t border-sidebar-border">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
-                {userProfile?.full_name?.[0]?.toUpperCase() || 'U'}
+                {userInitial}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">{userProfile?.full_name || 'Usuario'}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{userProfile?.email || ''}</p>
+                <p className="text-xs font-medium text-sidebar-foreground truncate">{userName}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{userEmail}</p>
               </div>
               <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleLogout}>
                 <LogOut className="h-3.5 w-3.5" />
@@ -189,6 +203,34 @@ export default function Layout({ children, currentPageName }) {
                     </Link>
                   )}
                 </nav>
+                <div className="border-t border-sidebar-border p-4">
+                  <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent/35 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold shrink-0">
+                        {userInitial}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-sidebar-foreground truncate">{userName}</p>
+                        {businessName && (
+                          <p className="text-xs text-sidebar-foreground/70 truncate">{businessName}</p>
+                        )}
+                        {userEmail && (
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{userEmail}</p>
+                        )}
+                        <p className="text-[11px] text-primary font-medium truncate mt-1">{planLabel}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-3 justify-center gap-2 border-sidebar-border bg-background/80"
+                      onClick={handleLogout}
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Cerrar sesión
+                    </Button>
+                  </div>
+                </div>
               </motion.aside>
             </>
           )}
