@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
 import { formatCurrencyAmount, formatRecurringPrice } from '@/lib/currencyFormat'
+import {
+  clearPendingCheckoutPlan,
+  normalizeCheckoutPlan,
+  savePendingCheckoutPlan,
+} from '@/lib/pendingCheckout'
 import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react'
 
 const PLANS = [
@@ -54,42 +59,121 @@ function getPlanPrice(planId) {
 
 export default function Paywall() {
   const navigate = useNavigate()
-  const { user, userProfile } = useAuth()
+  const [searchParams] = useSearchParams()
+  const { user, userProfile, isLoadingAuth, isLoadingProfile } = useAuth()
   const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
+  const [autoCheckoutStatus, setAutoCheckoutStatus] = useState('idle')
+  const autoCheckoutStartedRef = useRef(false)
+  const selectedPlan = normalizeCheckoutPlan(searchParams.get('plan'))
+  const isAuthLoading = isLoadingAuth || isLoadingProfile
 
   // Redirigir si ya tiene acceso
   useEffect(() => {
-    if (userProfile?.has_access) {
+    if (!selectedPlan && userProfile?.has_access) {
       navigate('/Dashboard')
     }
-  }, [userProfile, navigate])
+  }, [selectedPlan, userProfile, navigate])
 
-  const handleCheckout = async (planId) => {
+  const handleCheckout = async (planId, { direct = false } = {}) => {
     if (!user) {
-      setError('Por favor inicia sesión primero')
+      savePendingCheckoutPlan(planId)
+      navigate(`/login?plan=${encodeURIComponent(planId)}`, { replace: true })
       return
     }
 
     setLoading((prev) => ({ ...prev, [planId]: true }))
     setError(null)
+    if (direct) {
+      setAutoCheckoutStatus('loading')
+    }
 
     try {
       const result = await createPayPalOrder(planId)
       const approvalUrl = result.approvalUrl || result.approval_url
 
       if (result.success && approvalUrl) {
+        clearPendingCheckoutPlan()
         window.location.href = approvalUrl
         return
       }
 
       setError(result.error || 'No se pudo crear la orden de PayPal.')
+      if (direct) {
+        setAutoCheckoutStatus('error')
+      }
     } catch (err) {
       console.error('PayPal order error:', err)
       setError('Error creando la orden de PayPal. Por favor intenta nuevamente.')
+      if (direct) {
+        setAutoCheckoutStatus('error')
+      }
     } finally {
       setLoading((prev) => ({ ...prev, [planId]: false }))
     }
+  }
+
+  useEffect(() => {
+    if (!selectedPlan || isAuthLoading) return
+
+    savePendingCheckoutPlan(selectedPlan)
+
+    if (!user) {
+      navigate(`/login?plan=${encodeURIComponent(selectedPlan)}`, { replace: true })
+      return
+    }
+
+    if (autoCheckoutStartedRef.current) return
+    autoCheckoutStartedRef.current = true
+    void handleCheckout(selectedPlan, { direct: true })
+  }, [selectedPlan, isAuthLoading, user, navigate])
+
+  if (selectedPlan) {
+    const planName = selectedPlan === 'monthly' ? 'Mensual' : 'Founder Lifetime'
+    const price = getPlanPrice(selectedPlan)
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#F7F3EE] via-white to-pink-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xl">
+          <img src="/brand/isotipo.png" alt="CEO Rentable OS" className="w-12 h-12 mx-auto mb-4" />
+          {autoCheckoutStatus === 'error' ? (
+            <>
+              <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
+              <h1 className="text-2xl font-black text-gray-900 mb-2">No pudimos abrir PayPal</h1>
+              <p className="text-sm text-gray-600 mb-6">
+                {error || 'Intenta nuevamente o vuelve a elegir tu plan.'}
+              </p>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => {
+                    autoCheckoutStartedRef.current = false
+                    void handleCheckout(selectedPlan, { direct: true })
+                  }}
+                  className="w-full bg-[#D45387] hover:bg-[#C3467A] text-white"
+                >
+                  Intentar nuevamente
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => navigate('/paywall', { replace: true })}>
+                  Ver planes
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Loader className="w-10 h-10 animate-spin text-[#D45387] mx-auto mb-4" />
+              <h1 className="text-2xl font-black text-gray-900 mb-2">Preparando tu checkout</h1>
+              <p className="text-sm text-gray-600 mb-2">
+                Plan {planName} ·{' '}
+                {selectedPlan === 'monthly'
+                  ? formatRecurringPrice(price.amount, price.currency, '/mes')
+                  : formatCurrencyAmount(price.amount, price.currency)}
+              </p>
+              <p className="text-xs text-gray-500">Te enviaremos a PayPal en unos segundos.</p>
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (

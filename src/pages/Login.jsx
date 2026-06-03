@@ -5,6 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/AuthContext';
+import {
+  getCheckoutPath,
+  getPendingCheckoutPlan,
+  normalizeCheckoutPlan,
+  savePendingCheckoutPlan,
+} from '@/lib/pendingCheckout';
 
 const BRAND_PRIMARY = '#D45387';
 const BRAND_BG = '#F7F3EE';
@@ -63,9 +69,14 @@ export default function Login() {
     }
   };
 
+  const getPostAuthRedirect = (profile, fallbackPath) => {
+    const pendingPlan = getPendingCheckoutPlan();
+    return pendingPlan ? getCheckoutPath(pendingPlan) : fallbackPath || getRedirectPathForRole(profile);
+  };
+
   useEffect(() => {
     if (!isLoadingAuth && user && userProfile && !isPasswordRecovery && mode !== 'reset') {
-      navigate(getRedirectPathForRole(userProfile), { replace: true });
+      navigate(getPostAuthRedirect(userProfile), { replace: true });
     }
   }, [getRedirectPathForRole, isLoadingAuth, isPasswordRecovery, mode, navigate, user, userProfile]);
 
@@ -82,6 +93,11 @@ export default function Login() {
     }
 
     const params = new URLSearchParams(window.location.search);
+    const requestedPlan = normalizeCheckoutPlan(params.get('plan'));
+    if (requestedPlan) {
+      savePendingCheckoutPlan(requestedPlan);
+    }
+
     const inviteToken = `${params.get('invite') || ''}`.trim();
     if (inviteToken) {
       navigate(`/activar-acceso${window.location.search}`, { replace: true });
@@ -216,12 +232,12 @@ export default function Login() {
           return;
         }
 
-        navigate(result.redirectTo, { replace: true });
+        navigate(getPostAuthRedirect(result.profile, result.redirectTo), { replace: true });
         return;
       }
 
       const result = await login(form.email, form.password);
-      navigate(result.redirectTo, { replace: true });
+      navigate(getPostAuthRedirect(result.profile, result.redirectTo), { replace: true });
     } catch (authError) {
       setError(authError.message || 'No pudimos completar la autenticacion.');
     } finally {
