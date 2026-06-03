@@ -78,7 +78,7 @@ export default function Paywall() {
   const handleCheckout = async (planId, { direct = false } = {}) => {
     if (!user) {
       savePendingCheckoutPlan(planId)
-      navigate(`/login?plan=${encodeURIComponent(planId)}`, { replace: true })
+      navigate(`/login?mode=register&plan=${encodeURIComponent(planId)}`, { replace: true })
       return
     }
 
@@ -119,7 +119,7 @@ export default function Paywall() {
     savePendingCheckoutPlan(selectedPlan)
 
     if (!user) {
-      navigate(`/login?plan=${encodeURIComponent(selectedPlan)}`, { replace: true })
+      navigate(`/login?mode=register&plan=${encodeURIComponent(selectedPlan)}`, { replace: true })
       return
     }
 

@@ -47,6 +47,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [checkoutPlan, setCheckoutPlan] = useState(() => getPendingCheckoutPlan());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [recoverCooldownUntil, setRecoverCooldownUntil] = useState(() => {
     if (typeof window === 'undefined') {
@@ -94,8 +95,13 @@ export default function Login() {
 
     const params = new URLSearchParams(window.location.search);
     const requestedPlan = normalizeCheckoutPlan(params.get('plan'));
+    const requestedMode = `${params.get('mode') || ''}`.trim().toLowerCase();
     if (requestedPlan) {
       savePendingCheckoutPlan(requestedPlan);
+      setCheckoutPlan(requestedPlan);
+      setMode(requestedMode === 'login' ? 'login' : 'register');
+    } else if (requestedMode === 'register') {
+      setMode('register');
     }
 
     const inviteToken = `${params.get('invite') || ''}`.trim();
@@ -275,7 +281,7 @@ export default function Login() {
           </p>
         </div>
 
-        {(mode === 'login' || mode === 'register') && (
+        {(mode === 'login' || mode === 'register') && !checkoutPlan && (
           <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#F7F3EE] p-1 mb-6">
             <button
               type="button"
@@ -402,6 +408,32 @@ export default function Login() {
                     : 'Guardar nueva contrasena'}
           </Button>
         </form>
+
+        {checkoutPlan && mode === 'register' && (
+          <div className="mt-4 text-center text-sm text-slate-500">
+            ¿Ya tienes una cuenta?{' '}
+            <button
+              type="button"
+              onClick={() => handleModeChange('login')}
+              className="font-semibold text-[#D45387] hover:underline"
+            >
+              Ingresa aquí
+            </button>
+          </div>
+        )}
+
+        {checkoutPlan && mode === 'login' && (
+          <div className="mt-4 text-center text-sm text-slate-500">
+            ¿Aún no tienes cuenta?{' '}
+            <button
+              type="button"
+              onClick={() => handleModeChange('register')}
+              className="font-semibold text-[#D45387] hover:underline"
+            >
+              Crear cuenta
+            </button>
+          </div>
+        )}
 
         {mode === 'login' && (
           <div className="mt-4 flex items-center justify-between gap-3 text-sm">
