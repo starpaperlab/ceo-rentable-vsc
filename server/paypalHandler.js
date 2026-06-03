@@ -8,18 +8,22 @@ const PAYPAL_API_BASES = {
   live: 'https://api-m.paypal.com',
 };
 
-const DEFAULT_PLANS = {
-  basico: {
-    code: 'basico',
-    name: 'Plan Básico',
-    amount: '27.00',
-    currency: 'USD',
+const PAYPAL_REQUIRED_CURRENCY = 'DOP';
+
+const ACTIVE_PAYPAL_PLANS = {
+  founder_lifetime: {
+    code: 'founder_lifetime',
+    name: 'Founder Lifetime',
+    amount: '4997.00',
+    currency: PAYPAL_REQUIRED_CURRENCY,
+    type: 'lifetime',
   },
-  pro: {
-    code: 'pro',
-    name: 'Plan Pro',
-    amount: '47.00',
-    currency: 'USD',
+  monthly: {
+    code: 'monthly',
+    name: 'Mensual',
+    amount: '1497.00',
+    currency: PAYPAL_REQUIRED_CURRENCY,
+    type: 'monthly',
   },
 };
 
@@ -83,20 +87,55 @@ function resolvePayPalApiBase(env = process.env) {
 
 function resolvePlan(planCode, env = process.env) {
   const normalized = normalizePlanCode(planCode);
-  const base = DEFAULT_PLANS[normalized];
+  const base = ACTIVE_PAYPAL_PLANS[normalized];
   if (!base) return null;
 
   const amountEnvName = `PAYPAL_PLAN_${normalized.toUpperCase()}_AMOUNT`;
-  const currencyEnvName = `PAYPAL_PLAN_${normalized.toUpperCase()}_CURRENCY`;
 
   const amount = `${env[amountEnvName] || base.amount}`.trim();
-  const currency = `${env[currencyEnvName] || env.PAYPAL_CURRENCY || base.currency}`.trim().toUpperCase();
+  const currency = `${env.PAYPAL_CURRENCY || base.currency}`.trim().toUpperCase();
+
+  if (currency !== base.currency || currency !== PAYPAL_REQUIRED_CURRENCY) return null;
+  if (!normalizeMoney(amount)) return null;
 
   return {
     ...base,
     amount,
     currency,
   };
+}
+
+function resolveAccessForPlan(planCode) {
+  const plan = ACTIVE_PAYPAL_PLANS[normalizePlanCode(planCode)];
+  if (!plan) {
+    throw new Error('Plan PayPal inválido para activar acceso.');
+  }
+
+  return {
+    plan: plan.code,
+    isLifetime: plan.type === 'lifetime',
+    accessSource: 'paypal',
+  };
+}
+
+function validateLocalOrderAgainstActivePlan(localOrder) {
+  const plan = ACTIVE_PAYPAL_PLANS[normalizePlanCode(localOrder?.plan_code)];
+  if (!plan) {
+    throw new Error('La orden local tiene un plan PayPal inválido o legacy.');
+  }
+
+  const localAmount = normalizeMoney(localOrder.amount);
+  const planAmount = normalizeMoney(plan.amount);
+  if (!localAmount || localAmount !== planAmount) {
+    throw new Error('El monto de la orden local no coincide con el plan PayPal activo.');
+  }
+
+  const localCurrency = `${localOrder.currency || ''}`.trim().toUpperCase();
+  if (localCurrency !== plan.currency || localCurrency !== PAYPAL_REQUIRED_CURRENCY) {
+    throw new Error('La moneda de la orden local no coincide con el plan PayPal activo.');
+  }
+
+  return plan;
 }
 
 async function authenticate(payload = {}, { env = process.env, headers = {} } = {}) {
@@ -374,6 +413,8 @@ async function findExistingTransactionByCapture(serviceClient, captureId) {
 }
 
 function validateCapturedOrder({ localOrder, paypalOrder }) {
+  validateLocalOrderAgainstActivePlan(localOrder);
+
   if (`${paypalOrder?.status || ''}`.toUpperCase() !== 'COMPLETED') {
     throw new Error('PayPal no confirmó el pago como COMPLETED.');
   }
@@ -417,6 +458,7 @@ function validateCapturedOrder({ localOrder, paypalOrder }) {
 async function activateAccessForPayPalPayment({ serviceClient, userId, localOrder, captureInfo, paypalOrderId }) {
   const now = new Date().toISOString();
   const existingTransaction = await findExistingTransactionByCapture(serviceClient, captureInfo.capture.id);
+  const access = resolveAccessForPlan(localOrder.plan_code);
 
   if (!existingTransaction) {
     const { error: transactionError } = await serviceClient.from('transactions').insert({
@@ -430,6 +472,7 @@ async function activateAccessForPayPalPayment({ serviceClient, userId, localOrde
       description: `Pago PayPal ${localOrder.plan_code}`,
       metadata: {
         plan_code: localOrder.plan_code,
+        plan_type: access.isLifetime ? 'lifetime' : 'monthly',
         paypal_order_id: paypalOrderId,
         paypal_capture_status: captureInfo.capture.status,
       },
@@ -444,9 +487,10 @@ async function activateAccessForPayPalPayment({ serviceClient, userId, localOrde
     .from('users')
     .update({
       has_access: true,
-      plan: 'subscription',
+      plan: access.plan,
+      is_lifetime: access.isLifetime,
       payment_provider: 'paypal',
-      access_source: 'paypal_payment',
+      access_source: access.accessSource,
       updated_at: now,
     })
     .eq('id', userId);
@@ -456,12 +500,16 @@ async function activateAccessForPayPalPayment({ serviceClient, userId, localOrde
   const { error: subscriptionError } = await serviceClient.from('subscriptions').upsert(
     {
       user_id: userId,
+      plan: access.plan,
       plan_code: localOrder.plan_code,
       status: 'active',
+      is_lifetime: access.isLifetime,
+      access_source: access.accessSource,
       payment_provider: 'paypal',
       provider_customer_id: null,
       provider_subscription_id: null,
       metadata: {
+        plan_type: access.isLifetime ? 'lifetime' : 'monthly',
         paypal_order_id: paypalOrderId,
         paypal_capture_id: captureInfo.capture.id,
       },
@@ -635,6 +683,7 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
       captureInfo,
       paypalOrderId: orderId,
     });
+    const access = resolveAccessForPlan(localOrder.plan_code);
 
     return {
       ok: true,
@@ -645,6 +694,8 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
         captureId: captureInfo.capture.id,
         amount: captureInfo.amount,
         currency: captureInfo.currency,
+        planCode: captureInfo.planCode,
+        planType: access.isLifetime ? 'lifetime' : 'monthly',
         status: 'completed',
         alreadyProcessed: activation.alreadyProcessed,
       },

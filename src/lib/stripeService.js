@@ -15,8 +15,7 @@ const STRIPE_PLANS = ENV_CONFIG.stripe.plans;
 const APP_URL = ENV_CONFIG.app.url;
 const STRIPE_LEGACY_ENABLED =
   ENV_CONFIG.stripe.legacyEnabled || import.meta.env.VITE_STRIPE_LEGACY_ENABLED === 'true';
-const STRIPE_LEGACY_PAYMENT_LINK =
-  import.meta.env.VITE_STRIPE_PAYMENT_LINK || 'https://buy.stripe.com/14A8wQa635hvdfaf2q4gg00';
+const STRIPE_LEGACY_PAYMENT_LINK = '';
 
 async function updateUserSubscriptionAccess(userId, patch) {
   let { error } = await supabase

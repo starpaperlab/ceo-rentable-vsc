@@ -7,6 +7,23 @@ const PAYPAL_API_BASES = {
   live: 'https://api-m.paypal.com',
 };
 
+const PAYPAL_REQUIRED_CURRENCY = 'DOP';
+
+const ACTIVE_PAYPAL_PLANS = {
+  founder_lifetime: {
+    code: 'founder_lifetime',
+    amount: '4997.00',
+    currency: PAYPAL_REQUIRED_CURRENCY,
+    type: 'lifetime',
+  },
+  monthly: {
+    code: 'monthly',
+    amount: '1497.00',
+    currency: PAYPAL_REQUIRED_CURRENCY,
+    type: 'monthly',
+  },
+};
+
 function getHeader(headers = {}, key = '') {
   const lowerKey = key.toLowerCase();
   const found = Object.entries(headers || {}).find(([name]) => `${name}`.toLowerCase() === lowerKey);
@@ -69,6 +86,43 @@ function normalizeMoney(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
   return numeric.toFixed(2);
+}
+
+function normalizePlanCode(value = '') {
+  return `${value || ''}`.trim().toLowerCase();
+}
+
+function resolveAccessForPlan(planCode) {
+  const plan = ACTIVE_PAYPAL_PLANS[normalizePlanCode(planCode)];
+  if (!plan) {
+    throw new Error('Plan PayPal inválido para activar acceso.');
+  }
+
+  return {
+    plan: plan.code,
+    isLifetime: plan.type === 'lifetime',
+    accessSource: 'paypal',
+  };
+}
+
+function validateLocalOrderAgainstActivePlan(localOrder) {
+  const plan = ACTIVE_PAYPAL_PLANS[normalizePlanCode(localOrder?.plan_code)];
+  if (!plan) {
+    throw new Error('La orden local tiene un plan PayPal inválido o legacy.');
+  }
+
+  const localAmount = normalizeMoney(localOrder.amount);
+  const planAmount = normalizeMoney(plan.amount);
+  if (!localAmount || localAmount !== planAmount) {
+    throw new Error('El monto de la orden local no coincide con el plan PayPal activo.');
+  }
+
+  const localCurrency = `${localOrder.currency || ''}`.trim().toUpperCase();
+  if (localCurrency !== plan.currency || localCurrency !== PAYPAL_REQUIRED_CURRENCY) {
+    throw new Error('La moneda de la orden local no coincide con el plan PayPal activo.');
+  }
+
+  return plan;
 }
 
 function sanitizeError(error) {
@@ -249,6 +303,8 @@ async function findLocalOrder(serviceClient, resource) {
 }
 
 function validateCaptureAgainstOrder(resource, localOrder) {
+  validateLocalOrderAgainstActivePlan(localOrder);
+
   if (`${resource?.status || ''}`.toUpperCase() !== 'COMPLETED') {
     throw new Error('PayPal no confirmó el capture como COMPLETED.');
   }
@@ -285,6 +341,7 @@ function validateCaptureAgainstOrder(resource, localOrder) {
 async function applyCompletedCapture({ serviceClient, event, localOrder, capture }) {
   const now = new Date().toISOString();
   const existingTransaction = await findExistingTransactionByCapture(serviceClient, capture.captureId);
+  const access = resolveAccessForPlan(localOrder.plan_code);
 
   if (!existingTransaction) {
     const { error: transactionError } = await serviceClient.from('transactions').insert({
@@ -299,6 +356,7 @@ async function applyCompletedCapture({ serviceClient, event, localOrder, capture
       description: `Pago PayPal ${localOrder.plan_code}`,
       metadata: {
         plan_code: localOrder.plan_code,
+        plan_type: access.isLifetime ? 'lifetime' : 'monthly',
         paypal_event_id: event.id,
         paypal_order_id: localOrder.paypal_order_id,
         paypal_capture_id: capture.captureId,
@@ -314,9 +372,10 @@ async function applyCompletedCapture({ serviceClient, event, localOrder, capture
     .from('users')
     .update({
       has_access: true,
-      plan: 'subscription',
+      plan: access.plan,
+      is_lifetime: access.isLifetime,
       payment_provider: 'paypal',
-      access_source: 'paypal_payment',
+      access_source: access.accessSource,
       updated_at: now,
     })
     .eq('id', localOrder.user_id);
@@ -326,10 +385,14 @@ async function applyCompletedCapture({ serviceClient, event, localOrder, capture
   const { error: subscriptionError } = await serviceClient.from('subscriptions').upsert(
     {
       user_id: localOrder.user_id,
+      plan: access.plan,
       plan_code: localOrder.plan_code,
       status: 'active',
+      is_lifetime: access.isLifetime,
+      access_source: access.accessSource,
       payment_provider: 'paypal',
       metadata: {
+        plan_type: access.isLifetime ? 'lifetime' : 'monthly',
         paypal_event_id: event.id,
         paypal_order_id: localOrder.paypal_order_id,
         paypal_capture_id: capture.captureId,

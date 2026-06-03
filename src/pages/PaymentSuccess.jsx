@@ -14,8 +14,16 @@ export default function PaymentSuccess() {
   const [status, setStatus] = useState('loading'); // loading | success | pending | error
   const [user, setUser] = useState(null);
   const [provider, setProvider] = useState('paypal');
+  const [planCode, setPlanCode] = useState(null);
   const [message, setMessage] = useState('Confirmando tu pago...');
   const hasProcessedRef = useRef(false);
+
+  const planLabel =
+    planCode === 'founder_lifetime'
+      ? 'Founder Lifetime'
+      : planCode === 'monthly'
+        ? 'Mensual'
+        : 'suscripción';
 
   useEffect(() => {
     const verifyAccess = async () => {
@@ -25,7 +33,11 @@ export default function PaymentSuccess() {
       const params = new URLSearchParams(window.location.search);
       const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
       const orderId = `${params.get('order_id') || params.get('orderId') || params.get('token') || ''}`.trim();
+      const nextPlanCode = `${params.get('plan') || ''}`.trim().toLowerCase();
       setProvider(nextProvider || 'paypal');
+      if (['founder_lifetime', 'monthly'].includes(nextPlanCode)) {
+        setPlanCode(nextPlanCode);
+      }
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const currentUser = sessionData?.session?.user;
@@ -43,6 +55,9 @@ export default function PaymentSuccess() {
           setMessage(capture.error || 'No pudimos confirmar el pago con PayPal.');
           setStatus('error');
           return;
+        }
+        if (['founder_lifetime', 'monthly'].includes(capture.planCode)) {
+          setPlanCode(capture.planCode);
         }
 
         setMessage('Actualizando tu acceso...');
@@ -63,6 +78,9 @@ export default function PaymentSuccess() {
         .select('has_access, plan')
         .eq('id', currentUser.id)
         .maybeSingle();
+      if (['founder_lifetime', 'monthly'].includes(profile?.plan)) {
+        setPlanCode(profile.plan);
+      }
 
       const { data: subscription } = await supabase
         .from('subscriptions')
@@ -147,7 +165,7 @@ export default function PaymentSuccess() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">¡Pago exitoso!</h1>
             <p className="text-muted-foreground mt-2 text-sm">
-              Bienvenida, <strong>{user?.full_name || user?.email}</strong>. Tu acceso a <strong>CEO Rentable OS™</strong> ya fue activado con tu plan de suscripción.
+              Bienvenida, <strong>{user?.full_name || user?.email}</strong>. Tu acceso a <strong>CEO Rentable OS™</strong> ya fue activado con tu plan <strong>{planLabel}</strong>.
             </p>
           </div>
 

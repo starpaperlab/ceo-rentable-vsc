@@ -5,7 +5,9 @@ import { useAuth } from '@/lib/AuthContext';
 const PLAN_FEATURES = {
   admin: { luna: true, automatizaciones: true, nuevas_funciones: true },
   subscription: { luna: true, automatizaciones: true, nuevas_funciones: true },
+  monthly: { luna: true, automatizaciones: true, nuevas_funciones: true },
   founder: { luna: false, automatizaciones: false, nuevas_funciones: false },
+  founder_lifetime: { luna: false, automatizaciones: false, nuevas_funciones: false },
 };
 
 export function useFeatureGate() {
@@ -36,8 +38,8 @@ export function useFeatureGate() {
 
   const plan = user?.plan || 'founder';
   const isAdmin = user?.role === 'admin' || plan === 'admin';
-  const isSubscription = plan === 'subscription';
-  const isFounder = plan === 'founder' && !isAdmin;
+  const isSubscription = ['subscription', 'monthly'].includes(plan);
+  const isFounder = ['founder', 'founder_lifetime'].includes(plan) && !isAdmin;
 
   return { hasFeature, plan, isAdmin, isSubscription, isFounder, user, loading };
 }

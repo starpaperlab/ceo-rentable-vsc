@@ -28,44 +28,12 @@ if (!SUPABASE_ANON_KEY) {
 
 const STRIPE_LEGACY_ENABLED = import.meta.env.VITE_STRIPE_LEGACY_ENABLED === 'true';
 const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-const STRIPE_PLAN_BASICO_ID = import.meta.env.VITE_STRIPE_PLAN_BASICO_ID;
-const STRIPE_PLAN_PRO_ID = import.meta.env.VITE_STRIPE_PLAN_PRO_ID;
 
 if (STRIPE_LEGACY_ENABLED && !STRIPE_PUBLIC_KEY) {
   console.warn('⚠️ Stripe legacy está activo, pero VITE_STRIPE_PUBLIC_KEY no está definida');
 }
 
-const STRIPE_PLANS = {
-  basico: {
-    id: STRIPE_PLAN_BASICO_ID,
-    name: 'Plan Básico',
-    price: 27,
-    currency: 'USD',
-    interval: 'month',
-    features: [
-      '📊 Dashboard con KPIs',
-      '🏭 Gestión de Inventario Básica',
-      '💰 Reportes de Rentabilidad',
-      '📧 Hasta 500 emails/mes',
-    ]
-  },
-  pro: {
-    id: STRIPE_PLAN_PRO_ID,
-    name: 'Plan Pro',
-    price: 47,
-    currency: 'USD',
-    interval: 'month',
-    features: [
-      '✨ TODO del plan Básico',
-      '🤖 Análisis con IA (Gemini)',
-      '📞 Agenda de Citas',
-      '📊 Proyecciones Avanzadas',
-      '📧 Emails Ilimitados',
-      '👥 Hasta 5 usuarios',
-      '📁 Almacenamiento Ilimitado',
-    ]
-  }
-};
+const STRIPE_PLANS = {};
 
 
 // ───────────────────────────────────────────────────────────────
@@ -74,9 +42,10 @@ const STRIPE_PLANS = {
 
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
 const PAYPAL_ENVIRONMENT = import.meta.env.VITE_PAYPAL_ENVIRONMENT || 'sandbox';
-const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || 'USD';
-const PAYPAL_PLAN_BASICO_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_BASICO_AMOUNT || '27.00';
-const PAYPAL_PLAN_PRO_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_PRO_AMOUNT || '47.00';
+const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || 'DOP';
+const PAYPAL_PLAN_FOUNDER_LIFETIME_AMOUNT =
+  import.meta.env.VITE_PAYPAL_PLAN_FOUNDER_LIFETIME_AMOUNT || '4997.00';
+const PAYPAL_PLAN_MONTHLY_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_MONTHLY_AMOUNT || '1497.00';
 
 
 // ───────────────────────────────────────────────────────────────
@@ -148,14 +117,14 @@ export const ENV_CONFIG = {
     enabled: !!PAYPAL_CLIENT_ID,
     currency: PAYPAL_CURRENCY,
     plans: {
-      basico: {
-        code: 'basico',
-        amount: PAYPAL_PLAN_BASICO_AMOUNT,
+      founder_lifetime: {
+        code: 'founder_lifetime',
+        amount: PAYPAL_PLAN_FOUNDER_LIFETIME_AMOUNT,
         currency: PAYPAL_CURRENCY,
       },
-      pro: {
-        code: 'pro',
-        amount: PAYPAL_PLAN_PRO_AMOUNT,
+      monthly: {
+        code: 'monthly',
+        amount: PAYPAL_PLAN_MONTHLY_AMOUNT,
         currency: PAYPAL_CURRENCY,
       },
     },

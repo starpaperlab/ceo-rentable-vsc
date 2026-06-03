@@ -5,38 +5,40 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
-import { formatRecurringPrice } from '@/lib/currencyFormat'
+import { formatCurrencyAmount, formatRecurringPrice } from '@/lib/currencyFormat'
 import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react'
 
 const PLANS = [
   {
-    id: 'basico',
-    name: 'Básico',
+    id: 'monthly',
+    name: 'Mensual',
     period: '/mes',
-    description: 'Perfecto para empezar',
+    description: 'Ideal para emprendedoras que quieren controlar sus ganancias y tomar mejores decisiones financieras.',
     features: [
-      'Dashboard financiero básico',
-      'Gestión de hasta 50 productos',
-      'Reportes mensuales',
-      'Soporte por email',
+      'Control financiero mensual',
+      'Dashboard financiero completo',
+      'Facturas y cotizaciones automáticas',
+      'Gestión de clientes e inventario',
+      'Cancela cuando quieras',
     ],
-    cta: 'Elegir Básico',
+    cta: 'Comenzar hoy',
+    paymentNote: 'Pago mensual · Procesado de forma segura por PayPal',
     recommended: false,
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    period: '/mes',
-    description: 'Para negocios en crecimiento',
+    id: 'founder_lifetime',
+    name: 'Founder Lifetime',
+    period: '',
+    description: 'Oferta Founder por tiempo limitado',
     features: [
-      'Dashboard financiero completoAnalítica avanzada y predicciones',
-      'Productos ilimitados',
-      'Facturas y cotizaciones automáticas',
-      'Gestión de clientes',
-      'Análisis de rentabilidad',
-      'Soporte prioritario 24/7',
+      'Pago único',
+      'Acceso permanente a CEO Rentable OS',
+      'Precio futuro: RD$9,997',
+      'Dashboard financiero y módulos comerciales',
+      'Soporte por email',
     ],
-    cta: 'Elegir Pro',
+    cta: 'Obtener acceso Founder',
+    paymentNote: 'Pago único · Procesado de forma segura por PayPal',
     recommended: true,
   },
 ]
@@ -104,7 +106,7 @@ export default function Paywall() {
             Elige tu plan
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            Acceso inmediato · Sin contrato · Cancela cuando quieras
+            Mensual = RD$1,497 · Founder Lifetime = RD$4,997
           </p>
         </div>
 
@@ -155,11 +157,23 @@ export default function Paywall() {
                 <div className="mb-8">
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-5xl font-black text-gray-900">
-                      {formatRecurringPrice(price.amount, price.currency, plan.period)}
+                      {plan.period
+                        ? formatRecurringPrice(price.amount, price.currency, plan.period)
+                        : formatCurrencyAmount(price.amount, price.currency)}
                     </span>
                   </div>
+                  {plan.id === 'founder_lifetime' && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[#D45387] text-sm font-semibold">
+                        Oferta Founder por tiempo limitado
+                      </p>
+                      <p className="text-gray-500 text-sm">
+                        Precio futuro: {formatCurrencyAmount(9997, price.currency)}
+                      </p>
+                    </div>
+                  )}
                   <p className="text-gray-600 text-xs mt-2">
-                    Pago mensual · Procesado de forma segura por PayPal
+                    {plan.paymentNote}
                   </p>
                 </div>
 
