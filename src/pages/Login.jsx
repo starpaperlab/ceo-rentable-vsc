@@ -70,6 +70,17 @@ export default function Login() {
     }
   };
 
+  const getEmailConfirmationRedirectUrl = () => {
+    const pendingPlan = checkoutPlan || getPendingCheckoutPlan();
+    const path = pendingPlan ? getCheckoutPath(pendingPlan) : '/login';
+    const baseUrl =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : '';
+
+    return baseUrl ? `${baseUrl}${path}` : undefined;
+  };
+
   const getPostAuthRedirect = (profile, fallbackPath) => {
     const pendingPlan = getPendingCheckoutPlan();
     return pendingPlan ? getCheckoutPath(pendingPlan) : fallbackPath || getRedirectPathForRole(profile);
@@ -226,10 +237,15 @@ export default function Login() {
           password: form.password,
           fullName: form.fullName,
           phone: form.phone,
+          emailRedirectTo: getEmailConfirmationRedirectUrl(),
         });
 
         if (result.needsEmailConfirmation) {
-          setInfo('Tu cuenta fue creada. Revisa tu correo para confirmar el acceso antes de iniciar sesion.');
+          setInfo(
+            checkoutPlan
+              ? 'Tu cuenta fue creada. Revisa tu correo para confirmar el acceso. Al volver, continuaremos automaticamente con tu plan elegido.'
+              : 'Tu cuenta fue creada. Revisa tu correo para confirmar el acceso antes de iniciar sesion.'
+          );
           setMode('login');
           setForm((prev) => ({
             ...INITIAL_FORM,

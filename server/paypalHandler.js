@@ -250,8 +250,12 @@ async function createOrderWithPayPal(input, { env = process.env, fetchImpl = fet
   }
 
   const appUrl = resolveAppUrl(env);
-  const returnUrl = `${appUrl}/payment-success?provider=paypal`;
-  const cancelUrl = `${appUrl}/payment-cancel?provider=paypal`;
+  const checkoutParams = new URLSearchParams({
+    provider: 'paypal',
+    plan: input.plan.code,
+  });
+  const returnUrl = `${appUrl}/payment-success?${checkoutParams.toString()}`;
+  const cancelUrl = `${appUrl}/payment-cancel?${checkoutParams.toString()}`;
 
   const response = await fetchImpl(`${auth.apiBase}/v2/checkout/orders`, {
     method: 'POST',

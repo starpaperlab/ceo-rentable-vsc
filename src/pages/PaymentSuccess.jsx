@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 
+const AUTH_SESSION_ERROR =
+  'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
+
 export default function PaymentSuccess() {
   const navigate = useNavigate();
   const { refreshUserProfile } = useAuth();
@@ -42,7 +45,7 @@ export default function PaymentSuccess() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const currentUser = sessionData?.session?.user;
       if (sessionError || !currentUser) {
-        throw new Error('No se pudo obtener sesión')
+        throw new Error(AUTH_SESSION_ERROR)
       }
 
       setUser(currentUser);
@@ -107,6 +110,13 @@ export default function PaymentSuccess() {
     navigate('/Dashboard', { replace: true });
   };
 
+  const goToLogin = () => {
+    navigate(
+      planCode ? `/login?mode=login&plan=${encodeURIComponent(planCode)}` : '/login?mode=login',
+      { replace: true }
+    );
+  };
+
   if (status === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -124,7 +134,11 @@ export default function PaymentSuccess() {
         <Card className="p-8 max-w-md text-center space-y-4">
           <p className="text-lg font-bold text-foreground">Algo salió mal</p>
           <p className="text-sm text-muted-foreground">{message || 'No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.'}</p>
-          <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
+          {message === AUTH_SESSION_ERROR ? (
+            <Button variant="outline" onClick={goToLogin}>Iniciar sesión</Button>
+          ) : (
+            <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
+          )}
         </Card>
       </div>
     );

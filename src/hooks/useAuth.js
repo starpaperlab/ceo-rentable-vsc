@@ -40,6 +40,31 @@ function getInviteParamsFromUrl() {
   };
 }
 
+function getCurrentAuthCode() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const code = `${new URL(window.location.href).searchParams.get('code') || ''}`.trim();
+  return code || null;
+}
+
+function clearAuthCodeFromUrl() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('code')) {
+    return;
+  }
+
+  url.searchParams.delete('code');
+  const nextSearch = url.searchParams.toString();
+  const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ''}${url.hash || ''}`;
+  window.history.replaceState({}, '', nextUrl);
+}
+
 function formatAuthError(error) {
   if (!error?.message) {
     return new Error('Ocurrio un error inesperado con la autenticacion.');
@@ -161,6 +186,12 @@ function normalizeProfile(authUser, profile = null, overrides = {}) {
     email,
     full_name: fullName,
     phone: overrides.phone ?? metadata.phone ?? profile?.phone ?? null,
+    business_name:
+      overrides.business_name ??
+      overrides.businessName ??
+      metadata.business_name ??
+      profile?.business_name ??
+      null,
     role,
     plan,
     has_access: hasAccess,
@@ -198,6 +229,7 @@ function buildProfilePayload(authUser, overrides = {}, currentProfile = null) {
     email: normalizedProfile.email,
     full_name: normalizedProfile.full_name,
     phone: normalizedProfile.phone,
+    business_name: normalizedProfile.business_name,
     role: normalizedProfile.role,
     plan: normalizedProfile.plan,
     has_access: normalizedProfile.has_access,
@@ -274,6 +306,7 @@ async function ensureUserProfile(authUser, overrides = {}) {
     'email',
     'full_name',
     'phone',
+    'business_name',
     'role',
     'plan',
     'has_access',
@@ -497,10 +530,22 @@ export function useProvideAuth() {
       setIsLoadingAuth(true);
 
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const authCode = getCurrentAuthCode();
+        let { data, error } = await supabase.auth.getSession();
 
         if (error) {
           throw error;
+        }
+
+        if (data.session && authCode) {
+          clearAuthCodeFromUrl();
+        } else if (!data.session && authCode) {
+          const exchange = await supabase.auth.exchangeCodeForSession(authCode);
+          if (exchange.error) {
+            throw exchange.error;
+          }
+          clearAuthCodeFromUrl();
+          data = { session: exchange.data.session };
         }
 
         if (!isMounted) {
@@ -605,19 +650,29 @@ export function useProvideAuth() {
     };
   };
 
-  const register = async ({ email, password, fullName, phone = '' }) => {
+  const register = async ({
+    email,
+    password,
+    fullName,
+    phone = '',
+    businessName = '',
+    emailRedirectTo = null,
+  }) => {
     setAuthError(null);
 
     const normalizedEmail = email.trim().toLowerCase();
     const trimmedName = fullName.trim();
+    const trimmedBusinessName = businessName.trim();
 
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
+        emailRedirectTo: emailRedirectTo || undefined,
         data: {
           full_name: trimmedName,
           phone: phone.trim() || null,
+          business_name: trimmedBusinessName || null,
           role: DEFAULT_ROLE,
           plan: DEFAULT_PLAN,
           has_access: false,
@@ -638,6 +693,7 @@ export function useProvideAuth() {
       profile = await hydrateFromSession(data.session, {
         full_name: trimmedName,
         phone: phone.trim() || null,
+        business_name: trimmedBusinessName || null,
         plan: DEFAULT_PLAN,
         role: DEFAULT_ROLE,
         has_access: false,
@@ -648,6 +704,7 @@ export function useProvideAuth() {
         profile = await upsertOwnProfile(data.user, {
           full_name: trimmedName,
           phone: phone.trim() || null,
+          business_name: trimmedBusinessName || null,
           plan: DEFAULT_PLAN,
           role: DEFAULT_ROLE,
           has_access: false,
