@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/AuthContext';
-import { trackRegistration } from '@/lib/metaPixel';
+import { trackCompleteRegistration } from '@/lib/metaPixel';
 import {
   getCheckoutPath,
   getPendingCheckoutPlan,
@@ -275,9 +275,7 @@ export default function Login() {
           emailRedirectTo: getEmailConfirmationRedirectUrl(),
         });
 
-        trackRegistration({
-          plan: checkoutPlan,
-        });
+        trackCompleteRegistration(checkoutPlan);
 
         if (result.needsEmailConfirmation) {
           setInfo(

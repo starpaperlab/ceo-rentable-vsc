@@ -10,12 +10,10 @@ export default function BuyButton({
   className = '',
   plan = null,
   checkout = false,
-  value = null,
-  currency = null,
 }) {
   const handleClick = () => {
     if (plan) {
-      trackInitiateCheckout({ plan, value, currency });
+      trackInitiateCheckout(plan);
     }
 
     window.location.href = plan ? getCheckoutPath(plan, checkout ? { checkout: true } : {}) : '/paywall';

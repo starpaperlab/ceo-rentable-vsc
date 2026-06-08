@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
 import { formatCurrencyAmount, formatRecurringPrice } from '@/lib/currencyFormat'
-import { trackInitiateCheckout } from '@/lib/metaPixel'
+import { trackInitiateCheckout, trackViewContent } from '@/lib/metaPixel'
 import {
   clearPendingCheckoutPlan,
   getCheckoutPath,
@@ -67,12 +67,7 @@ function getPlanPrice(planId) {
 }
 
 function fireInitiateCheckout(planId) {
-  const price = getPlanPrice(planId)
-  trackInitiateCheckout({
-    plan: planId,
-    value: price.amount,
-    currency: price.currency,
-  })
+  trackInitiateCheckout(planId)
 }
 
 export default function Paywall() {
@@ -105,6 +100,10 @@ export default function Paywall() {
     setAutoCheckoutStatus('idle')
     setError(null)
   }, [checkoutRequested, selectedPlan])
+
+  useEffect(() => {
+    trackViewContent(selectedPlan)
+  }, [selectedPlan])
 
   async function handleCheckout(planId, { direct = false } = {}) {
     if (!user) {

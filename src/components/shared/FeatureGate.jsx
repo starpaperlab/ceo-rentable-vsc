@@ -45,9 +45,7 @@ export default function FeatureGate({ feature, children, fallback, inline = fals
         size="sm"
         className="gap-2"
         onClick={() => {
-          trackInitiateCheckout({
-            plan: 'monthly',
-          });
+          trackInitiateCheckout('monthly');
           window.location.href = getCheckoutPath('monthly', { checkout: true });
         }}
       >

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { capturePayPalOrder } from '@/lib/paypalService';
-import { ENV_CONFIG } from '@/config/env';
 import { useAuth } from '@/lib/AuthContext';
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -71,11 +70,10 @@ export default function PaymentSuccess() {
 
         if (!hasTrackedPurchaseRef.current) {
           hasTrackedPurchaseRef.current = true;
-          trackPurchase({
-            plan: resolvedPlanCode,
-            value: capture.amount,
-            currency: capture.currency || ENV_CONFIG.paypal.currency,
-          });
+          trackPurchase(
+            resolvedPlanCode,
+            capture.captureId || orderId || null
+          );
         }
 
         setMessage('Actualizando tu acceso...');

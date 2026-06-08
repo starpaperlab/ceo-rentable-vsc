@@ -1,10 +1,37 @@
-import { ENV_CONFIG } from '@/config/env';
-
 const META_PIXEL_SCRIPT_ID = 'meta-pixel-script';
+const META_PIXEL_DEDUPE_KEY = 'ceo_meta_pixel_fired_events';
 const INITIATE_CHECKOUT_DEDUPE_MS = 5000;
+
+const PLAN_EVENT_CONFIG = {
+  monthly: {
+    slug: 'monthly',
+    content_name: 'CEO Rentable Plan Mensual',
+    content_ids: ['monthly'],
+    content_type: 'product',
+    currency: 'DOP',
+    value: 1497,
+  },
+  founder_lifetime: {
+    slug: 'lifetime',
+    content_name: 'CEO Rentable Acceso Lifetime',
+    content_ids: ['lifetime'],
+    content_type: 'product',
+    currency: 'DOP',
+    value: 4997,
+  },
+  lifetime: {
+    slug: 'lifetime',
+    content_name: 'CEO Rentable Acceso Lifetime',
+    content_ids: ['lifetime'],
+    content_type: 'product',
+    currency: 'DOP',
+    value: 4997,
+  },
+};
 
 let isPixelInitialized = false;
 let lastTrackedPagePath = null;
+let lastViewContentSignature = null;
 let lastInitiateCheckoutSignature = null;
 let lastInitiateCheckoutAt = 0;
 
@@ -12,13 +39,55 @@ function isBrowser() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 
+function isDev() {
+  return import.meta.env.DEV;
+}
+
 function getMetaPixelId() {
-  return `${ENV_CONFIG.metaPixel.id || ''}`.trim();
+  return `${import.meta.env.VITE_META_PIXEL_ID || '1493989665428952'}`.trim();
 }
 
 function getCurrentPath() {
   if (!isBrowser()) return '/';
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function normalizePlan(plan) {
+  const normalized = `${plan || ''}`.trim().toLowerCase();
+  return PLAN_EVENT_CONFIG[normalized] ? normalized : null;
+}
+
+function getPlanEventConfig(plan) {
+  const normalized = normalizePlan(plan);
+  return normalized ? PLAN_EVENT_CONFIG[normalized] : null;
+}
+
+function logMetaEvent(eventName, payload = {}) {
+  if (!isDev()) return;
+  console.log('[Meta Pixel] Event fired:', eventName, payload);
+}
+
+function getStoredDedupeEvents() {
+  if (!isBrowser()) return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(META_PIXEL_DEDUPE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setStoredDedupeEvent(signature) {
+  if (!isBrowser()) return;
+
+  const current = getStoredDedupeEvents();
+  current[signature] = Date.now();
+  window.sessionStorage.setItem(META_PIXEL_DEDUPE_KEY, JSON.stringify(current));
+}
+
+function hasStoredDedupeEvent(signature) {
+  return Boolean(getStoredDedupeEvents()[signature]);
 }
 
 function ensureFbqStub() {
@@ -57,41 +126,36 @@ function injectMetaPixelScript() {
   document.head.appendChild(script);
 }
 
-function trackStandardEvent(eventName, params = {}) {
+function trackStandardEvent(eventName, payload = {}) {
   if (!isBrowser()) return false;
 
   const fbq = ensureFbqStub();
   if (typeof fbq !== 'function') {
-    console.warn('META fbq unavailable');
     return false;
   }
 
-  fbq('track', eventName, params);
+  fbq('track', eventName, payload);
+  logMetaEvent(eventName, payload);
   return true;
 }
 
-function buildPlanPayload({ plan = null, value = null, currency = null, extra = {} } = {}) {
-  const payload = {
+function buildPlanPayload(plan, extra = {}) {
+  const planConfig = getPlanEventConfig(plan);
+  if (!planConfig) {
+    return {
+      ...extra,
+    };
+  }
+
+  return {
+    content_name: planConfig.content_name,
+    content_ids: planConfig.content_ids,
+    content_type: planConfig.content_type,
+    currency: planConfig.currency,
+    value: planConfig.value,
+    plan_selected: planConfig.slug,
     ...extra,
   };
-
-  if (plan) {
-    payload.content_name = plan;
-    payload.content_ids = [plan];
-  }
-
-  if (value !== null && value !== undefined && value !== '') {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue)) {
-      payload.value = numericValue;
-    }
-  }
-
-  if (currency) {
-    payload.currency = `${currency}`.trim().toUpperCase();
-  }
-
-  return payload;
 }
 
 export function initializeMetaPixel() {
@@ -109,13 +173,13 @@ export function initializeMetaPixel() {
 
   window.fbq('init', pixelId);
   isPixelInitialized = true;
-  console.log('META INIT');
+
+  if (isDev()) {
+    console.log('[Meta Pixel] Initialized:', pixelId);
+  }
+
   trackPageView({ force: true });
   return true;
-}
-
-export function isMetaPixelReady() {
-  return isBrowser() && typeof window.fbq === 'function';
 }
 
 export function trackPageView({ path = null, force = false } = {}) {
@@ -129,32 +193,56 @@ export function trackPageView({ path = null, force = false } = {}) {
     return false;
   }
 
-  const tracked = trackStandardEvent('PageView');
+  const tracked = trackStandardEvent('PageView', {});
   if (tracked) {
     lastTrackedPagePath = nextPath;
-    console.log('META PAGEVIEW');
-    console.log('META PAGEVIEW PATH', nextPath);
   }
 
   return tracked;
 }
 
-export function trackLead(params = {}) {
+export function trackViewContent(plan = null, { path = null } = {}) {
   if (!getMetaPixelId()) return false;
 
   initializeMetaPixel();
-  return trackStandardEvent('Lead', params);
+
+  const normalizedPlan = normalizePlan(plan);
+  const signature = `${path || getCurrentPath()}::${normalizedPlan || 'plans'}`;
+  if (signature === lastViewContentSignature) {
+    return false;
+  }
+
+  lastViewContentSignature = signature;
+
+  const payload = normalizedPlan
+    ? buildPlanPayload(normalizedPlan)
+    : {
+        content_name: 'CEO Rentable Planes',
+        content_ids: ['plans'],
+        content_type: 'product_group',
+      };
+
+  return trackStandardEvent('ViewContent', payload);
 }
 
-export function trackInitiateCheckout({ plan = null, value = null, currency = null } = {}) {
+export function trackLead(payload = {}) {
   if (!getMetaPixelId()) return false;
+
+  initializeMetaPixel();
+  return trackStandardEvent('Lead', payload);
+}
+
+export function trackInitiateCheckout(plan) {
+  const planConfig = getPlanEventConfig(plan);
+  if (!planConfig || !getMetaPixelId()) {
+    return false;
+  }
 
   initializeMetaPixel();
 
   const signature = JSON.stringify({
-    plan: plan || null,
-    value: value ?? null,
-    currency: currency || null,
+    event: 'InitiateCheckout',
+    plan: planConfig.slug,
     path: getCurrentPath(),
   });
   const now = Date.now();
@@ -169,57 +257,47 @@ export function trackInitiateCheckout({ plan = null, value = null, currency = nu
   lastInitiateCheckoutSignature = signature;
   lastInitiateCheckoutAt = now;
 
-  return trackStandardEvent(
-    'InitiateCheckout',
-    buildPlanPayload({
-      plan,
-      value,
-      currency,
-      extra: {
-        num_items: 1,
-      },
-    })
-  );
+  return trackStandardEvent('InitiateCheckout', buildPlanPayload(planConfig.slug));
 }
 
-export function trackRegistration({ plan = null } = {}) {
+export function trackCompleteRegistration(plan = null) {
   if (!getMetaPixelId()) return false;
 
   initializeMetaPixel();
-  return trackStandardEvent(
-    'CompleteRegistration',
-    buildPlanPayload({
-      plan,
-      extra: {
-        status: 'completed',
-      },
-    })
-  );
+  return trackStandardEvent('CompleteRegistration', buildPlanPayload(plan));
 }
 
-export function trackPurchase({ plan = null, value = null, currency = null } = {}) {
-  if (!getMetaPixelId()) return false;
+export function trackPurchase(plan, transactionId = null) {
+  const planConfig = getPlanEventConfig(plan);
+  if (!planConfig || !getMetaPixelId()) {
+    return false;
+  }
+
+  const signature = `Purchase::${transactionId || 'no-transaction'}::${planConfig.slug}`;
+  if (transactionId && hasStoredDedupeEvent(signature)) {
+    return false;
+  }
 
   initializeMetaPixel();
-  return trackStandardEvent(
+
+  const tracked = trackStandardEvent(
     'Purchase',
-    buildPlanPayload({
-      plan,
-      value,
-      currency,
-      extra: {
-        num_items: 1,
-      },
-    })
+    buildPlanPayload(planConfig.slug, transactionId ? { transaction_id: transactionId } : {})
   );
+
+  if (tracked && transactionId) {
+    setStoredDedupeEvent(signature);
+  }
+
+  return tracked;
 }
 
 export default {
   initializeMetaPixel,
-  isMetaPixelReady,
   trackPageView,
+  trackViewContent,
   trackLead,
   trackInitiateCheckout,
-  trackRegistration,
+  trackCompleteRegistration,
   trackPurchase,
 };
