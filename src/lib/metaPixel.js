@@ -1,6 +1,7 @@
 const META_PIXEL_SCRIPT_ID = 'meta-pixel-script';
 const META_PIXEL_DEDUPE_KEY = 'ceo_meta_pixel_fired_events';
 const INITIATE_CHECKOUT_DEDUPE_MS = 5000;
+const DEFAULT_META_PIXEL_ID = '339342380789724';
 
 const PLAN_EVENT_CONFIG = {
   monthly: {
@@ -44,12 +45,17 @@ function isDev() {
 }
 
 function getMetaPixelId() {
-  return `${import.meta.env.VITE_META_PIXEL_ID || '1493989665428952'}`.trim();
+  return `${import.meta.env.VITE_META_PIXEL_ID || DEFAULT_META_PIXEL_ID}`.trim();
 }
 
 function getCurrentPath() {
   if (!isBrowser()) return '/';
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function getCurrentUrl() {
+  if (!isBrowser()) return '';
+  return window.location.href;
 }
 
 function normalizePlan(plan) {
@@ -137,6 +143,22 @@ function trackStandardEvent(eventName, payload = {}) {
   fbq('track', eventName, payload);
   logMetaEvent(eventName, payload);
   return true;
+}
+
+export function buildConversionApiEvent(eventName, payload = {}, { eventId = null, userData = {} } = {}) {
+  if (!eventName) {
+    return null;
+  }
+
+  return {
+    event_name: eventName,
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: 'website',
+    event_source_url: getCurrentUrl(),
+    custom_data: payload,
+    ...(eventId ? { event_id: eventId } : {}),
+    ...(Object.keys(userData).length ? { user_data: userData } : {}),
+  };
 }
 
 function buildPlanPayload(plan, extra = {}) {
@@ -292,12 +314,21 @@ export function trackPurchase(plan, transactionId = null) {
   return tracked;
 }
 
+export function trackSubscribe(plan = null, extra = {}) {
+  if (!getMetaPixelId()) return false;
+
+  initializeMetaPixel();
+  return trackStandardEvent('Subscribe', buildPlanPayload(plan, extra));
+}
+
 export default {
   initializeMetaPixel,
+  buildConversionApiEvent,
   trackPageView,
   trackViewContent,
   trackLead,
   trackInitiateCheckout,
   trackCompleteRegistration,
   trackPurchase,
+  trackSubscribe,
 };

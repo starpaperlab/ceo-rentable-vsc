@@ -75,7 +75,7 @@ const APP_URL = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
 const DEFAULT_CURRENCY = import.meta.env.VITE_DEFAULT_CURRENCY || 'USD';
 const DEFAULT_TIMEZONE = import.meta.env.VITE_DEFAULT_TIMEZONE || 'UTC';
 const DEBUG_MODE = import.meta.env.VITE_DEBUG_MODE === 'true';
-const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID || '1493989665428952';
+const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID || '339342380789724';
 
 
 // ───────────────────────────────────────────────────────────────
