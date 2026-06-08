@@ -2,6 +2,7 @@ import React from 'react';
 import { Lock, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeatureGate } from '@/hooks/useFeatureGate';
+import { getCheckoutPath } from '@/lib/pendingCheckout';
 
 /**
  * FeatureGate — wraps content that requires a specific feature/plan.
@@ -43,7 +44,7 @@ export default function FeatureGate({ feature, children, fallback, inline = fals
         size="sm"
         className="gap-2"
         onClick={() => {
-          window.location.href = '/paywall';
+          window.location.href = getCheckoutPath('monthly', { checkout: true });
         }}
       >
         <Zap className="h-3.5 w-3.5" />

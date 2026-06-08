@@ -27,6 +27,10 @@ const ACTIVE_PAYPAL_PLANS = {
   },
 };
 
+function getPublicPlanSlug(planCode = '') {
+  return normalizePlanCode(planCode) === 'founder_lifetime' ? 'lifetime' : normalizePlanCode(planCode);
+}
+
 function normalizePlanCode(value = '') {
   return `${value || ''}`.trim().toLowerCase();
 }
@@ -252,7 +256,7 @@ async function createOrderWithPayPal(input, { env = process.env, fetchImpl = fet
   const appUrl = resolveAppUrl(env);
   const checkoutParams = new URLSearchParams({
     provider: 'paypal',
-    plan: input.plan.code,
+    plan: getPublicPlanSlug(input.plan.code),
   });
   const returnUrl = `${appUrl}/payment-success?${checkoutParams.toString()}`;
   const cancelUrl = `${appUrl}/payment-cancel?${checkoutParams.toString()}`;

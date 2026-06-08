@@ -7,6 +7,7 @@ import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
+import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
 
 const AUTH_SESSION_ERROR =
   'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
@@ -36,9 +37,9 @@ export default function PaymentSuccess() {
       const params = new URLSearchParams(window.location.search);
       const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
       const orderId = `${params.get('order_id') || params.get('orderId') || params.get('token') || ''}`.trim();
-      const nextPlanCode = `${params.get('plan') || ''}`.trim().toLowerCase();
+      const nextPlanCode = normalizeCheckoutPlan(params.get('plan'));
       setProvider(nextProvider || 'paypal');
-      if (['founder_lifetime', 'monthly'].includes(nextPlanCode)) {
+      if (nextPlanCode) {
         setPlanCode(nextPlanCode);
       }
 
@@ -59,8 +60,8 @@ export default function PaymentSuccess() {
           setStatus('error');
           return;
         }
-        if (['founder_lifetime', 'monthly'].includes(capture.planCode)) {
-          setPlanCode(capture.planCode);
+        if (normalizeCheckoutPlan(capture.planCode)) {
+          setPlanCode(normalizeCheckoutPlan(capture.planCode));
         }
 
         setMessage('Actualizando tu acceso...');
@@ -81,8 +82,8 @@ export default function PaymentSuccess() {
         .select('has_access, plan')
         .eq('id', currentUser.id)
         .maybeSingle();
-      if (['founder_lifetime', 'monthly'].includes(profile?.plan)) {
-        setPlanCode(profile.plan);
+      if (normalizeCheckoutPlan(profile?.plan)) {
+        setPlanCode(normalizeCheckoutPlan(profile.plan));
       }
 
       const { data: subscription } = await supabase
@@ -111,10 +112,7 @@ export default function PaymentSuccess() {
   };
 
   const goToLogin = () => {
-    navigate(
-      planCode ? `/login?mode=login&plan=${encodeURIComponent(planCode)}` : '/login?mode=login',
-      { replace: true }
-    );
+    navigate(getLoginPath(planCode, { mode: 'login' }), { replace: true });
   };
 
   if (status === 'loading') {

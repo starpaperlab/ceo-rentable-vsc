@@ -2,8 +2,6 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
@@ -12,6 +10,8 @@ import {
   clearPendingCheckoutPlan,
   getCheckoutPath,
   getPendingCheckoutPlan,
+  getRegisterPath,
+  isCheckoutRequested,
   normalizeCheckoutPlan,
   savePendingCheckoutPlan,
 } from '@/lib/pendingCheckout'
@@ -19,16 +19,6 @@ import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react
 
 const SESSION_ERROR_MESSAGE =
   'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
-
-const SHORT_FLOW_CONFIRMATION_ERROR =
-  'Este proyecto todavía exige confirmar el correo antes de pagar. Desactiva "Confirm Email" en Supabase para habilitar el flujo corto.'
-
-const INITIAL_AUTH_FORM = {
-  fullName: '',
-  email: '',
-  businessName: '',
-  password: '',
-}
 
 const PLANS = [
   {
@@ -44,7 +34,7 @@ const PLANS = [
       'Gestión de clientes e inventario',
       'Cancela cuando quieras',
     ],
-    cta: 'Comenzar hoy',
+    cta: 'Comprar mensual',
     paymentNote: 'Pago mensual · Procesado de forma segura por PayPal',
     recommended: false,
   },
@@ -60,7 +50,7 @@ const PLANS = [
       'Dashboard financiero y módulos comerciales',
       'Soporte por email',
     ],
-    cta: 'Obtener acceso Founder',
+    cta: 'Comprar lifetime',
     paymentNote: 'Pago único · Procesado de forma segura por PayPal',
     recommended: true,
   },
@@ -78,16 +68,13 @@ function getPlanPrice(planId) {
 export default function Paywall() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user, userProfile, isLoadingAuth, isLoadingProfile, login, register } = useAuth()
+  const { user, userProfile, isLoadingAuth, isLoadingProfile } = useAuth()
   const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
   const [autoCheckoutStatus, setAutoCheckoutStatus] = useState('idle')
-  const [authMode, setAuthMode] = useState('register')
-  const [authLoading, setAuthLoading] = useState(false)
-  const [authInfo, setAuthInfo] = useState('')
-  const [authForm, setAuthForm] = useState(INITIAL_AUTH_FORM)
   const autoCheckoutStartedRef = useRef(false)
   const requestedPlan = normalizeCheckoutPlan(searchParams.get('plan'))
+  const checkoutRequested = isCheckoutRequested(searchParams.get('checkout'))
   const selectedPlan = requestedPlan || getPendingCheckoutPlan()
   const selectedPlanData = PLANS.find((plan) => plan.id === selectedPlan) || null
   const isAuthLoadingResolved = isLoadingAuth || isLoadingProfile
@@ -100,52 +87,19 @@ export default function Paywall() {
 
   useEffect(() => {
     if (!selectedPlan || requestedPlan) return
-    navigate(getCheckoutPath(selectedPlan), { replace: true })
-  }, [navigate, requestedPlan, selectedPlan])
+    navigate(getCheckoutPath(selectedPlan, checkoutRequested ? { checkout: true } : {}), { replace: true })
+  }, [checkoutRequested, navigate, requestedPlan, selectedPlan])
 
   useEffect(() => {
     autoCheckoutStartedRef.current = false
     setAutoCheckoutStatus('idle')
     setError(null)
-    setAuthInfo('')
-  }, [selectedPlan])
-
-  useEffect(() => {
-    if (!selectedPlan || isAuthLoadingResolved) return
-
-    savePendingCheckoutPlan(selectedPlan)
-
-    if (!user) {
-      autoCheckoutStartedRef.current = false
-      setAutoCheckoutStatus('idle')
-      return
-    }
-
-    if (autoCheckoutStartedRef.current) return
-    autoCheckoutStartedRef.current = true
-    void handleCheckout(selectedPlan, { direct: true })
-  }, [isAuthLoadingResolved, selectedPlan, user])
-
-  const updateAuthField = (field, value) => {
-    setAuthForm((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const switchAuthMode = (nextMode) => {
-    setAuthMode(nextMode)
-    setError(null)
-    setAuthInfo('')
-  }
-
-  const getEmailConfirmationRedirectUrl = (planId) => {
-    if (typeof window === 'undefined') return undefined
-    return `${window.location.origin}${getCheckoutPath(planId)}`
-  }
+  }, [checkoutRequested, selectedPlan])
 
   async function handleCheckout(planId, { direct = false } = {}) {
     if (!user) {
       savePendingCheckoutPlan(planId)
-      setAuthMode('register')
-      setAutoCheckoutStatus('idle')
+      navigate(getRegisterPath(planId), { replace: true })
       return
     }
 
@@ -176,10 +130,10 @@ export default function Paywall() {
       if (direct) {
         setAutoCheckoutStatus('error')
       }
-    } catch (err) {
-      console.error('PayPal order error:', err)
+    } catch (checkoutError) {
+      console.error('PayPal order error:', checkoutError)
       setError(
-        err?.code === 'AUTH_REQUIRED'
+        checkoutError?.code === 'AUTH_REQUIRED'
           ? SESSION_ERROR_MESSAGE
           : 'Error creando la orden de PayPal. Por favor intenta nuevamente.'
       )
@@ -191,71 +145,22 @@ export default function Paywall() {
     }
   }
 
-  const handleQuickAuthSubmit = async (event) => {
-    event.preventDefault()
+  useEffect(() => {
+    if (!selectedPlan || isAuthLoadingResolved) return
 
-    if (!selectedPlan) return
+    savePendingCheckoutPlan(selectedPlan)
 
-    setError(null)
-    setAuthInfo('')
-    setAuthLoading(true)
-
-    try {
-      if (!authForm.email.trim()) {
-        throw new Error('Escribe tu correo electrónico.')
-      }
-
-      if (!authForm.password.trim()) {
-        throw new Error('Escribe tu contraseña.')
-      }
-
-      if (authMode === 'register') {
-        if (!authForm.fullName.trim()) {
-          throw new Error('Escribe tu nombre.')
-        }
-
-        if (!authForm.businessName.trim()) {
-          throw new Error('Escribe el nombre de tu negocio.')
-        }
-
-        if (authForm.password.trim().length < 6) {
-          throw new Error('La contraseña debe tener al menos 6 caracteres.')
-        }
-
-        const result = await register({
-          email: authForm.email,
-          password: authForm.password,
-          fullName: authForm.fullName,
-          businessName: authForm.businessName,
-          emailRedirectTo: getEmailConfirmationRedirectUrl(selectedPlan),
-        })
-
-        if (result.needsEmailConfirmation) {
-          setError(SHORT_FLOW_CONFIRMATION_ERROR)
-          return
-        }
-
-        setAuthInfo('Cuenta creada. Preparando tu checkout...')
-        setAutoCheckoutStatus('loading')
-        return
-      }
-
-      await login(authForm.email, authForm.password)
-      setAuthInfo('Sesión iniciada. Preparando tu checkout...')
-      setAutoCheckoutStatus('loading')
-    } catch (authError) {
-      const nextMessage = authError?.message || 'No pudimos validar tus datos.'
-
-      if (nextMessage.toLowerCase().includes('ya esta registrado')) {
-        setAuthMode('login')
-        setError('Ya existe una cuenta con ese correo. Inicia sesión para continuar con tu plan.')
-      } else {
-        setError(nextMessage)
-      }
-    } finally {
-      setAuthLoading(false)
+    if (!user) {
+      navigate(getRegisterPath(selectedPlan), { replace: true })
+      return
     }
-  }
+
+    if (!checkoutRequested) return
+    if (autoCheckoutStartedRef.current) return
+
+    autoCheckoutStartedRef.current = true
+    void handleCheckout(selectedPlan, { direct: true })
+  }, [checkoutRequested, isAuthLoadingResolved, navigate, selectedPlan, user])
 
   if (selectedPlan) {
     const price = getPlanPrice(selectedPlan)
@@ -266,8 +171,8 @@ export default function Paywall() {
         <div className="min-h-screen bg-gradient-to-br from-[#F7F3EE] via-white to-pink-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xl">
             <Loader className="w-10 h-10 animate-spin text-[#D45387] mx-auto mb-4" />
-            <h1 className="text-2xl font-black text-gray-900 mb-2">Validando tu sesión</h1>
-            <p className="text-sm text-gray-600">Estamos preparando el acceso al checkout seguro.</p>
+            <h1 className="text-2xl font-black text-gray-900 mb-2">Preparando tu acceso</h1>
+            <p className="text-sm text-gray-600">Estamos cargando tu plan seleccionado.</p>
           </div>
         </div>
       )
@@ -276,151 +181,12 @@ export default function Paywall() {
     if (!user) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-[#F7F3EE] via-white to-pink-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-3xl border border-[#EBC7D7] bg-white p-8 shadow-xl">
-              <div className="flex items-center gap-3 mb-5">
-                <img src="/brand/isotipo.png" alt="CEO Rentable OS" className="w-12 h-12 rounded-2xl" />
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#D45387]">Compra rápida</p>
-                  <h1 className="text-3xl font-black text-gray-900">Activa tu plan en minutos</h1>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[#F2D6E2] bg-[#FFF7FA] p-5 mb-6">
-                <p className="text-sm font-semibold text-gray-900">
-                  {planName} ·{' '}
-                  {selectedPlan === 'monthly'
-                    ? formatRecurringPrice(price.amount, price.currency, '/mes')
-                    : formatCurrencyAmount(price.amount, price.currency)}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Crea tu cuenta rápida y te enviamos directo a PayPal sin volver a elegir plan.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#F7F3EE] p-1 mb-6">
-                <button
-                  type="button"
-                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                    authMode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  }`}
-                  onClick={() => switchAuthMode('register')}
-                >
-                  Crear cuenta
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                    authMode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  }`}
-                  onClick={() => switchAuthMode('login')}
-                >
-                  Ya tengo cuenta
-                </button>
-              </div>
-
-              <form className="space-y-4" onSubmit={handleQuickAuthSubmit}>
-                {authMode === 'register' && (
-                  <div>
-                    <Label className="text-xs font-semibold text-slate-600">Nombre</Label>
-                    <Input
-                      value={authForm.fullName}
-                      onChange={(event) => updateAuthField('fullName', event.target.value)}
-                      placeholder="Tu nombre"
-                      className="mt-1 h-11 rounded-xl border-slate-200"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <Label className="text-xs font-semibold text-slate-600">Email</Label>
-                  <Input
-                    type="email"
-                    value={authForm.email}
-                    onChange={(event) => updateAuthField('email', event.target.value)}
-                    placeholder="tu@correo.com"
-                    className="mt-1 h-11 rounded-xl border-slate-200"
-                    autoComplete="email"
-                  />
-                </div>
-
-                {authMode === 'register' && (
-                  <div>
-                    <Label className="text-xs font-semibold text-slate-600">Nombre del negocio</Label>
-                    <Input
-                      value={authForm.businessName}
-                      onChange={(event) => updateAuthField('businessName', event.target.value)}
-                      placeholder="Ej. Mi Boutique"
-                      className="mt-1 h-11 rounded-xl border-slate-200"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <Label className="text-xs font-semibold text-slate-600">Contraseña</Label>
-                  <Input
-                    type="password"
-                    value={authForm.password}
-                    onChange={(event) => updateAuthField('password', event.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    className="mt-1 h-11 rounded-xl border-slate-200"
-                    autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
-                  />
-                </div>
-
-                {error && (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
-                  </div>
-                )}
-
-                {authInfo && (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                    {authInfo}
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full h-12 rounded-xl font-semibold text-white border-0 bg-[#D45387] hover:bg-[#C3467A]"
-                >
-                  {authLoading
-                    ? authMode === 'register'
-                      ? 'Creando cuenta...'
-                      : 'Entrando...'
-                    : authMode === 'register'
-                      ? 'Continuar a PayPal'
-                      : 'Entrar y continuar'}
-                </Button>
-              </form>
-
-              <p className="text-xs text-slate-400 mt-5 text-center">
-                No te pediremos confirmar el correo antes del pago. Tu acceso se activa solo después de que PayPal confirme la compra.
-              </p>
-            </div>
-
-            <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-xl">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#D45387] mb-3">Tu plan</p>
-              <h2 className="text-3xl font-black text-gray-900">{planName}</h2>
-              <p className="text-gray-600 text-sm mt-2">{selectedPlanData?.description}</p>
-              <div className="mt-5 mb-7">
-                <p className="text-4xl font-black text-gray-900">
-                  {selectedPlan === 'monthly'
-                    ? formatRecurringPrice(price.amount, price.currency, '/mes')
-                    : formatCurrencyAmount(price.amount, price.currency)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">{selectedPlanData?.paymentNote}</p>
-              </div>
-              <div className="space-y-3">
-                {(selectedPlanData?.features || []).map((feature) => (
-                  <div key={feature} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-[#D45387] flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-700">{feature}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xl">
+            <Loader className="w-10 h-10 animate-spin text-[#D45387] mx-auto mb-4" />
+            <h1 className="text-2xl font-black text-gray-900 mb-2">Llevándote al registro</h1>
+            <p className="text-sm text-gray-600">
+              Guardamos tu plan {planName} para que completes tu cuenta antes del pago.
+            </p>
           </div>
         </div>
       )
@@ -452,7 +218,7 @@ export default function Paywall() {
                 </Button>
               </div>
             </>
-          ) : (
+          ) : autoCheckoutStatus === 'loading' ? (
             <>
               <Loader className="w-10 h-10 animate-spin text-[#D45387] mx-auto mb-4" />
               <h1 className="text-2xl font-black text-gray-900 mb-2">Preparando tu checkout</h1>
@@ -463,6 +229,27 @@ export default function Paywall() {
                   : formatCurrencyAmount(price.amount, price.currency)}
               </p>
               <p className="text-xs text-gray-500">Te enviaremos a PayPal en unos segundos.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-black text-gray-900 mb-2">Tu plan está listo</h1>
+              <p className="text-sm text-gray-600 mb-2">
+                {planName} ·{' '}
+                {selectedPlan === 'monthly'
+                  ? formatRecurringPrice(price.amount, price.currency, '/mes')
+                  : formatCurrencyAmount(price.amount, price.currency)}
+              </p>
+              <p className="text-xs text-gray-500 mb-6">
+                Tu sesión ya está lista. Continúa al pago seguro en PayPal cuando quieras.
+              </p>
+              <div className="space-y-3">
+                <Button onClick={() => void handleCheckout(selectedPlan, { direct: true })} className="w-full bg-[#D45387] hover:bg-[#C3467A] text-white">
+                  Continuar a PayPal
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => navigate('/paywall', { replace: true })}>
+                  Ver planes
+                </Button>
+              </div>
             </>
           )}
         </div>
@@ -551,13 +338,14 @@ export default function Paywall() {
 
                   <Button
                     onClick={() => {
+                      savePendingCheckoutPlan(plan.id)
+
                       if (!user) {
-                        savePendingCheckoutPlan(plan.id)
-                        navigate(getCheckoutPath(plan.id), { replace: true })
+                        navigate(getRegisterPath(plan.id), { replace: true })
                         return
                       }
 
-                      void handleCheckout(plan.id)
+                      navigate(getCheckoutPath(plan.id, { checkout: true }), { replace: true })
                     }}
                     disabled={loading[plan.id]}
                     className={`w-full h-12 font-bold text-base rounded-xl mb-8 flex items-center justify-center gap-2 transition-all ${

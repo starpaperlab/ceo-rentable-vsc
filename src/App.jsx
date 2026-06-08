@@ -72,6 +72,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Login />} />
       <Route path="/diagnostico" element={<Diagnostico />} />
       <Route path="/acceso" element={<Acceso />} />
       <Route path="/activar-acceso" element={<ActivateAccess />} />

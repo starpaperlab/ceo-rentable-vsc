@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ const RESET_REQUEST_COOLDOWN_MS = 90 * 1000;
 const INITIAL_FORM = {
   fullName: '',
   email: '',
+  businessName: '',
   phone: '',
   password: '',
   confirmPassword: '',
@@ -27,6 +28,7 @@ const INITIAL_FORM = {
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     session,
     user,
@@ -57,6 +59,14 @@ export default function Login() {
     return Number(window.localStorage.getItem(RESET_COOLDOWN_STORAGE_KEY) || 0);
   });
 
+  const isRegisterRoute = location.pathname === '/register';
+  const checkoutPlanLabel =
+    checkoutPlan === 'monthly'
+      ? 'Plan Mensual'
+      : checkoutPlan === 'founder_lifetime'
+        ? 'Acceso Lifetime'
+        : null;
+
   const hasRecoveryInUrl = () => {
     const locationPayload = `${window.location.search} ${window.location.hash}`.toLowerCase();
     return locationPayload.includes('type=recovery') || locationPayload.includes('mode=reset');
@@ -65,14 +75,15 @@ export default function Login() {
   const recoverSecondsLeft = Math.max(0, Math.ceil((recoverCooldownUntil - nowMs) / 1000));
 
   const clearRecoveryUrl = () => {
-    if (window.location.pathname !== '/login' || window.location.search || window.location.hash) {
-      window.history.replaceState({}, '', '/login');
+    const basePath = isRegisterRoute ? '/register' : '/login';
+    if (window.location.pathname !== basePath || window.location.search || window.location.hash) {
+      window.history.replaceState({}, '', basePath);
     }
   };
 
   const getEmailConfirmationRedirectUrl = () => {
     const pendingPlan = checkoutPlan || getPendingCheckoutPlan();
-    const path = pendingPlan ? getCheckoutPath(pendingPlan) : '/login';
+    const path = pendingPlan ? getCheckoutPath(pendingPlan, { checkout: true }) : '/login';
     const baseUrl =
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin
@@ -82,8 +93,16 @@ export default function Login() {
   };
 
   const getPostAuthRedirect = (profile, fallbackPath) => {
-    const pendingPlan = getPendingCheckoutPlan();
-    return pendingPlan ? getCheckoutPath(pendingPlan) : fallbackPath || getRedirectPathForRole(profile);
+    const pendingPlan = checkoutPlan || getPendingCheckoutPlan();
+    if (pendingPlan) {
+      return getCheckoutPath(pendingPlan, { checkout: true });
+    }
+
+    if (isRegisterRoute) {
+      return '/paywall';
+    }
+
+    return fallbackPath || getRedirectPathForRole(profile);
   };
 
   useEffect(() => {
@@ -111,6 +130,8 @@ export default function Login() {
       savePendingCheckoutPlan(requestedPlan);
       setCheckoutPlan(requestedPlan);
       setMode(requestedMode === 'login' ? 'login' : 'register');
+    } else if (isRegisterRoute) {
+      setMode(requestedMode === 'login' ? 'login' : 'register');
     } else if (requestedMode === 'register') {
       setMode('register');
     }
@@ -130,7 +151,19 @@ export default function Login() {
       ...prev,
       email: prev.email || invitedEmail,
     }));
-  }, [navigate]);
+  }, [isRegisterRoute, navigate]);
+
+  useEffect(() => {
+    if (!isRegisterRoute || isLoadingAuth || isPasswordRecovery || mode === 'reset') {
+      return;
+    }
+
+    if (checkoutPlan) {
+      return;
+    }
+
+    navigate('/paywall', { replace: true });
+  }, [checkoutPlan, isLoadingAuth, isPasswordRecovery, isRegisterRoute, mode, navigate]);
 
   useEffect(() => {
     if (mode === 'reset' && session) {
@@ -236,6 +269,7 @@ export default function Login() {
           email: form.email,
           password: form.password,
           fullName: form.fullName,
+          businessName: form.businessName,
           phone: form.phone,
           emailRedirectTo: getEmailConfirmationRedirectUrl(),
         });
@@ -243,7 +277,7 @@ export default function Login() {
         if (result.needsEmailConfirmation) {
           setInfo(
             checkoutPlan
-              ? 'Tu cuenta fue creada. Revisa tu correo para confirmar el acceso. Al volver, continuaremos automaticamente con tu plan elegido.'
+              ? 'Tu cuenta fue creada. Revisa tu correo para confirmar el acceso. Al volver, continuaremos automáticamente con tu plan elegido.'
               : 'Tu cuenta fue creada. Revisa tu correo para confirmar el acceso antes de iniciar sesion.'
           );
           setMode('login');
@@ -291,11 +325,27 @@ export default function Login() {
           </h1>
           <p className="text-sm text-slate-500 mt-2">
             {mode === 'login' && 'Entra a tu panel financiero'}
-            {mode === 'register' && 'Crea tu cuenta y comienza con tu setup'}
+            {mode === 'register' && (checkoutPlan ? 'Crea tu cuenta para continuar al pago seguro' : 'Crea tu cuenta y comienza con tu setup')}
             {mode === 'recover' && 'Te enviamos un enlace para recuperar tu acceso'}
             {mode === 'reset' && 'Define tu nueva contrasena para volver a entrar'}
           </p>
         </div>
+
+        {checkoutPlan && mode === 'register' && (
+          <div className="mb-6 rounded-2xl border border-[#F2D6E2] bg-[#FFF7FA] px-4 py-3 text-sm text-slate-700">
+            {checkoutPlan === 'monthly'
+              ? 'Estás creando tu cuenta para el Plan Mensual.'
+              : 'Estás creando tu cuenta para el Acceso Lifetime.'}
+          </div>
+        )}
+
+        {checkoutPlan && mode === 'login' && (
+          <div className="mb-6 rounded-2xl border border-[#F2D6E2] bg-[#FFF7FA] px-4 py-3 text-sm text-slate-700">
+            {checkoutPlan === 'monthly'
+              ? 'Inicia sesión para continuar con el Plan Mensual.'
+              : 'Inicia sesión para continuar con el Acceso Lifetime.'}
+          </div>
+        )}
 
         {(mode === 'login' || mode === 'register') && !checkoutPlan && (
           <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#F7F3EE] p-1 mb-6">
@@ -344,6 +394,18 @@ export default function Login() {
           )}
 
           {mode === 'register' && (
+            <div>
+              <Label className="text-xs font-semibold text-slate-600">Nombre del negocio</Label>
+              <Input
+                value={form.businessName}
+                onChange={(event) => updateField('businessName', event.target.value)}
+                placeholder="Ej. Mi Boutique"
+                className="mt-1 h-11 rounded-xl border-slate-200"
+              />
+            </div>
+          )}
+
+          {mode === 'register' && !checkoutPlan && (
             <div>
               <Label className="text-xs font-semibold text-slate-600">Telefono</Label>
               <Input
@@ -414,9 +476,13 @@ export default function Login() {
                     ? 'Actualizando...'
                 : 'Creando cuenta...'
               : mode === 'login'
-                ? 'Entrar'
+                ? checkoutPlan
+                  ? 'Entrar y continuar'
+                  : 'Entrar'
                 : mode === 'register'
-                  ? 'Crear cuenta'
+                  ? checkoutPlan
+                    ? 'Crear cuenta y continuar'
+                    : 'Crear cuenta'
                   : mode === 'recover'
                     ? recoverSecondsLeft > 0
                       ? `Reintentar en ${recoverSecondsLeft}s`
@@ -490,7 +556,10 @@ export default function Login() {
 
         <p className="text-xs text-center text-slate-400 mt-5">
           {mode === 'login' && 'Tu sesion queda guardada de forma segura en este dispositivo.'}
-          {mode === 'register' && 'Al registrarte creamos tu perfil y luego podras continuar con tu onboarding.'}
+          {mode === 'register' &&
+            (checkoutPlan
+              ? `Después del registro te llevaremos a PayPal para completar tu ${checkoutPlanLabel || 'plan'}.`
+              : 'Al registrarte creamos tu perfil y luego podras continuar con tu onboarding.')}
           {mode === 'recover' && 'Si la cuenta existe, el correo de recuperacion llegara en unos minutos.'}
           {mode === 'reset' && 'Usa una contrasena segura que no repitas en otros servicios.'}
         </p>
