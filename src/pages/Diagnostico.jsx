@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
 import { generateBusinessDiagnosis } from '@/lib/geminiService'
+import { trackLead } from '@/lib/metaPixel'
 import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader } from 'lucide-react'
 
 const QUESTIONS = [
@@ -104,6 +105,12 @@ export default function Diagnostico() {
       console.error(error)
       return
     }
+
+    trackLead({
+      content_name: 'diagnostico_gratuito',
+      status: 'new',
+    })
+
     setStep(1)
   }
 

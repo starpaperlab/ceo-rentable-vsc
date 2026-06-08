@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
 import { formatCurrencyAmount, formatRecurringPrice } from '@/lib/currencyFormat'
+import { trackInitiateCheckout } from '@/lib/metaPixel'
 import {
   clearPendingCheckoutPlan,
   getCheckoutPath,
@@ -63,6 +64,15 @@ function getPlanPrice(planId) {
     amount: planConfig.amount,
     currency: planConfig.currency || ENV_CONFIG.paypal.currency,
   }
+}
+
+function fireInitiateCheckout(planId) {
+  const price = getPlanPrice(planId)
+  trackInitiateCheckout({
+    plan: planId,
+    value: price.amount,
+    currency: price.currency,
+  })
 }
 
 export default function Paywall() {
@@ -207,6 +217,7 @@ export default function Paywall() {
                 <Button
                   onClick={() => {
                     autoCheckoutStartedRef.current = false
+                    fireInitiateCheckout(selectedPlan)
                     void handleCheckout(selectedPlan, { direct: true })
                   }}
                   className="w-full bg-[#D45387] hover:bg-[#C3467A] text-white"
@@ -243,7 +254,13 @@ export default function Paywall() {
                 Tu sesión ya está lista. Continúa al pago seguro en PayPal cuando quieras.
               </p>
               <div className="space-y-3">
-                <Button onClick={() => void handleCheckout(selectedPlan, { direct: true })} className="w-full bg-[#D45387] hover:bg-[#C3467A] text-white">
+                <Button
+                  onClick={() => {
+                    fireInitiateCheckout(selectedPlan)
+                    void handleCheckout(selectedPlan, { direct: true })
+                  }}
+                  className="w-full bg-[#D45387] hover:bg-[#C3467A] text-white"
+                >
                   Continuar a PayPal
                 </Button>
                 <Button variant="outline" className="w-full" onClick={() => navigate('/paywall', { replace: true })}>
@@ -338,6 +355,7 @@ export default function Paywall() {
 
                   <Button
                     onClick={() => {
+                      fireInitiateCheckout(plan.id)
                       savePendingCheckoutPlan(plan.id)
 
                       if (!user) {

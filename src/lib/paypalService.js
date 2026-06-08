@@ -153,6 +153,8 @@ export async function capturePayPalOrder(orderId) {
     captureId: payload?.captureId || null,
     amount: payload?.amount ?? null,
     currency: payload?.currency || null,
+    planCode: payload?.planCode || null,
+    planType: payload?.planType || null,
     status: payload?.status || 'completed',
   };
 }

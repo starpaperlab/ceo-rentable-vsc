@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { capturePayPalOrder } from '@/lib/paypalService';
+import { ENV_CONFIG } from '@/config/env';
 import { useAuth } from '@/lib/AuthContext';
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
+import { trackPurchase } from '@/lib/metaPixel';
 
 const AUTH_SESSION_ERROR =
   'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
@@ -21,6 +23,7 @@ export default function PaymentSuccess() {
   const [planCode, setPlanCode] = useState(null);
   const [message, setMessage] = useState('Confirmando tu pago...');
   const hasProcessedRef = useRef(false);
+  const hasTrackedPurchaseRef = useRef(false);
 
   const planLabel =
     planCode === 'founder_lifetime'
@@ -60,8 +63,19 @@ export default function PaymentSuccess() {
           setStatus('error');
           return;
         }
-        if (normalizeCheckoutPlan(capture.planCode)) {
-          setPlanCode(normalizeCheckoutPlan(capture.planCode));
+        const normalizedCapturePlan = normalizeCheckoutPlan(capture.planCode);
+        const resolvedPlanCode = normalizedCapturePlan || nextPlanCode || planCode || null;
+        if (normalizedCapturePlan) {
+          setPlanCode(normalizedCapturePlan);
+        }
+
+        if (!hasTrackedPurchaseRef.current) {
+          hasTrackedPurchaseRef.current = true;
+          trackPurchase({
+            plan: resolvedPlanCode,
+            value: capture.amount,
+            currency: capture.currency || ENV_CONFIG.paypal.currency,
+          });
         }
 
         setMessage('Actualizando tu acceso...');

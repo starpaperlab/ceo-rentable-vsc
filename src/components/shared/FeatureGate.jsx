@@ -3,6 +3,7 @@ import { Lock, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeatureGate } from '@/hooks/useFeatureGate';
 import { getCheckoutPath } from '@/lib/pendingCheckout';
+import { trackInitiateCheckout } from '@/lib/metaPixel';
 
 /**
  * FeatureGate — wraps content that requires a specific feature/plan.
@@ -44,6 +45,9 @@ export default function FeatureGate({ feature, children, fallback, inline = fals
         size="sm"
         className="gap-2"
         onClick={() => {
+          trackInitiateCheckout({
+            plan: 'monthly',
+          });
           window.location.href = getCheckoutPath('monthly', { checkout: true });
         }}
       >

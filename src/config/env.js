@@ -75,6 +75,7 @@ const APP_URL = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
 const DEFAULT_CURRENCY = import.meta.env.VITE_DEFAULT_CURRENCY || 'USD';
 const DEFAULT_TIMEZONE = import.meta.env.VITE_DEFAULT_TIMEZONE || 'UTC';
 const DEBUG_MODE = import.meta.env.VITE_DEBUG_MODE === 'true';
+const META_PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID || '517991158551582';
 
 
 // ───────────────────────────────────────────────────────────────
@@ -151,6 +152,12 @@ export const ENV_CONFIG = {
     debug: DEBUG_MODE,
   },
 
+  // Meta Pixel
+  metaPixel: {
+    id: META_PIXEL_ID,
+    enabled: !!META_PIXEL_ID,
+  },
+
   // Brand
   brand: BRAND_COLORS,
 };
@@ -163,6 +170,7 @@ if (DEBUG_MODE) {
     paypal: ENV_CONFIG.paypal.enabled ? '✓' : '✗',
     resend: ENV_CONFIG.resend.enabled ? '✓' : '✗',
     gemini: ENV_CONFIG.gemini.enabled ? '✓' : '✗',
+    metaPixel: ENV_CONFIG.metaPixel.enabled ? '✓' : '✗',
   });
 }
 
