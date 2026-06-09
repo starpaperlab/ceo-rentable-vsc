@@ -58,7 +58,10 @@ export default function EmailLogs() {
   const filtered = logs.filter((log) => {
     const matchSearch =
       log.email?.toLowerCase().includes(search.toLowerCase()) ||
-      log.name?.toLowerCase().includes(search.toLowerCase());
+      log.name?.toLowerCase().includes(search.toLowerCase()) ||
+      log.subject?.toLowerCase().includes(search.toLowerCase()) ||
+      log.template_name?.toLowerCase().includes(search.toLowerCase()) ||
+      log.admin_name?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || log.status === statusFilter;
     const matchDate = filterByDate(log);
     return matchSearch && matchStatus && matchDate;
@@ -134,8 +137,8 @@ export default function EmailLogs() {
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead>Email</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Asunto</TableHead>
+                <TableHead>Template</TableHead>
+                <TableHead>Origen</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead className="w-32">Acciones</TableHead>
@@ -152,18 +155,30 @@ export default function EmailLogs() {
               ) : (
                 filtered.map((log) => (
                   <TableRow key={log.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium text-sm">{log.email}</TableCell>
-                    <TableCell className="text-sm">{log.name || '—'}</TableCell>
-                    <TableCell className="text-sm">{log.subject}</TableCell>
+                    <TableCell className="text-sm">
+                      <p className="font-medium">{log.email}</p>
+                      <p className="text-xs text-muted-foreground">{log.name || 'Sin nombre'}</p>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <p className="font-medium">{log.template_name || '—'}</p>
+                      <p className="text-xs text-muted-foreground">{log.subject}</p>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <p className="capitalize">{log.source_type || 'registered'}</p>
+                      <p className="text-xs text-muted-foreground">{log.admin_name ? `Admin: ${log.admin_name}` : '—'}</p>
+                    </TableCell>
                     <TableCell>
                       {log.status === 'success' ? (
                         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                           ✅ Exitoso
                         </Badge>
                       ) : (
-                        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                          ❌ Falló
-                        </Badge>
+                        <div className="space-y-1">
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            ❌ Falló
+                          </Badge>
+                          <p className="max-w-[220px] text-xs text-red-600">{log.error_message || 'Sin detalle de error'}</p>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">

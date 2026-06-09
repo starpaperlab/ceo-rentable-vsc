@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { sendCustomEmail } from '@/lib/emailService';
-import { buildInvitationEmailHtml, buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
+import { buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
+import { emailService as adminEmailService } from '@/services/emailService';
 
 function normalizeEmail(email = '') {
   return `${email}`.trim().toLowerCase();
@@ -119,15 +119,23 @@ async function inviteOrActivateUser({ email, full_name }) {
       is_lifetime: true,
     });
 
-    const accessEmailResult = await sendCustomEmail(
-      adminId,
-      normalizedEmail,
-      'Tu acceso fue activado en CEO Rentable OS™',
-      `
-        <p>Hola ${updated.full_name || normalizedEmail},</p>
-        <p>Tu acceso ya está activo. Puedes iniciar sesión y entrar a tu panel.</p>
-      `
-    );
+    let accessEmailResult = { success: true };
+    try {
+      await adminEmailService.sendNamedTemplate(
+        'access-granted',
+        normalizedEmail,
+        {
+          name: updated.full_name || normalizedEmail,
+          email: normalizedEmail,
+        },
+        {
+          userId: adminId,
+          sourceType: 'registered',
+        }
+      );
+    } catch (error) {
+      accessEmailResult = { success: false, error: error.message || 'Error desconocido' };
+    }
     if (accessEmailResult?.success === false && !isResendNotConfiguredResult(accessEmailResult)) {
       throw new Error(`El acceso se activó, pero no se pudo enviar el correo: ${accessEmailResult.error || 'Error desconocido'}`);
     }
@@ -197,18 +205,24 @@ async function inviteOrActivateUser({ email, full_name }) {
     throw adminTableError(invitationError);
   }
 
-  const html = buildInvitationEmailHtml({
-    fullName: full_name,
-    inviteLink: invitationLink,
-    role: safeRole,
-  });
-
-  const invitationEmailResult = await sendCustomEmail(
-    adminId,
-    normalizedEmail,
-    'Invitación a CEO Rentable OS™',
-    html
-  );
+  let invitationEmailResult = { success: true };
+  try {
+    await adminEmailService.sendNamedTemplate(
+      'invitation-access',
+      normalizedEmail,
+      {
+        name: full_name || normalizedEmail,
+        email: normalizedEmail,
+        invite_link: invitationLink,
+      },
+      {
+        userId: adminId,
+        sourceType: 'manual',
+      }
+    );
+  } catch (error) {
+    invitationEmailResult = { success: false, error: error.message || 'Error desconocido' };
+  }
   if (invitationEmailResult?.success === false && !isResendNotConfiguredResult(invitationEmailResult)) {
     throw new Error(`La invitación se guardó, pero no se pudo enviar el correo: ${invitationEmailResult.error || 'Error desconocido'}`);
   }
@@ -425,18 +439,24 @@ export function useResendInvitation() {
         invitation.invitation_token,
         invitation.email
       );
-      const html = buildInvitationEmailHtml({
-        fullName: invitation.full_name,
-        inviteLink: invitationLink,
-        role: invitation.role,
-      });
-
-      const resendResult = await sendCustomEmail(
-        adminId,
-        invitation.email,
-        'Recordatorio de invitación — CEO Rentable OS™',
-        html
-      );
+      let resendResult = { success: true };
+      try {
+        await adminEmailService.sendNamedTemplate(
+          'invitation-access',
+          invitation.email,
+          {
+            name: invitation.full_name || invitation.email,
+            email: invitation.email,
+            invite_link: invitationLink,
+          },
+          {
+            userId: adminId,
+            sourceType: 'manual',
+          }
+        );
+      } catch (error) {
+        resendResult = { success: false, error: error.message || 'Error desconocido' };
+      }
       if (resendResult?.success === false && !isResendNotConfiguredResult(resendResult)) {
         throw new Error(`No se pudo reenviar el correo: ${resendResult.error || 'Error desconocido'}`);
       }

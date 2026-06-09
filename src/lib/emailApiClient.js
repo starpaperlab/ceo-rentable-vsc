@@ -36,7 +36,7 @@ async function getAccessToken() {
   return getAccessTokenFromStorage();
 }
 
-export async function sendEmailThroughBackend({ to, subject, html, text, replyTo, scope = 'user' }) {
+async function postEmailRequest(requestPayload = {}) {
   const accessToken = await getAccessToken();
   if (!accessToken) {
     return {
@@ -54,27 +54,42 @@ export async function sendEmailThroughBackend({ to, subject, html, text, replyTo
     },
     credentials: 'include',
     body: JSON.stringify({
-      to,
-      subject,
-      html,
-      text,
-      replyTo,
-      scope,
+      ...requestPayload,
       accessToken,
     }),
   });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
+  const responsePayload = await response.json().catch(() => ({}));
+  if (!response.ok || responsePayload?.success === false) {
     return {
       success: false,
-      code: payload?.code || 'SEND_EMAIL_FAILED',
-      error: payload?.error || 'No se pudo enviar el correo.',
+      code: responsePayload?.code || 'SEND_EMAIL_FAILED',
+      error: responsePayload?.error || 'No se pudo enviar el correo.',
+      details: responsePayload,
     };
   }
 
   return {
     success: true,
-    messageId: payload?.messageId || null,
+    ...responsePayload,
   };
+}
+
+export async function sendEmailThroughBackend({ to, subject, html, text, replyTo, scope = 'user' }) {
+  return postEmailRequest({
+    to,
+    subject,
+    html,
+    text,
+    replyTo,
+    scope,
+  });
+}
+
+export async function postAdminEmailAction(action, payload = {}) {
+  return postEmailRequest({
+    ...payload,
+    action,
+    scope: 'admin',
+  });
 }

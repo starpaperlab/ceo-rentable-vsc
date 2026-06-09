@@ -69,91 +69,91 @@ export default function Clients() {
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data) => {
-      if (ownerId) {
-        try {
-          await ensureDbUserRecord({ user, userProfile });
-        } catch (profileError) {
-          console.warn('No se pudo asegurar perfil antes de crear cliente:', profileError?.message || profileError);
-        }
-      }
+  const persistClient = async (data, { targetClient = null } = {}) => {
+    const now = new Date().toISOString();
+    const basePayload = normalizeClientPayload(data);
 
-      const now = new Date().toISOString();
-      const basePayload = normalizeClientPayload(data);
-      let payload = {
-        ...basePayload,
-        user_id: ownerId,
-        created_by: ownerEmail || null,
-        created_at: now,
-        created_date: now,
-      };
-
-      const tryInsert = async (candidate) => {
-        const { error } = await supabase.from('clients').insert(candidate);
-        if (!error) return;
-
-        if (isMissingColumnError(error, 'clients.user_id') || isMissingColumnError(error, 'user_id')) {
-          const next = { ...candidate };
-          delete next.user_id;
-          return tryInsert(next);
-        }
-        if (isMissingColumnError(error, 'clients.created_by') || isMissingColumnError(error, 'created_by')) {
-          const next = { ...candidate };
-          delete next.created_by;
-          return tryInsert(next);
-        }
-        if (isMissingColumnError(error, 'clients.created_date') || isMissingColumnError(error, 'created_date')) {
-          const next = { ...candidate };
-          delete next.created_date;
-          return tryInsert(next);
-        }
-        if (isMissingColumnError(error, 'clients.created_at') || isMissingColumnError(error, 'created_at')) {
-          const next = { ...candidate };
-          delete next.created_at;
-          return tryInsert(next);
-        }
-        if (hasOwnerConstraintIssue(error, 'clients')) {
-          const next = { ...candidate };
-          delete next.user_id;
-          return tryInsert(next);
-        }
-
-        throw error;
-      };
-
-      await tryInsert(payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-      setShowForm(false);
-      toast.success('Cliente creado');
-    },
-    onError: (error) => {
-      toast.error(`No se pudo crear el cliente: ${error.message}`);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const payload = normalizeClientPayload(data);
+    if (targetClient?.id) {
       await updateOwnedRowById({
         table: 'clients',
-        id,
-        payload,
+        id: targetClient.id,
+        payload: basePayload,
         ownerId,
         ownerEmail,
         adminMode,
       });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-      setShowForm(false);
-      setEditingClient(null);
-      toast.success('Cliente actualizado');
-    },
+
+      return {
+        payload: basePayload,
+        remoteUpdatedAt: now,
+      };
+    }
+
+    if (ownerId) {
+      try {
+        await ensureDbUserRecord({ user, userProfile });
+      } catch (profileError) {
+        console.warn('No se pudo asegurar perfil antes de crear cliente:', profileError?.message || profileError);
+      }
+    }
+
+    const payload = {
+      ...basePayload,
+      user_id: ownerId,
+      created_by: ownerEmail || null,
+      created_at: now,
+      created_date: now,
+    };
+
+    const tryInsert = async (candidate) => {
+      const { data: insertedRow, error } = await supabase
+        .from('clients')
+        .insert(candidate)
+        .select()
+        .single();
+      if (!error) return insertedRow;
+
+      if (isMissingColumnError(error, 'clients.user_id') || isMissingColumnError(error, 'user_id')) {
+        const next = { ...candidate };
+        delete next.user_id;
+        return tryInsert(next);
+      }
+      if (isMissingColumnError(error, 'clients.created_by') || isMissingColumnError(error, 'created_by')) {
+        const next = { ...candidate };
+        delete next.created_by;
+        return tryInsert(next);
+      }
+      if (isMissingColumnError(error, 'clients.created_date') || isMissingColumnError(error, 'created_date')) {
+        const next = { ...candidate };
+        delete next.created_date;
+        return tryInsert(next);
+      }
+      if (isMissingColumnError(error, 'clients.created_at') || isMissingColumnError(error, 'created_at')) {
+        const next = { ...candidate };
+        delete next.created_at;
+        return tryInsert(next);
+      }
+      if (hasOwnerConstraintIssue(error, 'clients')) {
+        const next = { ...candidate };
+        delete next.user_id;
+        return tryInsert(next);
+      }
+
+      throw error;
+    };
+
+    const saved = await tryInsert(payload);
+    return {
+      payload: basePayload,
+      remoteUpdatedAt: saved?.updated_at || now,
+      saved,
+    };
+  };
+
+  const saveClientMutation = useMutation({
+    mutationFn: async (data) => persistClient(data, { targetClient: editingClient }),
     onError: (error) => {
-      toast.error(`No se pudo actualizar el cliente: ${error.message}`);
+      toast.error(`No se pudo guardar el cliente: ${error.message}`);
     },
   });
 
@@ -176,12 +176,10 @@ export default function Clients() {
     },
   });
 
-  const handleSubmit = (data) => {
-    if (editingClient) {
-      updateMutation.mutate({ id: editingClient.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
+  const handleSubmit = async (data) => {
+    const result = await saveClientMutation.mutateAsync(data);
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
+    return result;
   };
 
   const handleEdit = (client) => {
@@ -253,10 +251,19 @@ export default function Clients() {
       <AnimatePresence>
         {showForm && (
           <ClientForm
+            key={editingClient?.id || 'new-client'}
             client={editingClient}
             onSubmit={handleSubmit}
+            onRemoteSave={(data) => persistClient(data, { targetClient: editingClient })}
+            onSaved={() => {
+              setShowForm(false);
+              setEditingClient(null);
+              toast.success(editingClient?.id ? 'Cliente actualizado' : 'Cliente creado');
+            }}
             onCancel={() => { setShowForm(false); setEditingClient(null); }}
-            isLoading={createMutation.isPending || updateMutation.isPending}
+            isLoading={saveClientMutation.isPending}
+            autosaveUserId={ownerId || ownerEmail || 'anon'}
+            remoteUpdatedAt={editingClient?.updated_at || null}
           />
         )}
       </AnimatePresence>

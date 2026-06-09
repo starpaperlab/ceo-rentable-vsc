@@ -15,7 +15,8 @@ import PreviewModal from '@/components/billing/PreviewModal';
 import OverdueDashboard from '@/components/billing/OverdueDashboard';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useAuth } from '@/lib/AuthContext';
-import { deleteOwnedRowById, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import { mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
+import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Facturacion', description: 'Registra ventas con facturas y da seguimiento a cobros pendientes.' },
@@ -23,46 +24,12 @@ const TOUR_STEPS = [
   { title: 'Vencidas', description: 'Identifica rapido facturas atrasadas y registra recordatorios.' },
 ];
 
-const DEFAULT_DOCUMENT_PREFS = {
-  doc_show_socials: true,
-  doc_show_fiscal_id: true,
-  doc_show_address: true,
-  doc_show_contact: true,
-  doc_show_signature: false,
-};
-
 function applyBusinessConfigToDocument(doc = {}, config = {}) {
-  return {
-    ...doc,
-    company_name: config?.business_name || doc.company_name || '',
-    logo_url: config?.logo_url || doc.logo_url || '',
-    logo_size: config?.logo_size || doc.logo_size || 'medium',
-    logo_width: config?.logo_width || doc.logo_width || 24,
-    logo_position: config?.logo_position || doc.logo_position || 'left',
-    brand_color: config?.brand_color || doc.brand_color || '#D94F8A',
-    font_family: config?.font_family || doc.font_family || 'Inter',
-    fiscal_name: config?.fiscal_name || doc.fiscal_name || '',
-    fiscal_id: config?.fiscal_id || doc.fiscal_id || '',
-    fiscal_address: config?.fiscal_address || config?.address || doc.fiscal_address || '',
-    contact_name: config?.contact_name || doc.contact_name || '',
-    contact_title: config?.contact_title || doc.contact_title || '',
-    contact_email: config?.contact_email || doc.contact_email || '',
-    phone_primary: config?.phone_primary || doc.phone_primary || '',
-    phone_secondary: config?.phone_secondary || doc.phone_secondary || '',
-    address: config?.address || config?.fiscal_address || doc.address || '',
-    city_country: config?.city_country || doc.city_country || '',
-    instagram_url: config?.instagram_url || doc.instagram_url || '',
-    facebook_url: config?.facebook_url || doc.facebook_url || '',
-    tiktok_url: config?.tiktok_url || doc.tiktok_url || '',
-    linkedin_url: config?.linkedin_url || doc.linkedin_url || '',
-    website_url: config?.website_url || doc.website_url || '',
-    whatsapp_url: config?.whatsapp_url || doc.whatsapp_url || '',
-    doc_show_socials: config?.doc_show_socials ?? doc.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
-    doc_show_fiscal_id: config?.doc_show_fiscal_id ?? doc.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
-    doc_show_address: config?.doc_show_address ?? doc.doc_show_address ?? DEFAULT_DOCUMENT_PREFS.doc_show_address,
-    doc_show_contact: config?.doc_show_contact ?? doc.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
-    doc_show_signature: config?.doc_show_signature ?? doc.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
-  };
+  return resolveDocumentBranding(doc, config);
+}
+
+function normalizeEmail(value = '') {
+  return `${value || ''}`.trim().toLowerCase();
 }
 
 export default function Billing() {
@@ -84,45 +51,43 @@ export default function Billing() {
   });
 
   const safeInsert = async (table, payload) => {
-    try {
-      const { data, error } = await supabase
-        .from(table)
-        .insert(payload)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      if (
-        isMissingColumnError(error, `${table}.user_id`) ||
-        isMissingColumnError(error, 'user_id') ||
-        isMissingColumnError(error, `${table}.created_by`) ||
-        isMissingColumnError(error, 'created_by')
-      ) {
-        const noUserId = { ...payload };
-        delete noUserId.user_id;
-        delete noUserId.created_by;
-        const { data, error: retryError } = await supabase
+    const safePayload = { ...payload };
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        const { data, error } = await supabase
           .from(table)
-          .insert(noUserId)
+          .insert(safePayload)
           .select()
           .single();
-        if (retryError) throw retryError;
+        if (error) throw error;
         return data;
+      } catch (error) {
+        const missingColumn = extractMissingColumnFromError(error);
+        if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
+          delete safePayload[missingColumn];
+          continue;
+        }
+
+        if (
+          isMissingColumnError(error, `${table}.user_id`) ||
+          isMissingColumnError(error, 'user_id') ||
+          isMissingColumnError(error, `${table}.created_by`) ||
+          isMissingColumnError(error, 'created_by')
+        ) {
+          delete safePayload.user_id;
+          delete safePayload.created_by;
+          continue;
+        }
+        if (hasOwnerConstraintIssue(error, table)) {
+          delete safePayload.user_id;
+          continue;
+        }
+        throw error;
       }
-      if (hasOwnerConstraintIssue(error, table)) {
-        const noUserId = { ...payload };
-        delete noUserId.user_id;
-        const { data, error: retryError } = await supabase
-          .from(table)
-          .insert(noUserId)
-          .select()
-          .single();
-        if (retryError) throw retryError;
-        return data;
-      }
-      throw error;
     }
+
+    throw new Error(`No se pudo insertar en ${table} porque Supabase sigue reportando columnas faltantes.`);
   };
 
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
@@ -160,7 +125,57 @@ export default function Billing() {
     queryFn: () => fetchOwnedRows({ table: 'business_config', ownerId, ownerEmail, adminMode, orderBy: 'updated_at' }),
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
-  const config = configs[0] || null;
+  const { data: brandProfiles = [] } = useQuery({
+    queryKey: ['brand-profiles', ownerId, ownerEmail],
+    queryFn: () => fetchOwnedRows({
+      table: 'brand_profiles',
+      ownerId,
+      ownerEmail,
+      adminMode: false,
+      orderBy: 'updated_at',
+      ascending: false,
+    }),
+    enabled: adminMode && !!(ownerId || ownerEmail),
+  });
+  const ownConfig = useMemo(() => {
+    const byUserId = configs.find((item) => ownerId && item.user_id === ownerId);
+    if (byUserId) return byUserId;
+
+    const byEmail = configs.find((item) => ownerEmail && normalizeEmail(item.created_by) === ownerEmail);
+    if (byEmail) return byEmail;
+
+    return adminMode ? null : configs[0] || null;
+  }, [configs, ownerId, ownerEmail, adminMode]);
+
+  const getConfigForDocument = (doc = null) => {
+    if (!doc) return ownConfig;
+
+    const docOwnerId = doc.user_id || null;
+    const docOwnerEmail = normalizeEmail(doc.created_by);
+
+    const byUserId = configs.find((item) => docOwnerId && item.user_id === docOwnerId);
+    if (byUserId) return byUserId;
+
+    const byEmail = configs.find((item) => docOwnerEmail && normalizeEmail(item.created_by) === docOwnerEmail);
+    if (byEmail) return byEmail;
+
+    return adminMode ? null : ownConfig;
+  };
+
+  const defaultAdminBrandProfile = useMemo(() => {
+    if (!adminMode || brandProfiles.length === 0) return null;
+    return brandProfiles.find((profile) => profile.is_default) || brandProfiles[0] || null;
+  }, [adminMode, brandProfiles]);
+
+  const newDocumentConfig = useMemo(() => {
+    if (adminMode && defaultAdminBrandProfile) {
+      return mapBrandProfileToBusinessConfig(defaultAdminBrandProfile, {
+        ownerName: userProfile?.full_name || ownerEmail,
+        ownerEmail,
+      });
+    }
+    return ownConfig;
+  }, [adminMode, defaultAdminBrandProfile, ownConfig, ownerEmail, userProfile?.full_name]);
 
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (id) => {
@@ -204,7 +219,13 @@ export default function Billing() {
         }
       }
 
-      const { id, quote_number, created_at, updated_at, ...rest } = quote;
+      const {
+        id: _id,
+        quote_number: _quoteNumber,
+        created_at: _createdAt,
+        updated_at: _updatedAt,
+        ...rest
+      } = quote;
       const payload = withOwner({
         ...rest,
         invoice_number: `FAC-${String(invoices.length + 1).padStart(4, '0')}`,
@@ -248,6 +269,7 @@ export default function Billing() {
     return (
       <div className="p-4 lg:p-8 max-w-4xl mx-auto">
         <DocumentForm
+          key={`${editDoc.type}-${editDoc.doc?.id || 'new'}-${editDoc.doc?.brand_profile_id || defaultAdminBrandProfile?.id || 'default'}`}
           type={editDoc.type}
           doc={editDoc.doc}
           onSave={() => setEditDoc(null)}
@@ -255,7 +277,8 @@ export default function Billing() {
           clients={clients}
           products={products}
           inventoryItems={inventoryItems}
-          config={config}
+          config={editDoc.doc ? getConfigForDocument(editDoc.doc) : newDocumentConfig}
+          brandProfiles={adminMode ? brandProfiles : []}
           ownerId={ownerId}
           ownerEmail={ownerEmail}
           ownerName={userProfile?.full_name || ownerEmail}
@@ -332,7 +355,7 @@ export default function Billing() {
             type="invoice"
             onEdit={(doc) => setEditDoc({ type: 'invoice', doc })}
             onDelete={(id) => deleteInvoiceMutation.mutate(id)}
-            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, config), _type: 'invoice' })}
+            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, getConfigForDocument(doc)), _type: 'invoice' })}
           />
         </TabsContent>
 
@@ -342,7 +365,7 @@ export default function Billing() {
             type="quote"
             onEdit={(doc) => setEditDoc({ type: 'quote', doc })}
             onDelete={(id) => deleteQuoteMutation.mutate(id)}
-            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, config), _type: 'quote' })}
+            onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, getConfigForDocument(doc)), _type: 'quote' })}
             onConvert={(quote) => convertToInvoiceMutation.mutate(quote)}
           />
         </TabsContent>
