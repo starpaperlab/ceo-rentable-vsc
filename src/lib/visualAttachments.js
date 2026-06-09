@@ -2,6 +2,16 @@ import { supabase } from '@/lib/supabase';
 
 export const DOCUMENT_ATTACHMENT_BUCKET = 'document-attachments';
 export const VISUAL_ATTACHMENT_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+export const COMMERCIAL_ATTACHMENT_FILE_TYPES = {
+  IMAGE: 'image',
+  PDF: 'pdf',
+};
+export const COMMERCIAL_ATTACHMENT_LAYOUTS = {
+  PREMIUM: 'premium',
+  GALLERY_2: 'gallery_2',
+  GALLERY_4: 'gallery_4',
+};
+export const DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT = COMMERCIAL_ATTACHMENT_LAYOUTS.PREMIUM;
 export const VISUAL_ATTACHMENT_ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -29,43 +39,74 @@ function normalizeAttachmentUrl(value = '') {
   return isMeaningfulString(value) ? value.trim() : '';
 }
 
+export function sanitizeCommercialAttachmentLayout(value) {
+  const normalized = normalizeAttachmentUrl(value).toLowerCase();
+  if (normalized === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2) return COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2;
+  if (normalized === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4) return COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4;
+  return DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT;
+}
+
+export function getCommercialAttachmentLayoutLabel(value) {
+  const layout = sanitizeCommercialAttachmentLayout(value);
+  if (layout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2) return 'Galería 2 imágenes por página';
+  if (layout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4) return 'Galería 4 imágenes por página';
+  return 'Presentación Premium (1 imagen por página)';
+}
+
+function sanitizeCommercialAttachmentFileType(value) {
+  const normalized = normalizeAttachmentUrl(value).toLowerCase();
+  if (normalized === COMMERCIAL_ATTACHMENT_FILE_TYPES.PDF) {
+    return COMMERCIAL_ATTACHMENT_FILE_TYPES.PDF;
+  }
+  return COMMERCIAL_ATTACHMENT_FILE_TYPES.IMAGE;
+}
+
 export function sanitizeVisualAttachments(rawAttachments = []) {
   if (!Array.isArray(rawAttachments)) return [];
 
   const normalized = rawAttachments
     .map((attachment, index) => {
       const id = normalizeAttachmentUrl(attachment?.id) || generateAttachmentId();
-      const url = normalizeAttachmentUrl(attachment?.url);
-      const storagePath = normalizeAttachmentUrl(attachment?.storage_path);
-      const bucket = normalizeAttachmentUrl(attachment?.bucket) || (storagePath || url ? DOCUMENT_ATTACHMENT_BUCKET : '');
+      const fileUrl = normalizeAttachmentUrl(
+        attachment?.file_url || attachment?.storage_path || attachment?.url
+      );
+      const storagePath = normalizeAttachmentUrl(attachment?.storage_path || fileUrl);
+      const bucket = normalizeAttachmentUrl(attachment?.bucket) || (storagePath || fileUrl ? DOCUMENT_ATTACHMENT_BUCKET : '');
       const title = normalizeAttachmentUrl(attachment?.title);
       const description = normalizeAttachmentUrl(attachment?.description);
       const createdAt = normalizeAttachmentUrl(attachment?.created_at) || new Date().toISOString();
       const includeInPdf = attachment?.include_in_pdf !== false;
-      const orderCandidate = Number(attachment?.order ?? index + 1);
-      const order = Number.isFinite(orderCandidate) && orderCandidate > 0 ? orderCandidate : index + 1;
+      const sortOrderCandidate = Number(attachment?.sort_order ?? attachment?.order ?? index + 1);
+      const sortOrder = Number.isFinite(sortOrderCandidate) && sortOrderCandidate > 0 ? sortOrderCandidate : index + 1;
+      const fileType = sanitizeCommercialAttachmentFileType(attachment?.file_type);
 
       return {
         id,
-        url,
+        file_url: fileUrl,
+        url: fileUrl,
         storage_path: storagePath,
         bucket,
+        file_type: fileType,
         title,
         description,
-        order,
+        sort_order: sortOrder,
+        order: sortOrder,
         include_in_pdf: includeInPdf,
         created_at: createdAt,
       };
     })
-    .filter((attachment) => attachment.url || attachment.storage_path);
+    .filter((attachment) => attachment.file_url || attachment.storage_path);
 
   return normalized
     .sort((a, b) => {
-      if (a.order !== b.order) return a.order - b.order;
+      if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
       return `${a.created_at || ''}`.localeCompare(`${b.created_at || ''}`);
     })
     .map((attachment, index) => ({
       ...attachment,
+      file_url: attachment.file_url || attachment.storage_path || attachment.url || '',
+      file_type: sanitizeCommercialAttachmentFileType(attachment.file_type),
+      sort_order: index + 1,
       order: index + 1,
     }));
 }
@@ -82,11 +123,14 @@ export function buildVisualAttachmentRecord({
 
   return {
     id,
+    file_url: storagePath,
     url: storagePath,
     storage_path: storagePath,
     bucket: DOCUMENT_ATTACHMENT_BUCKET,
+    file_type: COMMERCIAL_ATTACHMENT_FILE_TYPES.IMAGE,
     title: normalizeAttachmentUrl(title),
     description: normalizeAttachmentUrl(description),
+    sort_order: 1,
     order: 1,
     include_in_pdf: includeInPdf,
     created_at: createdAt,
@@ -158,7 +202,7 @@ export async function uploadVisualAttachment({
 }
 
 export async function deleteVisualAttachmentFile(attachment) {
-  const path = normalizeAttachmentUrl(attachment?.storage_path || attachment?.url);
+  const path = normalizeAttachmentUrl(attachment?.storage_path || attachment?.file_url || attachment?.url);
   if (!path || path.startsWith('data:') || path.startsWith('http://') || path.startsWith('https://')) {
     return;
   }
@@ -171,7 +215,9 @@ export async function deleteVisualAttachmentFile(attachment) {
 export async function resolveVisualAttachmentUrl(attachment, { expiresIn = 3600 } = {}) {
   if (!attachment) return '';
 
-  const rawUrl = normalizeAttachmentUrl(attachment.resolved_url || attachment.preview_url || attachment.url);
+  const rawUrl = normalizeAttachmentUrl(
+    attachment.resolved_url || attachment.preview_url || attachment.file_url || attachment.url
+  );
   if (rawUrl.startsWith('data:') || rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
     return rawUrl;
   }
@@ -204,4 +250,20 @@ export async function resolveVisualAttachmentsForDisplay(rawAttachments = [], op
       }
     })
   );
+}
+
+export function chunkCommercialAttachments(rawAttachments = [], layout = DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT) {
+  const attachments = Array.isArray(rawAttachments) ? rawAttachments : [];
+  const safeLayout = sanitizeCommercialAttachmentLayout(layout);
+  const chunkSize = safeLayout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4
+    ? 4
+    : safeLayout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2
+      ? 2
+      : 1;
+
+  const chunks = [];
+  for (let index = 0; index < attachments.length; index += chunkSize) {
+    chunks.push(attachments.slice(index, index + chunkSize));
+  }
+  return chunks;
 }

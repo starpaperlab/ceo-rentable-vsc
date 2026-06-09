@@ -1,6 +1,13 @@
 import jsPDF from 'jspdf';
 import { resolveDocumentBranding } from '@/lib/documentBranding';
-import { resolveVisualAttachmentsForDisplay, sanitizeVisualAttachments } from '@/lib/visualAttachments';
+import {
+  chunkCommercialAttachments,
+  COMMERCIAL_ATTACHMENT_LAYOUTS,
+  DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT,
+  resolveVisualAttachmentsForDisplay,
+  sanitizeCommercialAttachmentLayout,
+  sanitizeVisualAttachments,
+} from '@/lib/visualAttachments';
 
 const PAGE = {
   marginX: 16,
@@ -60,6 +67,7 @@ function getDocMeta(doc, type) {
   return {
     number: type === 'invoice' ? doc.invoice_number : doc.quote_number,
     label: type === 'invoice' ? 'FACTURA' : 'COTIZACIÓN',
+    shortLabel: type === 'invoice' ? 'Factura' : 'Cotización',
     recipientLabel: type === 'invoice' ? 'FACTURADO A' : 'COTIZADO PARA',
   };
 }
@@ -185,14 +193,20 @@ function getVisualAttachmentsForPdf(doc = {}) {
   return sanitizeVisualAttachments(doc.visual_attachments || []).filter((attachment) => attachment.include_in_pdf !== false);
 }
 
-function drawPageFooter(pdf, { doc, pageNumber, totalPages }) {
+function getCommercialAttachmentLayout(doc = {}) {
+  return sanitizeCommercialAttachmentLayout(doc.commercial_attachments_layout || doc.visual_attachments_layout || DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT);
+}
+
+function drawPageFooter(pdf, { doc, meta, pageNumber, totalPages }) {
   const width = pdf.internal.pageSize.getWidth();
   const height = pdf.internal.pageSize.getHeight();
   const footerY = height - 11;
   const socialDetails = getSocialDetails(doc);
-  const footerText = socialDetails.length > 0
-    ? socialDetails.filter((item) => /instagram|@|https?:\/\/|www\./i.test(item)).slice(0, 3).join(' · ')
-    : '';
+  const docReference = `${meta.shortLabel} ${meta.number || '-'}`;
+  const footerText = [
+    docReference,
+    ...socialDetails.filter((item) => /instagram|@|https?:\/\/|www\./i.test(item)).slice(0, 2),
+  ].filter(Boolean).join(' · ');
 
   pdf.setFont('helvetica', 'normal');
   pdf.setDrawColor(236, 232, 228);
@@ -524,18 +538,14 @@ function getAttachmentDisplaySize(attachmentImage, maxWidth, maxHeight) {
   };
 }
 
-function drawAttachmentPage(pdf, {
-  doc,
+function drawCommercialAttachmentPageHeader(pdf, {
   meta,
-  attachment,
-  attachmentIndex,
-  attachmentCount,
-  imageAsset,
   brandColor,
   brandRgb,
+  pageIndex,
+  pageCount,
 }) {
   const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
   let y = PAGE.marginTop;
 
   const bandBg = withAlpha(brandColor, 0.1);
@@ -545,34 +555,83 @@ function drawAttachmentPage(pdf, {
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(12);
   pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
-  pdf.text('PROPUESTA VISUAL', PAGE.marginX + 4, y + 4);
+  pdf.text('ANEXO COMERCIAL', PAGE.marginX + 4, y + 4);
 
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(8.5);
   pdf.setTextColor(120, 120, 120);
-  pdf.text(`${meta.label} · N° ${meta.number || '-'} · Anexo ${attachmentIndex + 1} de ${attachmentCount}`, pageWidth - PAGE.marginX - 4, y + 4, {
+  pdf.text(`${meta.label} · N° ${meta.number || '-'} · Página anexa ${pageIndex + 1} de ${pageCount}`, pageWidth - PAGE.marginX - 4, y + 4, {
     align: 'right',
   });
 
-  y += 18;
+  return y + 18;
+}
+
+function drawAttachmentPlaceholder(pdf, x, y, width, height) {
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(140, 140, 140);
+  pdf.text('No se pudo cargar esta imagen.', x + (width / 2), y + (height / 2), { align: 'center' });
+}
+
+function drawAttachmentTitleAndDescription(pdf, {
+  attachment,
+  x,
+  y,
+  width,
+  titleFontSize = 14,
+  bodyFontSize = 10,
+  maxDescriptionLines = null,
+}) {
+  let nextY = y;
 
   if (attachment.title) {
-    const titleLines = pdf.splitTextToSize(attachment.title, pageWidth - PAGE.marginX * 2);
+    const titleLines = pdf.splitTextToSize(attachment.title, width);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(14);
+    pdf.setFontSize(titleFontSize);
     pdf.setTextColor(35, 35, 35);
-    pdf.text(titleLines, PAGE.marginX, y);
-    y += titleLines.length * 6;
+    pdf.text(titleLines, x, nextY);
+    nextY += titleLines.length * (titleFontSize >= 14 ? 6 : 5);
   }
 
   if (attachment.description) {
-    const descriptionLines = pdf.splitTextToSize(attachment.description, pageWidth - PAGE.marginX * 2);
+    const descriptionLines = pdf.splitTextToSize(attachment.description, width);
+    const safeLines = maxDescriptionLines ? descriptionLines.slice(0, maxDescriptionLines) : descriptionLines;
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
+    pdf.setFontSize(bodyFontSize);
     pdf.setTextColor(105, 105, 105);
-    pdf.text(descriptionLines, PAGE.marginX, y);
-    y += descriptionLines.length * 4.8 + 4;
+    pdf.text(safeLines, x, nextY);
+    nextY += safeLines.length * (bodyFontSize >= 10 ? 4.8 : 4.2) + 4;
   }
+
+  return nextY;
+}
+
+function drawPremiumAttachmentPage(pdf, {
+  attachment,
+  imageAsset,
+  meta,
+  brandColor,
+  brandRgb,
+  pageIndex,
+  pageCount,
+}) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = drawCommercialAttachmentPageHeader(pdf, {
+    meta,
+    brandColor,
+    brandRgb,
+    pageIndex,
+    pageCount,
+  });
+
+  y = drawAttachmentTitleAndDescription(pdf, {
+    attachment,
+    x: PAGE.marginX,
+    y,
+    width: pageWidth - PAGE.marginX * 2,
+  });
 
   const maxWidth = pageWidth - PAGE.marginX * 2;
   const maxHeight = pageHeight - y - PAGE.marginBottom - PAGE.footerHeight - 8;
@@ -589,18 +648,101 @@ function drawAttachmentPage(pdf, {
     try {
       pdf.addImage(imageAsset.dataUrl, undefined, imageX, imageY, displaySize.width, displaySize.height, undefined, 'FAST');
     } catch {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      pdf.setTextColor(140, 140, 140);
-      pdf.text('No se pudo incrustar esta imagen en el PDF.', pageWidth / 2, y + maxHeight / 2, { align: 'center' });
+      drawAttachmentPlaceholder(pdf, PAGE.marginX, y, maxWidth, maxHeight);
     }
     return;
   }
 
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(140, 140, 140);
-  pdf.text('No se pudo cargar esta imagen.', pageWidth / 2, y + maxHeight / 2, { align: 'center' });
+  drawAttachmentPlaceholder(pdf, PAGE.marginX, y, maxWidth, maxHeight);
+}
+
+function drawGalleryAttachmentCard(pdf, {
+  attachment,
+  imageAsset,
+  x,
+  y,
+  width,
+  height,
+  compact = false,
+}) {
+  const padding = compact ? 5 : 6;
+  const textAreaHeight = compact ? 22 : 28;
+  const innerWidth = width - padding * 2;
+  const imageAreaHeight = height - padding * 2 - textAreaHeight;
+
+  pdf.setDrawColor(235, 230, 226);
+  pdf.setLineWidth(0.2);
+  pdf.roundedRect(x, y, width, height, 3, 3, 'S');
+
+  if (imageAsset?.dataUrl) {
+    const displaySize = getAttachmentDisplaySize(imageAsset, innerWidth, imageAreaHeight);
+    const imageX = x + (width - displaySize.width) / 2;
+    const imageY = y + padding + Math.max(0, (imageAreaHeight - displaySize.height) / 2);
+
+    try {
+      pdf.addImage(imageAsset.dataUrl, undefined, imageX, imageY, displaySize.width, displaySize.height, undefined, 'FAST');
+    } catch {
+      drawAttachmentPlaceholder(pdf, x + padding, y + padding, innerWidth, imageAreaHeight);
+    }
+  } else {
+    drawAttachmentPlaceholder(pdf, x + padding, y + padding, innerWidth, imageAreaHeight);
+  }
+
+  drawAttachmentTitleAndDescription(pdf, {
+    attachment,
+    x: x + padding,
+    y: y + padding + imageAreaHeight + 5,
+    width: innerWidth,
+    titleFontSize: compact ? 10.5 : 11.5,
+    bodyFontSize: compact ? 8.5 : 9,
+    maxDescriptionLines: compact ? 2 : 3,
+  });
+}
+
+function drawGalleryAttachmentPage(pdf, {
+  attachments,
+  imageAssets,
+  meta,
+  brandColor,
+  brandRgb,
+  pageIndex,
+  pageCount,
+  layout,
+}) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = drawCommercialAttachmentPageHeader(pdf, {
+    meta,
+    brandColor,
+    brandRgb,
+    pageIndex,
+    pageCount,
+  });
+
+  const columns = layout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4 ? 2 : 1;
+  const rows = layout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4 ? 2 : 2;
+  const gap = 8;
+  const availableWidth = pageWidth - PAGE.marginX * 2;
+  const availableHeight = pageHeight - y - PAGE.marginBottom - PAGE.footerHeight;
+  const cardWidth = (availableWidth - gap * (columns - 1)) / columns;
+  const cardHeight = (availableHeight - gap * (rows - 1)) / rows;
+
+  attachments.forEach((attachment, index) => {
+    const column = columns === 1 ? 0 : index % columns;
+    const row = columns === 1 ? index : Math.floor(index / columns);
+    const cardX = PAGE.marginX + column * (cardWidth + gap);
+    const cardY = y + row * (cardHeight + gap);
+
+    drawGalleryAttachmentCard(pdf, {
+      attachment,
+      imageAsset: imageAssets[index],
+      x: cardX,
+      y: cardY,
+      width: cardWidth,
+      height: cardHeight,
+      compact: layout === COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4,
+    });
+  });
 }
 
 export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
@@ -609,6 +751,7 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
   const meta = getDocMeta(resolvedDoc, type);
   const brandColor = resolvedDoc.brand_color || '#D94F8A';
   const brandRgb = hexToRgb(brandColor);
+  const attachmentLayout = getCommercialAttachmentLayout(resolvedDoc);
   const logoImage = await loadImageAsDataUrl(resolvedDoc.logo_url);
   const items = getValidItems(resolvedDoc);
   const additionalCharges = getAdditionalCharges(resolvedDoc);
@@ -620,6 +763,7 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
   const totalFinal = Number(resolvedDoc.total_final || 0) || subtotalBeforeTax + taxAmount;
   const contentBottom = () => pdf.internal.pageSize.getHeight() - PAGE.marginBottom - PAGE.footerHeight;
   const visualAttachments = await resolveVisualAttachmentsForDisplay(getVisualAttachmentsForPdf(resolvedDoc));
+  const attachmentPages = chunkCommercialAttachments(visualAttachments, attachmentLayout);
 
   let y = drawDocumentHeader(pdf, { doc: resolvedDoc, meta, brandColor, brandRgb, logoImage, isFirstPage: true });
   y = drawTableHeader(pdf, y, brandRgb);
@@ -650,27 +794,42 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
   y = drawTotals(pdf, { doc: resolvedDoc, taxAmount, totalFinal, symbol, brandRgb, y });
   drawNotes(pdf, { doc: resolvedDoc, type, y, brandRgb });
 
-  for (let index = 0; index < visualAttachments.length; index += 1) {
-    const attachment = visualAttachments[index];
-    const imageAsset = attachment.resolved_url ? await loadImageAsDataUrl(attachment.resolved_url) : null;
-
+  for (let index = 0; index < attachmentPages.length; index += 1) {
+    const pageAttachments = attachmentPages[index];
+    const imageAssets = await Promise.all(
+      pageAttachments.map((attachment) => (
+        attachment.resolved_url ? loadImageAsDataUrl(attachment.resolved_url) : Promise.resolve(null)
+      ))
+    );
     pdf.addPage();
-    drawAttachmentPage(pdf, {
-      doc: resolvedDoc,
-      meta,
-      attachment,
-      attachmentIndex: index,
-      attachmentCount: visualAttachments.length,
-      imageAsset,
-      brandColor,
-      brandRgb,
-    });
+    if (attachmentLayout === COMMERCIAL_ATTACHMENT_LAYOUTS.PREMIUM) {
+      drawPremiumAttachmentPage(pdf, {
+        attachment: pageAttachments[0],
+        imageAsset: imageAssets[0],
+        meta,
+        brandColor,
+        brandRgb,
+        pageIndex: index,
+        pageCount: attachmentPages.length,
+      });
+    } else {
+      drawGalleryAttachmentPage(pdf, {
+        attachments: pageAttachments,
+        imageAssets,
+        meta,
+        brandColor,
+        brandRgb,
+        pageIndex: index,
+        pageCount: attachmentPages.length,
+        layout: attachmentLayout,
+      });
+    }
   }
 
   const totalPages = pdf.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     pdf.setPage(pageNumber);
-    drawPageFooter(pdf, { doc: resolvedDoc, pageNumber, totalPages });
+    drawPageFooter(pdf, { doc: resolvedDoc, meta, pageNumber, totalPages });
   }
 
   pdf.save(`${meta.label}-${meta.number || 'documento'}.pdf`);

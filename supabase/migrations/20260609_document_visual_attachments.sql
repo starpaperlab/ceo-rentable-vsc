@@ -1,5 +1,5 @@
 -- CEO Rentable OS™
--- Anexos visuales / páginas de propuesta para cotizaciones y facturas.
+-- Anexos comerciales para cotizaciones y facturas.
 
 alter table if exists public.invoices
   add column if not exists visual_attachments jsonb not null default '[]'::jsonb;
