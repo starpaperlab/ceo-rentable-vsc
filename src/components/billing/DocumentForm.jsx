@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
 import { useAutosave } from '@/hooks/useAutosave';
 import { useDraftRecovery } from '@/hooks/useDraftRecovery';
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
-import { ArrowDown, ArrowUp, Eye, ImagePlus, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
+import { Eye, GripVertical, ImagePlus, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import AutosaveStatus from '@/components/shared/AutosaveStatus';
 import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
@@ -24,8 +25,12 @@ import {
 } from '@/lib/supabaseOwnership';
 import { buildDocumentBrandingFields, mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
 import {
+  COMMERCIAL_ATTACHMENT_LAYOUTS,
+  DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT,
   generateAttachmentId,
+  getCommercialAttachmentLayoutLabel,
   resolveVisualAttachmentUrl,
+  sanitizeCommercialAttachmentLayout,
   sanitizeVisualAttachments,
   uploadVisualAttachment,
 } from '@/lib/visualAttachments';
@@ -50,6 +55,25 @@ const DEFAULT_DOCUMENT_PREFS = {
   doc_show_contact: true,
   doc_show_signature: false,
 };
+
+const REQUIRED_DOCUMENT_COLUMNS = new Set([
+  'commercial_attachments_layout',
+]);
+
+const COMMERCIAL_ATTACHMENT_LAYOUT_OPTIONS = [
+  {
+    value: COMMERCIAL_ATTACHMENT_LAYOUTS.PREMIUM,
+    label: getCommercialAttachmentLayoutLabel(COMMERCIAL_ATTACHMENT_LAYOUTS.PREMIUM),
+  },
+  {
+    value: COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2,
+    label: getCommercialAttachmentLayoutLabel(COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_2),
+  },
+  {
+    value: COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4,
+    label: getCommercialAttachmentLayoutLabel(COMMERCIAL_ATTACHMENT_LAYOUTS.GALLERY_4),
+  },
+];
 
 const GOOGLE_FONTS = [
   { label: 'Inter (Moderna)', value: 'Inter' },
@@ -139,6 +163,9 @@ function sanitizeDocumentPayload(raw) {
     brandProfileId: raw?.brand_profile_id || null,
   });
   const visualAttachments = sanitizeVisualAttachments(raw?.visual_attachments || []);
+  const commercialAttachmentsLayout = sanitizeCommercialAttachmentLayout(
+    raw?.commercial_attachments_layout || raw?.visual_attachments_layout
+  );
 
   return {
     ...raw,
@@ -159,6 +186,7 @@ function sanitizeDocumentPayload(raw) {
     additional_charges: totals.additionalCharges,
     additional_charges_total: totals.additionalChargesTotal,
     visual_attachments: visualAttachments,
+    commercial_attachments_layout: commercialAttachmentsLayout,
     subtotal: totals.subtotal,
     subtotal_before_tax: totals.subtotalBeforeTax,
     tax_enabled: Boolean(raw?.tax_enabled),
@@ -223,6 +251,9 @@ function buildDocumentFormState({
     doc_show_signature: resolvedBranding.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
     additional_charges: doc?.additional_charges?.length > 0 ? doc.additional_charges : [],
     visual_attachments: sanitizeVisualAttachments(doc?.visual_attachments || []),
+    commercial_attachments_layout: sanitizeCommercialAttachmentLayout(
+      doc?.commercial_attachments_layout || doc?.visual_attachments_layout
+    ),
   };
 }
 
@@ -254,6 +285,7 @@ function restoreDocumentFormState(raw, fallbackState) {
     linkedin_url: raw?.linkedin_url || '',
     website_url: raw?.website_url || '',
     whatsapp_url: raw?.whatsapp_url || '',
+    commercial_attachments_layout: sanitizeCommercialAttachmentLayout(raw?.commercial_attachments_layout),
     line_items: raw?.line_items?.length > 0 ? raw.line_items : [...DEFAULT_ITEMS],
     additional_charges: Array.isArray(raw?.additional_charges) ? raw.additional_charges : [],
     visual_attachments: sanitizeVisualAttachments(raw?.visual_attachments || []),
@@ -270,6 +302,7 @@ function isMeaningfulDocumentDraft(payload) {
     Boolean(`${payload?.notes || ''}`.trim()) ||
     Boolean(`${payload?.company_name || ''}`.trim()) ||
     Boolean(`${payload?.logo_url || ''}`.trim()) ||
+    sanitizeCommercialAttachmentLayout(payload?.commercial_attachments_layout) !== DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT ||
     sanitizeVisualAttachments(payload?.visual_attachments || []).length > 0
   );
 }
@@ -481,6 +514,9 @@ export default function DocumentForm({
       } catch (error) {
         const missingColumn = extractMissingColumnFromError(error);
         if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
+          if (REQUIRED_DOCUMENT_COLUMNS.has(missingColumn)) {
+            throw error;
+          }
           delete safePayload[missingColumn];
           continue;
         }
@@ -525,6 +561,9 @@ export default function DocumentForm({
       } catch (error) {
         const missingColumn = extractMissingColumnFromError(error);
         if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
+          if (REQUIRED_DOCUMENT_COLUMNS.has(missingColumn)) {
+            throw error;
+          }
           delete safePayload[missingColumn];
           continue;
         }
@@ -568,6 +607,9 @@ export default function DocumentForm({
     }
 
     const safeData = sanitizeDocumentPayload(data);
+    safeData.commercial_attachments_layout = sanitizeCommercialAttachmentLayout(
+      data?.commercial_attachments_layout || data?.visual_attachments_layout
+    );
     const payload = adminMode ? { ...safeData } : { ...safeData, ...getOwnerPayload() };
 
     let saved;
@@ -766,6 +808,7 @@ export default function DocumentForm({
           ...existing,
           ...uploaded.map((attachment, index) => ({
             ...attachment,
+            sort_order: existing.length + index + 1,
             order: existing.length + index + 1,
           })),
         ]);
@@ -796,17 +839,17 @@ export default function DocumentForm({
     }));
   };
 
-  const moveAttachment = (attachmentId, direction) => {
-    const attachments = sanitizeVisualAttachments(form.visual_attachments || []);
-    const currentIndex = attachments.findIndex((attachment) => attachment.id === attachmentId);
-    const nextIndex = currentIndex + direction;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= attachments.length) return;
+  const handleAttachmentDragEnd = ({ source, destination }) => {
+    if (!destination || destination.index === source.index) return;
 
+    const attachments = sanitizeVisualAttachments(form.visual_attachments || []);
     const reordered = [...attachments];
-    const [removed] = reordered.splice(currentIndex, 1);
-    reordered.splice(nextIndex, 0, removed);
+    const [moved] = reordered.splice(source.index, 1);
+    reordered.splice(destination.index, 0, moved);
+
     updateVisualAttachments(reordered.map((attachment, index) => ({
       ...attachment,
+      sort_order: index + 1,
       order: index + 1,
     })));
   };
@@ -827,7 +870,7 @@ export default function DocumentForm({
       const url = await resolveVisualAttachmentUrl(attachment);
       if (!url) {
         previewWindow?.close();
-        toast.error('No pudimos abrir la vista previa de ese anexo.');
+        toast.error('No pudimos abrir la vista previa de ese anexo comercial.');
         return;
       }
       if (previewWindow) {
@@ -837,13 +880,17 @@ export default function DocumentForm({
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       previewWindow?.close();
-      toast.error(error?.message || 'No pudimos abrir la vista previa del anexo.');
+      toast.error(error?.message || 'No pudimos abrir la vista previa del anexo comercial.');
     }
   };
 
   const visualAttachments = useMemo(
     () => sanitizeVisualAttachments(form.visual_attachments || []),
     [form.visual_attachments]
+  );
+  const commercialAttachmentLayoutLabel = useMemo(
+    () => getCommercialAttachmentLayoutLabel(form.commercial_attachments_layout),
+    [form.commercial_attachments_layout]
   );
 
   useEffect(() => {
@@ -1142,10 +1189,10 @@ export default function DocumentForm({
           <div className="space-y-4 rounded-2xl border border-dashed border-border bg-muted/20 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Anexos visuales</Label>
-                <h3 className="mt-1 text-base font-semibold">Páginas de propuesta</h3>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Anexos comerciales</Label>
+                <h3 className="mt-1 text-base font-semibold">Anexos Comerciales</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Estas imágenes se incluirán al final del PDF como páginas de propuesta.
+                  Adjunta imágenes, renders, mockups, propuestas, catálogos y material de apoyo para tus clientes.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1169,111 +1216,166 @@ export default function DocumentForm({
                   disabled={attachmentUploadState.isUploading}
                 >
                   {attachmentUploadState.isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-                  Agregar imágenes
+                  Agregar anexo
                 </Button>
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Formatos permitidos: JPG, PNG, WebP. Tamaño máximo inicial: 5MB por imagen.
-            </p>
+            <div className="grid gap-3 md:grid-cols-[1fr_280px] md:items-start">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Formatos permitidos: JPG, PNG, WebP. Tamaño máximo inicial: 5MB por imagen.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Estas imágenes se incluirán al final del PDF como anexos comerciales.
+                </p>
+                <p className="text-xs font-medium text-foreground">
+                  {visualAttachments.length} anexo{visualAttachments.length === 1 ? '' : 's'} agregado{visualAttachments.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Diseño de anexos</Label>
+                <Select
+                  value={form.commercial_attachments_layout || DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT}
+                  onValueChange={(value) => update('commercial_attachments_layout', value)}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Selecciona un diseño" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMERCIAL_ATTACHMENT_LAYOUT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Diseño activo: {commercialAttachmentLayoutLabel}
+                </p>
+              </div>
+            </div>
 
             {visualAttachments.length === 0 ? (
               <div className="rounded-xl border bg-white/70 px-4 py-8 text-center text-sm text-muted-foreground">
-                Aún no has agregado anexos visuales para este documento.
+                Aún no has agregado anexos comerciales para este documento.
               </div>
             ) : (
-              <div className="grid gap-3">
-                {visualAttachments.map((attachment, index) => (
-                  <div key={attachment.id} className="rounded-xl border bg-white p-3 shadow-sm">
-                    <div className="grid gap-4 lg:grid-cols-[140px_1fr_auto]">
-                      <button
-                        type="button"
-                        className="group overflow-hidden rounded-lg border bg-muted/20"
-                        onClick={() => openAttachmentPreview(attachment)}
-                      >
-                        {attachmentPreviewUrls[attachment.id] ? (
-                          <img
-                            src={attachmentPreviewUrls[attachment.id]}
-                            alt={attachment.title || `Anexo visual ${index + 1}`}
-                            className="h-32 w-full object-cover transition-transform group-hover:scale-[1.02]"
-                          />
-                        ) : (
-                          <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
-                            Miniatura privada
-                          </div>
-                        )}
-                      </button>
+              <DragDropContext onDragEnd={handleAttachmentDragEnd}>
+                <Droppable droppableId="commercial-attachments">
+                  {(dropProvided) => (
+                    <div
+                      ref={dropProvided.innerRef}
+                      {...dropProvided.droppableProps}
+                      className="grid gap-3"
+                    >
+                      {visualAttachments.map((attachment, index) => (
+                        <Draggable key={attachment.id} draggableId={attachment.id} index={index}>
+                          {(dragProvided, dragSnapshot) => (
+                            <div
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              className={`rounded-xl border bg-white p-3 shadow-sm transition-shadow ${dragSnapshot.isDragging ? 'shadow-lg ring-2 ring-primary/20' : ''}`}
+                            >
+                              <div className="grid gap-4 lg:grid-cols-[auto_140px_1fr_auto]">
+                                <div className="flex items-start">
+                                  <button
+                                    type="button"
+                                    aria-label={`Mover anexo ${index + 1}`}
+                                    className="mt-1 rounded-lg border bg-white p-2 text-muted-foreground hover:text-foreground"
+                                    {...dragProvided.dragHandleProps}
+                                  >
+                                    <GripVertical className="h-4 w-4" />
+                                  </button>
+                                </div>
 
-                      <div className="space-y-3">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div>
-                            <Label className="text-xs">Título</Label>
-                            <Input
-                              className="mt-1"
-                              value={attachment.title || ''}
-                              onChange={(event) => {
-                                const nextAttachments = visualAttachments.map((item) => (
-                                  item.id === attachment.id ? { ...item, title: event.target.value } : item
-                                ));
-                                updateVisualAttachments(nextAttachments);
-                              }}
-                              placeholder="Mockup frontal"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                            <div>
-                              <p className="text-sm font-medium">Incluir en PDF</p>
-                              <p className="text-xs text-muted-foreground">Si lo apagas, se guarda pero no sale en la exportación.</p>
+                                <button
+                                  type="button"
+                                  className="group overflow-hidden rounded-lg border bg-muted/20"
+                                  onClick={() => openAttachmentPreview(attachment)}
+                                >
+                                  {attachmentPreviewUrls[attachment.id] ? (
+                                    <img
+                                      src={attachmentPreviewUrls[attachment.id]}
+                                      alt={attachment.title || `Anexo comercial ${index + 1}`}
+                                      className="h-32 w-full object-cover transition-transform group-hover:scale-[1.02]"
+                                    />
+                                  ) : (
+                                    <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
+                                      Miniatura privada
+                                    </div>
+                                  )}
+                                </button>
+
+                                <div className="space-y-3">
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    <div>
+                                      <Label className="text-xs">Título</Label>
+                                      <Input
+                                        className="mt-1"
+                                        value={attachment.title || ''}
+                                        onChange={(event) => {
+                                          const nextAttachments = visualAttachments.map((item) => (
+                                            item.id === attachment.id ? { ...item, title: event.target.value } : item
+                                          ));
+                                          updateVisualAttachments(nextAttachments);
+                                        }}
+                                        placeholder="Aplicación en termos"
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                                      <div>
+                                        <p className="text-sm font-medium">Incluir en PDF</p>
+                                        <p className="text-xs text-muted-foreground">Si lo apagas, se guarda pero no sale en la exportación.</p>
+                                      </div>
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-primary"
+                                        checked={attachment.include_in_pdf !== false}
+                                        onChange={(event) => {
+                                          const nextAttachments = visualAttachments.map((item) => (
+                                            item.id === attachment.id ? { ...item, include_in_pdf: event.target.checked } : item
+                                          ));
+                                          updateVisualAttachments(nextAttachments);
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-xs">Descripción</Label>
+                                    <Textarea
+                                      className="mt-1 min-h-[84px]"
+                                      value={attachment.description || ''}
+                                      onChange={(event) => {
+                                        const nextAttachments = visualAttachments.map((item) => (
+                                          item.id === attachment.id ? { ...item, description: event.target.value } : item
+                                        ));
+                                        updateVisualAttachments(nextAttachments);
+                                      }}
+                                      placeholder="Detalles del diseño, materiales, acabados o instrucciones del anexo."
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-row gap-2 lg:flex-col">
+                                  <Button type="button" variant="outline" size="icon" onClick={() => openAttachmentPreview(attachment)}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="text-red-600 hover:text-red-700" onClick={() => removeAttachment(attachment.id)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-primary"
-                              checked={attachment.include_in_pdf !== false}
-                              onChange={(event) => {
-                                const nextAttachments = visualAttachments.map((item) => (
-                                  item.id === attachment.id ? { ...item, include_in_pdf: event.target.checked } : item
-                                ));
-                                updateVisualAttachments(nextAttachments);
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label className="text-xs">Descripción</Label>
-                          <Textarea
-                            className="mt-1 min-h-[84px]"
-                            value={attachment.description || ''}
-                            onChange={(event) => {
-                              const nextAttachments = visualAttachments.map((item) => (
-                                item.id === attachment.id ? { ...item, description: event.target.value } : item
-                              ));
-                              updateVisualAttachments(nextAttachments);
-                            }}
-                            placeholder="Detalles del diseño, materiales, acabados o instrucciones del anexo."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-row gap-2 lg:flex-col">
-                        <Button type="button" variant="outline" size="icon" onClick={() => moveAttachment(attachment.id, -1)} disabled={index === 0}>
-                          <ArrowUp className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" onClick={() => moveAttachment(attachment.id, 1)} disabled={index === visualAttachments.length - 1}>
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" onClick={() => openAttachmentPreview(attachment)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" className="text-red-600 hover:text-red-700" onClick={() => removeAttachment(attachment.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {dropProvided.placeholder}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
             )}
           </div>
 
