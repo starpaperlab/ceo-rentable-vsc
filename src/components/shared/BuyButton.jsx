@@ -1,10 +1,22 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart } from 'lucide-react';
+import { getCheckoutPath } from '@/lib/pendingCheckout';
+import { trackInitiateCheckout } from '@/lib/metaPixel';
 
-export default function BuyButton({ label = 'Comprar CEO Rentable', size = 'lg', className = '' }) {
+export default function BuyButton({
+  label = 'Comprar CEO Rentable',
+  size = 'lg',
+  className = '',
+  plan = null,
+  checkout = false,
+}) {
   const handleClick = () => {
-    window.location.href = '/paywall';
+    if (plan) {
+      trackInitiateCheckout(plan);
+    }
+
+    window.location.href = plan ? getCheckoutPath(plan, checkout ? { checkout: true } : {}) : '/paywall';
   };
 
   return (

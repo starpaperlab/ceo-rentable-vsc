@@ -1,6 +1,10 @@
 import { supabase } from '@/lib/supabase';
 import { ENV_CONFIG } from '@/config/env';
-import { sendEmailThroughBackend } from '@/lib/emailApiClient';
+import { postAdminEmailAction, sendEmailThroughBackend } from '@/lib/emailApiClient';
+import {
+  buildTemplateVariableDefaults,
+  normalizeTemplateVariables,
+} from '@/lib/emailCampaignUtils';
 
 const PROD_APP_URL = 'https://app.ceorentable.com';
 
@@ -57,9 +61,17 @@ const EMAIL_FOOTER_HTML = `
 function mapStatus(status) {
   if (status === 'sent') return 'success';
   if (status === 'ok') return 'success';
+  if (status === 'success') return 'success';
   if (status === 'pending') return 'pending';
   if (status === 'failed') return 'failed';
   return status || 'pending';
+}
+
+function normalizeStoredStatus(status) {
+  const value = `${status || ''}`.trim().toLowerCase();
+  if (value === 'success' || value === 'sent' || value === 'ok') return 'sent';
+  if (value === 'failed' || value === 'error') return 'failed';
+  return 'pending';
 }
 
 function normalizeTemplateRow(row = {}) {
@@ -83,6 +95,9 @@ function normalizeTemplatePayload(input = {}) {
   const active = input.is_active ?? input.active ?? true;
   const htmlBody = ensureFooter(normalizeTemplateHtmlAssets(input.html_content || input.html_body || ''));
   const textBody = input.body || input.text_content || '';
+  const variables = Array.isArray(input.variables)
+    ? input.variables
+    : Object.keys(buildTemplateVariableDefaults(input));
 
   return {
     name: input.name,
@@ -92,14 +107,15 @@ function normalizeTemplatePayload(input = {}) {
     html_body: htmlBody,
     html_content: input.html_content || htmlBody,
     editor_json: input.editor_json || null,
-    variables: Array.isArray(input.variables) ? input.variables : [],
+    variables,
     active,
     is_active: active,
   };
 }
 
-function interpolate(text = '', vars = {}) {
-  return Object.entries(vars).reduce((acc, [key, value]) => {
+function interpolate(text = '', vars = {}, template = {}) {
+  const normalizedVars = normalizeTemplateVariables(template, vars);
+  return Object.entries(normalizedVars).reduce((acc, [key, value]) => {
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
     return acc.replace(regex, value ?? '');
   }, text);
@@ -166,8 +182,11 @@ async function createEmailLog(log) {
     email: log.email || log.recipient_email || log.to_email || null,
     name: log.name || log.recipient_name || null,
     subject: log.subject || null,
-    status: mapStatus(log.status || 'pending'),
-    metadata: log.metadata || {},
+    status: normalizeStoredStatus(log.status || 'pending'),
+    metadata: {
+      source_type: log.source_type || log.metadata?.source_type || 'registered',
+      ...log.metadata,
+    },
     timestamp: new Date().toISOString(),
     created_at: new Date().toISOString(),
   };
@@ -180,7 +199,7 @@ async function createEmailLog(log) {
 async function updateEmailLog(logId, patch = {}) {
   const payload = {
     ...patch,
-    status: patch.status ? mapStatus(patch.status) : undefined,
+    status: patch.status ? normalizeStoredStatus(patch.status) : undefined,
     updated_at: new Date().toISOString(),
   };
 
@@ -241,217 +260,329 @@ async function sendRawEmail({
   }
 }
 
-const DEFAULT_TEMPLATES = [
-  {
-    name: 'promo_especial',
-    subject: '🔥 Oferta especial — {{promo_title}}',
-    body: 'Hola {{name}}, hoy tienes {{promo_title}} por {{promo_price}}. {{promo_description}} Vence: {{expiry_date}}',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;color:#D45387;padding:20px 22px;text-align:center;border-bottom:1px solid #f5d8e5;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <h3 style="margin:0 0 10px 0;font-size:26px;">{{promo_title}}</h3>
-            <p style="margin:0 0 10px 0;font-size:15px;">Hola <strong style="font-size:18px;font-weight:700;line-height:1.2;">{{name}}</strong>, esta es tu oferta activa.</p>
-            <p style="margin:0 0 6px 0;font-size:14px;">Precio especial: <strong>{{promo_price}}</strong></p>
-            <p style="margin:0 0 12px 0;font-size:14px;">{{promo_description}}</p>
-            <p style="margin:0 0 16px 0;font-size:13px;color:#6f6f6f;">Válido hasta {{expiry_date}}</p>
-            <a href="{{cta_url}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;">{{cta_text}}</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'promo_title', 'promo_price', 'promo_description', 'expiry_date', 'cta_text', 'cta_url'],
+function buildFeatureList(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+
+  const rows = items
+    .map(
+      (item) => `
+        <tr>
+          <td style="padding:0 0 10px 0;font-size:14px;line-height:1.6;color:#4A4448;">
+            <span style="color:#D45387;font-weight:700;">✓</span> ${item}
+          </td>
+        </tr>
+      `
+    )
+    .join('');
+
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 22px 0;background:#FDF4F8;border:1px solid #F3DCE8;border-radius:14px;padding:16px;">
+      <tr>
+        <td style="padding:16px 16px 6px 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+            ${rows}
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function buildProfessionalTemplateHtml({
+  eyebrow,
+  title,
+  intro,
+  bodyHtml,
+  featureItems = [],
+  ctaText,
+  ctaUrl,
+  note = '',
+}) {
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>CEO Rentable OS™</title>
+      </head>
+      <body style="margin:0;padding:0;background:#F7F3EE;font-family:Inter,Segoe UI,Arial,sans-serif;color:#221F22;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#F7F3EE;padding:24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:620px;">
+                <tr>
+                  <td style="background:#FDF4F8;border:1px solid #F0E4EA;border-bottom:none;border-radius:18px 18px 0 0;padding:24px 20px 18px;text-align:center;">
+                    <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS™" width="58" height="58" style="display:block;border:0;outline:none;text-decoration:none;margin:0 auto 8px;" />
+                    <div style="font-size:18px;line-height:1.2;font-weight:800;letter-spacing:0.04em;color:#D45387;">CEO RENTABLE OS™</div>
+                    <div style="font-size:11px;line-height:1.5;color:#8A7F85;letter-spacing:0.08em;text-transform:uppercase;margin-top:8px;">
+                      ${eyebrow}
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background:#FFFFFF;border:1px solid #F0E4EA;border-radius:0 0 18px 18px;padding:30px 24px 26px;">
+                    <h1 style="margin:0 0 14px 0;font-size:28px;line-height:1.2;color:#221F22;font-weight:800;">
+                      ${title}
+                    </h1>
+                    <div style="margin:0 0 18px 0;font-size:15px;line-height:1.7;color:#4A4448;">
+                      ${intro}
+                    </div>
+                    <div style="margin:0 0 18px 0;font-size:14px;line-height:1.7;color:#655E63;">
+                      ${bodyHtml}
+                    </div>
+                    ${buildFeatureList(featureItems)}
+                    ${
+                      ctaText && ctaUrl
+                        ? `
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;">
+                            <tr>
+                              <td align="left">
+                                <a href="${ctaUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#D45387;color:#FFFFFF;text-decoration:none;font-size:15px;font-weight:700;line-height:1;padding:15px 24px;border-radius:12px;">
+                                  ${ctaText}
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        `
+                        : ''
+                    }
+                    ${
+                      note
+                        ? `<p style="margin:0;font-size:12px;line-height:1.6;color:#8A7F85;">${note}</p>`
+                        : ''
+                    }
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:16px 10px 0 10px;">
+                    <p style="margin:0;font-size:12px;line-height:1.6;color:#8A7F85;">
+                      CEO Rentable OS™ · Tu sistema financiero inteligente<br />
+                      Preguntas: <a href="mailto:hola@ceorentable.com" style="color:#D45387;text-decoration:none;">hola@ceorentable.com</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+}
+
+function createDefaultTemplate({
+  name,
+  subject,
+  body,
+  eyebrow,
+  title,
+  intro,
+  bodyHtml,
+  featureItems,
+  ctaText,
+  ctaUrl,
+  note,
+  variables,
+}) {
+  return {
+    name,
+    subject,
+    body,
+    html_body: buildProfessionalTemplateHtml({
+      eyebrow,
+      title,
+      intro,
+      bodyHtml,
+      featureItems,
+      ctaText,
+      ctaUrl,
+      note,
+    }),
+    variables,
     is_active: true,
     active: true,
-  },
-  {
-    name: 'newsletter_general',
-    subject: '{{subject_line}}',
-    body: 'Hola {{name}}, {{headline}}. {{body_text}}',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px 22px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <h3 style="margin:0 0 10px 0;">{{headline}}</h3>
-            <p style="margin:0 0 14px 0;font-size:14px;">Hola <strong style="font-size:18px;font-weight:700;line-height:1.2;">{{name}}</strong>,</p>
-            <p style="margin:0 0 18px 0;font-size:14px;line-height:1.6;">{{body_text}}</p>
-            <a href="{{cta_url}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:600;">{{cta_text}}</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'subject_line', 'headline', 'body_text', 'cta_text', 'cta_url'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'reminder_onboarding',
-    subject: 'Empieza en menos de 5 minutos ⏱️',
-    body: 'Hola {{name}}, activa tu cuenta y entra a tu panel: {{login_link}}',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px 22px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <p style="font-size:14px;">Hola <strong style="font-size:18px;font-weight:700;line-height:1.2;">{{name}}</strong>,</p>
-            <p style="font-size:14px;line-height:1.6;">Tu cuenta está casi lista. Entra y configura tu negocio para empezar a ver reportes reales.</p>
-            <a href="{{login_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:600;">Ir al Dashboard</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'login_link'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'payment_confirmed',
-    subject: 'Pago confirmado — Tu acceso está listo 💳',
-    body: 'Hola {{name}}, recibimos tu pago por {{amount}}. Ya puedes usar todas las funciones.',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px 22px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <p style="font-size:14px;">Hola <strong style="font-size:18px;font-weight:700;line-height:1.2;">{{name}}</strong>,</p>
-            <p style="font-size:14px;">Hemos recibido tu pago por <strong>{{amount}}</strong>.</p>
-            <p style="font-size:14px;line-height:1.6;">Tu acceso está activo y puedes entrar a CEO Rentable OS™ desde ahora.</p>
-            <a href="{{login_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:600;">Entrar al sistema</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'amount', 'login_link'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'welcome_email',
-    subject: 'Tu acceso a CEO Rentable OS™ ya está activo 🚀',
-    body: 'Bienvenida {{name}}. Tu acceso está activo. Dashboard, rentabilidad, facturación y más ya están disponibles.',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;">
-          <div style="background:#f6eff5;padding:18px 20px 10px;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="background:#fff;border:1px solid #f0e6dd;border-radius:14px;padding:24px;">
-            <h3 style="margin:0 0 10px 0;font-size:18px;line-height:1.2;">
-              Bienvenida, <span style="font-size:18px;font-weight:700;">{{name}}</span>! 🎉
-            </h3>
-            <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;">
-              Tu acceso a <strong>CEO Rentable OS™</strong> ya está activo.
-              Ahora tienes las herramientas para conocer exactamente cuánto gana tu negocio.
-            </p>
-            <div style="background:#fdf4f8;border-left:4px solid #D45387;border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:14px;">
-              ✅ Dashboard financiero completo<br/>
-              ✅ Análisis de rentabilidad<br/>
-              ✅ Facturación y cotizaciones<br/>
-              ✅ Gestión de clientes e inventario
-            </div>
-            <a href="{{login_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:600;">Ir al Dashboard →</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'login_link'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'invitation-access',
-    subject: 'Invitacion a CEO Rentable OS™',
-    body: 'Hola {{name}}, te invitamos a CEO Rentable OS. Ingresa aqui: {{invite_link}}',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <h3 style="margin:0 0 10px 0;font-size:18px;line-height:1.2;">Bienvenida, <span style="font-size:18px;font-weight:700;">{{name}}</span>! 🎉</h3>
-            <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;">
-              Ya tienes una invitación activa para entrar a <strong>CEO Rentable OS™</strong>.
-            </p>
-            <div style="background:#fdf4f8;border-left:4px solid #D45387;border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:14px;">
-              ✅ Dashboard financiero completo<br/>
-              ✅ Análisis de rentabilidad<br/>
-              ✅ Facturación y cotizaciones<br/>
-              ✅ Gestión de clientes e inventario
-            </div>
-            <a href="{{invite_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:600;">Aceptar invitación →</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'email', 'invite_link'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'welcome',
-    subject: 'Bienvenida a CEO Rentable OS™',
-    body: 'Hola {{name}}, tu acceso esta listo. Entra a tu panel para comenzar.',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <h3 style="margin:0 0 10px 0;font-size:18px;line-height:1.2;">Bienvenida, <span style="font-size:18px;font-weight:700;">{{name}}</span>! 🎉</h3>
-            <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;">Tu acceso está listo. Entra a tu panel y empieza hoy.</p>
-            <a href="{{login_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:600;">Ir al Dashboard →</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'email'],
-    is_active: true,
-    active: true,
-  },
-  {
-    name: 'payment-confirmation',
-    subject: 'Confirmacion de pago',
-    body: 'Hola {{name}}, confirmamos tu pago por {{amount}}.',
-    html_body: `
-      <div style="font-family:Inter,Arial,sans-serif;background:#F7F3EE;padding:20px;color:#1f1f1f;">
-        <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #f0e6dd;border-radius:14px;overflow:hidden;">
-          <div style="background:#fdf4f8;padding:20px;border-bottom:1px solid #f5d8e5;text-align:center;">
-            <img src="${BRAND_LOGO_URL}" alt="CEO Rentable OS" style="width:56px;height:56px;object-fit:contain;display:block;margin:0 auto 8px;" />
-            <h2 style="margin:0;color:#D45387;font-size:18px;letter-spacing:0.04em;">CEO RENTABLE OS™</h2>
-          </div>
-          <div style="padding:22px;">
-            <h3 style="margin:0 0 10px 0;font-size:18px;line-height:1.2;">Pago confirmado ✅</h3>
-            <p style="margin:0 0 12px 0;font-size:15px;">Hola <strong style="font-size:18px;font-weight:700;line-height:1.2;">{{name}}</strong>, confirmamos tu pago por <strong>{{amount}}</strong>.</p>
-            <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;">Tu acceso está activo y listo para usar CEO Rentable OS™.</p>
-            <a href="{{login_link}}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:600;">Entrar al sistema →</a>
-          </div>
-        </div>
-      </div>
-    `,
-    variables: ['name', 'email', 'amount'],
-    is_active: true,
-    active: true,
-  },
-];
+  };
+}
+
+function buildDefaultTemplates() {
+  return [
+    createDefaultTemplate({
+      name: 'welcome',
+      subject: 'Bienvenida a CEO Rentable OS™',
+      body: 'Hola {{name}}, tu cuenta ya está lista para empezar a trabajar con claridad financiera.',
+      eyebrow: 'Bienvenida',
+      title: 'Tu cuenta ya está lista',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, gracias por unirte a <strong>CEO Rentable OS™</strong>.',
+      bodyHtml:
+        'Creamos este espacio para que puedas entender mejor la rentabilidad de tu negocio, ordenar tu operación y tomar decisiones con más confianza desde el primer día.',
+      featureItems: [
+        'Dashboard financiero con visión clara de tus números.',
+        'Herramientas para controlar precios, costos y rentabilidad.',
+        'Espacio centralizado para clientes, inventario y facturación.',
+      ],
+      ctaText: 'Entrar al sistema',
+      ctaUrl: '{{login_link}}',
+      note: 'Si aún no configuraste tu negocio, puedes hacerlo en menos de 5 minutos.',
+      variables: ['name', 'email', 'login_link'],
+    }),
+    createDefaultTemplate({
+      name: 'welcome_email',
+      subject: 'Tu acceso a CEO Rentable OS™ ya está activo',
+      body: 'Hola {{name}}, ya activamos tu acceso y puedes empezar a usar CEO Rentable OS™ hoy mismo.',
+      eyebrow: 'Acceso activo',
+      title: 'Ya puedes entrar y comenzar',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, tu acceso a <strong>CEO Rentable OS™</strong> ya está activo.',
+      bodyHtml:
+        'A partir de este momento puedes organizar tus finanzas, revisar la rentabilidad de tu negocio y trabajar con información más clara para crecer con intención.',
+      featureItems: [
+        'Visualiza el estado real de tu negocio en un solo lugar.',
+        'Analiza tus ganancias y costos con más precisión.',
+        'Avanza con una operación más ordenada y profesional.',
+      ],
+      ctaText: 'Abrir mi cuenta',
+      ctaUrl: '{{login_link}}',
+      note: 'Tu equipo de soporte está disponible en hola@ceorentable.com si necesitas ayuda.',
+      variables: ['name', 'login_link'],
+    }),
+    createDefaultTemplate({
+      name: 'newsletter_general',
+      subject: '{{subject_line}}',
+      body: 'Hola {{name}}, {{headline}} {{body_text}}',
+      eyebrow: 'Actualización',
+      title: '{{headline}}',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, queremos compartir contigo una actualización desde <strong>CEO Rentable OS™</strong>.',
+      bodyHtml:
+        '<p style="margin:0 0 12px 0;">{{body_text}}</p><p style="margin:0;">Gracias por seguir construyendo con nosotras.</p>',
+      featureItems: [],
+      ctaText: '{{cta_text}}',
+      ctaUrl: '{{cta_url}}',
+      note: 'Si el botón no aplica para este mensaje, puedes ignorarlo con tranquilidad.',
+      variables: ['name', 'subject_line', 'headline', 'body_text', 'cta_text', 'cta_url'],
+    }),
+    createDefaultTemplate({
+      name: 'payment-confirmation',
+      subject: 'Confirmación de pago — {{amount}}',
+      body: 'Hola {{name}}, confirmamos tu pago por {{amount}} y tu acceso ya quedó listo.',
+      eyebrow: 'Pago recibido',
+      title: 'Tu pago fue confirmado',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, confirmamos correctamente tu pago por <strong>{{amount}}</strong>.',
+      bodyHtml:
+        'Tu compra fue procesada con éxito y ya puedes continuar usando <strong>CEO Rentable OS™</strong> con acceso activo.',
+      featureItems: [
+        'Tu acceso ya está habilitado.',
+        'Tu información sigue disponible en la plataforma.',
+        'Puedes retomar tu trabajo inmediatamente.',
+      ],
+      ctaText: 'Entrar al sistema',
+      ctaUrl: '{{login_link}}',
+      note: 'Si tienes preguntas sobre tu pago, escríbenos a hola@ceorentable.com.',
+      variables: ['name', 'amount', 'login_link'],
+    }),
+    createDefaultTemplate({
+      name: 'payment_confirmed',
+      subject: 'Pago confirmado — tu acceso está listo',
+      body: 'Hola {{name}}, recibimos tu pago por {{amount}} y tu cuenta está lista para usar.',
+      eyebrow: 'Pago procesado',
+      title: 'Todo listo para continuar',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, registramos tu pago por <strong>{{amount}}</strong>.',
+      bodyHtml:
+        'Gracias por confiar en <strong>CEO Rentable OS™</strong>. Tu acceso ya está activo para que sigas trabajando con más claridad financiera.',
+      featureItems: [
+        'Acceso inmediato a tu panel.',
+        'Herramientas financieras listas para usar.',
+        'Soporte disponible si necesitas acompañamiento.',
+      ],
+      ctaText: 'Ir a mi panel',
+      ctaUrl: '{{login_link}}',
+      note: 'Guarda este correo como referencia de tu activación.',
+      variables: ['name', 'amount', 'login_link'],
+    }),
+    createDefaultTemplate({
+      name: 'invitation-access',
+      subject: 'Invitación a CEO Rentable OS™',
+      body: 'Hola {{name}}, tienes una invitación activa para acceder a CEO Rentable OS™.',
+      eyebrow: 'Invitación activa',
+      title: 'Tienes una invitación lista para ti',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, te compartimos tu acceso para entrar a <strong>CEO Rentable OS™</strong>.',
+      bodyHtml:
+        'Activa tu invitación desde el botón para comenzar a gestionar tu negocio con una plataforma pensada para darte mayor visibilidad y control.',
+      featureItems: [
+        'Ingresa con tu invitación activa.',
+        'Empieza a ordenar tu información financiera.',
+        'Trabaja con más claridad en tu operación diaria.',
+      ],
+      ctaText: 'Aceptar invitación',
+      ctaUrl: '{{invite_link}}',
+      note: 'Si no esperabas esta invitación, puedes ignorar este correo.',
+      variables: ['name', 'email', 'invite_link'],
+    }),
+    createDefaultTemplate({
+      name: 'promo_especial',
+      subject: 'Oferta especial — {{promo_title}}',
+      body: 'Hola {{name}}, hoy tienes disponible {{promo_title}} por {{promo_price}} hasta {{expiry_date}}.',
+      eyebrow: 'Oferta especial',
+      title: '{{promo_title}}',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, preparamos una oportunidad especial para ayudarte a seguir avanzando con <strong>CEO Rentable OS™</strong>.',
+      bodyHtml:
+        '<p style="margin:0 0 12px 0;">Precio especial: <strong>{{promo_price}}</strong></p><p style="margin:0 0 12px 0;">{{promo_description}}</p><p style="margin:0;">Válida hasta <strong>{{expiry_date}}</strong>.</p>',
+      featureItems: [],
+      ctaText: '{{cta_text}}',
+      ctaUrl: '{{cta_url}}',
+      note: 'Esta promoción puede estar sujeta a disponibilidad o fecha límite.',
+      variables: ['name', 'promo_title', 'promo_price', 'promo_description', 'expiry_date', 'cta_text', 'cta_url'],
+    }),
+    createDefaultTemplate({
+      name: 'reminder_onboarding',
+      subject: 'Termina tu configuración en menos de 5 minutos',
+      body: 'Hola {{name}}, tu cuenta está casi lista. Entra y termina tu configuración inicial.',
+      eyebrow: 'Recordatorio',
+      title: 'Te falta muy poco para empezar',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, tu cuenta ya está creada y solo te falta completar unos pasos para comenzar con <strong>CEO Rentable OS™</strong>.',
+      bodyHtml:
+        'Completa tu configuración inicial para que la plataforma pueda acompañarte mejor desde el inicio y mostrarte información útil desde tus primeros registros.',
+      featureItems: [
+        'Configura tu negocio rápidamente.',
+        'Empieza a registrar información clave.',
+        'Obtén una visión más clara de tu rentabilidad.',
+      ],
+      ctaText: 'Completar configuración',
+      ctaUrl: '{{login_link}}',
+      note: 'Mientras antes completes este paso, más rápido podrás aprovechar la plataforma.',
+      variables: ['name', 'login_link'],
+    }),
+    createDefaultTemplate({
+      name: 'access-granted',
+      subject: 'Tu acceso fue activado en CEO Rentable OS™',
+      body: 'Hola {{name}}, ya activamos tu acceso y puedes ingresar cuando quieras.',
+      eyebrow: 'Acceso habilitado',
+      title: 'Tu acceso ya fue activado',
+      intro:
+        'Hola <strong style="font-size:18px;">{{name}}</strong>, tu acceso a <strong>CEO Rentable OS™</strong> ya está habilitado.',
+      bodyHtml:
+        'Ya puedes entrar a la plataforma, revisar tu panel y comenzar a trabajar con mayor orden y claridad en tus números.',
+      featureItems: [
+        'Ingreso habilitado desde este momento.',
+        'Acceso a tus herramientas clave de gestión.',
+        'Acompañamiento disponible si necesitas ayuda para arrancar.',
+      ],
+      ctaText: 'Ir al sistema',
+      ctaUrl: '{{login_link}}',
+      note: 'Si tu acceso fue activado manualmente, este correo sirve como confirmación.',
+      variables: ['name', 'email', 'login_link'],
+    }),
+  ];
+}
+
+const DEFAULT_TEMPLATES = buildDefaultTemplates();
 
 export const emailService = {
   async getTemplate(templateName) {
@@ -507,6 +638,32 @@ export const emailService = {
     return true;
   },
 
+  async sendNamedTemplate(templateName, recipient, variables = {}, options = {}) {
+    let template;
+
+    try {
+      template = await this.getTemplate(templateName);
+    } catch (error) {
+      const message = `${error?.message || ''}`.toLowerCase();
+      if (
+        message.includes('0 rows') ||
+        message.includes('no rows') ||
+        message.includes('multiple (or no) rows')
+      ) {
+        await this.initializeTemplates();
+        template = await this.getTemplate(templateName);
+      } else {
+        throw error;
+      }
+    }
+
+    if (!template?.id) {
+      throw new Error(`No encontramos el template "${templateName}".`);
+    }
+
+    return this.sendEmail(template.id, recipient, variables, options);
+  },
+
   async sendEmail(templateId, recipient, variables = {}, options = {}) {
     const { data: templateData, error: templateError } = await supabase
       .from('email_templates')
@@ -517,9 +674,12 @@ export const emailService = {
     if (templateError) throw templateError;
     const template = normalizeTemplateRow(templateData);
 
-    const subject = interpolate(template.subject, variables);
-    const html = ensureFooter(normalizeTemplateHtmlAssets(interpolate(pickTemplateHtml(template), variables)));
-    const text = interpolate(template.body || template.text_content || '', variables);
+    const mergedVariables = normalizeTemplateVariables(template, variables);
+    const subject = interpolate(template.subject, mergedVariables, template);
+    const html = ensureFooter(
+      normalizeTemplateHtmlAssets(interpolate(pickTemplateHtml(template), mergedVariables, template))
+    );
+    const text = interpolate(template.body || template.text_content || '', mergedVariables, template);
     const userId = options.userId || (await getCurrentUserId());
 
     return sendRawEmail({
@@ -527,13 +687,14 @@ export const emailService = {
       templateId,
       campaignId: options.campaignId || null,
       to: recipient,
-      name: variables.name || variables.full_name || null,
+      name: mergedVariables.name || mergedVariables.full_name || null,
       subject,
       html,
       text,
       metadata: {
-        variables,
+        variables: mergedVariables,
         template_name: template.name,
+        source_type: options.sourceType || 'registered',
       },
     });
   },
@@ -578,14 +739,21 @@ export const emailService = {
   },
 
   async getEmailLogs(filters = {}) {
-    let query = supabase.from('email_logs').select('*');
-    if (filters.status) query = query.eq('status', mapStatus(filters.status));
+    let query = supabase.from('email_logs').select(`
+      *,
+      template:template_id(name),
+      admin_user:user_id(full_name,email)
+    `);
+    if (filters.status) query = query.eq('status', normalizeStoredStatus(filters.status));
     if (filters.userId) query = query.eq('user_id', filters.userId);
 
     let data;
     let error;
     ({ data, error } = await query.order('timestamp', { ascending: false }));
     if (error) {
+      query = supabase.from('email_logs').select('*');
+      if (filters.status) query = query.eq('status', normalizeStoredStatus(filters.status));
+      if (filters.userId) query = query.eq('user_id', filters.userId);
       ({ data, error } = await query.order('created_at', { ascending: false }));
     }
     if (error) throw error;
@@ -596,7 +764,52 @@ export const emailService = {
       name: log.name || log.recipient_name || '',
       timestamp: log.timestamp || log.sent_at || log.created_at,
       status: mapStatus(log.status),
+      source_type: log.source_type || log.metadata?.source_type || 'registered',
+      template_name: log.template?.name || log.metadata?.template_name || '—',
+      admin_name: log.admin_user?.full_name || log.admin_user?.email || '',
     }));
+  },
+
+  async previewCampaign({
+    templateId,
+    segment,
+    recipients = [],
+    variableDefaults = {},
+  }) {
+    const result = await postAdminEmailAction('preview_campaign', {
+      templateId,
+      segment,
+      recipients,
+      variableDefaults,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'No se pudo preparar la vista previa.');
+    }
+
+    return result;
+  },
+
+  async sendBulkCampaign({
+    templateId,
+    segment,
+    recipients = [],
+    variableDefaults = {},
+    campaignName = '',
+  }) {
+    const result = await postAdminEmailAction('send_campaign', {
+      templateId,
+      segment,
+      recipients,
+      variableDefaults,
+      campaignName,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'No se pudo enviar la campaña.');
+    }
+
+    return result;
   },
 
   async createCampaign({ templateId, name, description = '', targetPlan = null, targetSegment = 'all' }) {

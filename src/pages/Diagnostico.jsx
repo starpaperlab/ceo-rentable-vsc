@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
 import { generateBusinessDiagnosis } from '@/lib/geminiService'
+import { trackLead } from '@/lib/metaPixel'
 import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader } from 'lucide-react'
 
 const QUESTIONS = [
@@ -104,6 +105,12 @@ export default function Diagnostico() {
       console.error(error)
       return
     }
+
+    trackLead({
+      content_name: 'diagnostico_gratuito',
+      status: 'new',
+    })
+
     setStep(1)
   }
 
@@ -365,11 +372,13 @@ export default function Diagnostico() {
                 >
                   Entrar al sistema completo <ArrowRight className="h-5 w-5 ml-1" />
                 </Button>
-                <a href="https://ceorentable.com" target="_blank" rel="noopener noreferrer" className="block">
-                  <Button variant="outline" className="w-full h-12 text-sm font-semibold border-white/20 bg-transparent text-white hover:bg-white/10 rounded-xl">
-                    Ver planes y precios
-                  </Button>
-                </a>
+                <Button
+                  variant="outline"
+                  className="w-full h-12 text-sm font-semibold border-white/20 bg-transparent text-white hover:bg-white/10 rounded-xl"
+                  onClick={() => navigate('/paywall')}
+                >
+                  Ver planes y precios
+                </Button>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/10 grid grid-cols-3 gap-4 text-center">

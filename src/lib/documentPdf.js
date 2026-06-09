@@ -1,4 +1,6 @@
 import jsPDF from 'jspdf';
+import { resolveDocumentBranding } from '@/lib/documentBranding';
+import { resolveVisualAttachmentsForDisplay, sanitizeVisualAttachments } from '@/lib/visualAttachments';
 
 const PAGE = {
   marginX: 16,
@@ -8,19 +10,21 @@ const PAGE = {
 };
 
 const TABLE = {
-  headerHeight: 11,
-  rowMinHeight: 12,
+  headerHeight: 12,
+  rowMinHeight: 13,
   lineHeight: 4.8,
-  cellPaddingX: 3.5,
-  cellPaddingY: 4,
+  cellPaddingX: 4,
+  cellPaddingY: 4.6,
 };
 
 const COLUMNS = {
-  description: 92,
+  description: 104,
   price: 28,
-  quantity: 20,
-  total: 30,
+  quantity: 14,
+  total: 32,
 };
+
+const TABLE_WIDTH = COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total;
 
 function hexToRgb(hex = '#D94F8A') {
   const normalized = `${hex || '#D94F8A'}`.replace('#', '').trim();
@@ -99,38 +103,53 @@ async function loadImageAsDataUrl(url) {
 
 function getLogoWidth(doc = {}) {
   const sizeMap = {
-    small: 18,
-    medium: 24,
-    large: 34,
+    small: 14,
+    medium: 20,
+    large: 26,
   };
   const logoSize = `${doc.logo_size || 'medium'}`.trim();
   const width = logoSize === 'custom'
     ? Number(doc.logo_width || 0)
     : sizeMap[logoSize] || Number(doc.logo_width || 0) || sizeMap.medium;
 
-  return Number.isFinite(width) && width > 0 ? width : sizeMap.medium;
+  if (!Number.isFinite(width) || width <= 0) return sizeMap.medium;
+  return Math.min(width, 42);
+}
+
+function getLogoDisplaySize(logoImage, doc = {}) {
+  const maxWidth = getLogoWidth(doc);
+  const maxHeight = 18;
+  const ratio = logoImage?.width > 0 && logoImage?.height > 0
+    ? logoImage.height / logoImage.width
+    : 1;
+
+  let width = maxWidth;
+  let height = width * ratio;
+
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height / ratio;
+  }
+
+  return { width, height };
 }
 
 function addLogo(pdf, logoImage, x, y, doc) {
-  if (!logoImage?.dataUrl) return 0;
+  if (!logoImage?.dataUrl) return { width: 0, height: 0 };
 
   try {
-    const logoWidth = getLogoWidth(doc);
-    const ratio = logoImage.width > 0 && logoImage.height > 0
-      ? logoImage.height / logoImage.width
-      : 0.45;
-    const logoHeight = Math.min(26, logoWidth * ratio);
-    pdf.addImage(logoImage.dataUrl, undefined, x, y, logoWidth, logoHeight, undefined, 'FAST');
-    return logoHeight;
+    const { width, height } = getLogoDisplaySize(logoImage, doc);
+    pdf.addImage(logoImage.dataUrl, undefined, x, y, width, height, undefined, 'FAST');
+    return { width, height };
   } catch {
     // El PDF sigue siendo válido si el logo remoto no permite CORS o usa un formato no soportado.
-    return 0;
+    return { width: 0, height: 0 };
   }
 }
 
-function getLogoX(pdf, doc = {}) {
+function getLogoX(pdf, logoImage, doc = {}) {
   const pageWidth = pdf.internal.pageSize.getWidth();
-  const logoWidth = getLogoWidth(doc);
+  const { width: logoWidth } = getLogoDisplaySize(logoImage, doc);
   const position = doc.logo_position || 'left';
 
   if (position === 'center') return (pageWidth - logoWidth) / 2;
@@ -162,14 +181,29 @@ function getSocialDetails(doc = {}) {
   ].filter(Boolean);
 }
 
-function drawPageFooter(pdf, pageNumber, totalPages) {
+function getVisualAttachmentsForPdf(doc = {}) {
+  return sanitizeVisualAttachments(doc.visual_attachments || []).filter((attachment) => attachment.include_in_pdf !== false);
+}
+
+function drawPageFooter(pdf, { doc, pageNumber, totalPages }) {
   const width = pdf.internal.pageSize.getWidth();
   const height = pdf.internal.pageSize.getHeight();
+  const footerY = height - 11;
+  const socialDetails = getSocialDetails(doc);
+  const footerText = socialDetails.length > 0
+    ? socialDetails.filter((item) => /instagram|@|https?:\/\/|www\./i.test(item)).slice(0, 3).join(' · ')
+    : '';
 
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(140, 140, 140);
-  pdf.text(`Página ${pageNumber} de ${totalPages}`, width / 2, height - 8, { align: 'center' });
+  pdf.setDrawColor(236, 232, 228);
+  pdf.setLineWidth(0.15);
+  pdf.line(PAGE.marginX, height - 17, width - PAGE.marginX, height - 17);
+  pdf.setFontSize(8);
+  pdf.setTextColor(135, 135, 135);
+  if (footerText) {
+    pdf.text(pdf.splitTextToSize(footerText, 108), PAGE.marginX, footerY);
+  }
+  pdf.text(`Página ${pageNumber} de ${totalPages}`, width - PAGE.marginX, footerY, { align: 'right' });
 }
 
 function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, isFirstPage }) {
@@ -178,14 +212,15 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
 
   if (isFirstPage) {
     const logoPosition = doc.logo_position || 'left';
-    const logoX = getLogoX(pdf, doc);
+    const logoX = getLogoX(pdf, logoImage, doc);
     const textX = logoPosition === 'center'
       ? pageWidth / 2
       : logoPosition === 'right'
         ? pageWidth - PAGE.marginX
         : PAGE.marginX;
     const textAlign = logoPosition === 'center' ? 'center' : logoPosition === 'right' ? 'right' : 'left';
-    const logoHeight = addLogo(pdf, logoImage, logoX, y, doc);
+    const logoSize = addLogo(pdf, logoImage, logoX, y, doc);
+    const logoHeight = logoSize.height;
     const companyDetails = getCompanyDetails(doc);
 
     pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
@@ -214,12 +249,13 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
       companyY += lineParts.length * 4;
     });
 
-    pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
-    pdf.roundedRect(pageWidth - PAGE.marginX - 48, y - 2, 48, 13, 2.5, 2.5, 'F');
+    const titleBg = withAlpha(brandColor, 0.1);
+    pdf.setFillColor(titleBg.r, titleBg.g, titleBg.b);
+    pdf.roundedRect(pageWidth - PAGE.marginX - 52, y - 3, 52, 14, 3, 3, 'F');
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(12);
-    pdf.setTextColor(255, 255, 255);
-    pdf.text(meta.label, pageWidth - PAGE.marginX - 24, y + 6.5, { align: 'center' });
+    pdf.setFontSize(13);
+    pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.text(meta.label, pageWidth - PAGE.marginX - 26, y + 6.5, { align: 'center' });
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(11);
@@ -258,36 +294,46 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
     return y + 36;
   }
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(11);
-  pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
-  pdf.text(doc.company_name || 'Mi Empresa', PAGE.marginX, y);
-  pdf.text(`${meta.label} N° ${meta.number || '-'}`, pageWidth - PAGE.marginX, y, { align: 'right' });
+  const bandBg = withAlpha(brandColor, 0.08);
+  pdf.setFillColor(bandBg.r, bandBg.g, bandBg.b);
+  pdf.roundedRect(PAGE.marginX, y - 5, pageWidth - PAGE.marginX * 2, 12, 2.5, 2.5, 'F');
+  pdf.setDrawColor(236, 232, 228);
+  pdf.setLineWidth(0.15);
+  pdf.line(PAGE.marginX, y + 9, pageWidth - PAGE.marginX, y + 9);
 
-  return y + 8;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+  pdf.text(doc.company_name || 'Mi Empresa', PAGE.marginX + 4, y + 2);
+  pdf.text(`${meta.label} · N° ${meta.number || '-'}`, pageWidth - PAGE.marginX - 4, y + 2, { align: 'right' });
+
+  return y + 16;
 }
 
 function drawTableHeader(pdf, y, brandRgb) {
   const x = PAGE.marginX;
-  const tableWidth = COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total;
 
   const lightBrand = {
-    r: Math.round(255 - (255 - brandRgb.r) * 0.1),
-    g: Math.round(255 - (255 - brandRgb.g) * 0.1),
-    b: Math.round(255 - (255 - brandRgb.b) * 0.1),
+    r: Math.round(255 - (255 - brandRgb.r) * 0.12),
+    g: Math.round(255 - (255 - brandRgb.g) * 0.12),
+    b: Math.round(255 - (255 - brandRgb.b) * 0.12),
   };
+
+  pdf.setDrawColor(232, 226, 221);
+  pdf.setLineWidth(0.2);
+  pdf.roundedRect(x, y, TABLE_WIDTH, TABLE.headerHeight, 2.5, 2.5, 'S');
   pdf.setFillColor(lightBrand.r, lightBrand.g, lightBrand.b);
-  pdf.roundedRect(x, y, tableWidth, TABLE.headerHeight, 2, 2, 'F');
+  pdf.roundedRect(x, y, TABLE_WIDTH, TABLE.headerHeight, 2.5, 2.5, 'F');
 
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(8.5);
+  pdf.setFontSize(8);
   pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
-  pdf.text('DESCRIPCIÓN', x + TABLE.cellPaddingX, y + 7);
-  pdf.text('PRECIO', x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + 7, { align: 'right' });
-  pdf.text('CANT.', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + 7, { align: 'right' });
-  pdf.text('TOTAL', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total - TABLE.cellPaddingX, y + 7, { align: 'right' });
+  pdf.text('DESCRIPCIÓN', x + TABLE.cellPaddingX, y + 7.5);
+  pdf.text('PRECIO', x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + 7.5, { align: 'right' });
+  pdf.text('CANT.', x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + 7.5, { align: 'right' });
+  pdf.text('TOTAL', x + TABLE_WIDTH - TABLE.cellPaddingX, y + 7.5, { align: 'right' });
 
-  return y + TABLE.headerHeight + 2;
+  return y + TABLE.headerHeight + 1.5;
 }
 
 function getRowHeight(pdf, item) {
@@ -305,27 +351,26 @@ function drawTableRow(pdf, item, y, index, symbol) {
   const quantity = Number(item.quantity || 0);
   const total = unitPrice * quantity;
 
-  const tableWidth = COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total;
   if (index % 2 === 0) {
-    pdf.setFillColor(252, 250, 248);
-    pdf.roundedRect(x, y, tableWidth, rowHeight, 1.5, 1.5, 'F');
+    pdf.setFillColor(254, 252, 250);
+    pdf.rect(x, y, TABLE_WIDTH, rowHeight, 'F');
   }
   pdf.setDrawColor(232, 226, 221);
-  pdf.setLineWidth(0.15);
-  pdf.line(x, y + rowHeight, x + tableWidth, y + rowHeight);
+  pdf.setLineWidth(0.12);
+  pdf.line(x, y + rowHeight, x + TABLE_WIDTH, y + rowHeight);
 
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
   pdf.setTextColor(51, 51, 51);
-  pdf.text(descriptionLines, x + TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.2);
+  pdf.text(descriptionLines, x + TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.5);
 
   pdf.setTextColor(85, 85, 85);
-  pdf.text(toMoney(unitPrice, symbol), x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.2, { align: 'right' });
-  pdf.text(`${quantity || 0}`, x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.2, { align: 'right' });
+  pdf.text(toMoney(unitPrice, symbol), x + COLUMNS.description + COLUMNS.price - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.5, { align: 'right' });
+  pdf.text(`${quantity || 0}`, x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.5, { align: 'right' });
 
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(34, 34, 34);
-  pdf.text(toMoney(total, symbol), x + COLUMNS.description + COLUMNS.price + COLUMNS.quantity + COLUMNS.total - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.2, { align: 'right' });
+  pdf.text(toMoney(total, symbol), x + TABLE_WIDTH - TABLE.cellPaddingX, y + TABLE.cellPaddingY + 3.5, { align: 'right' });
 
   return y + rowHeight;
 }
@@ -341,7 +386,7 @@ function getAdditionalCharges(doc = {}) {
 
 function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
   const pageWidth = pdf.internal.pageSize.getWidth();
-  const boxWidth = 78;
+  const boxWidth = 82;
   const x = pageWidth - PAGE.marginX - boxWidth;
   const additionalCharges = getAdditionalCharges(doc);
   const additionalChargesTotal = Number(
@@ -349,50 +394,60 @@ function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
   );
   const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? Number(doc.subtotal || 0) + additionalChargesTotal);
 
-  pdf.setDrawColor(230, 224, 218);
+  const lineCount = 1
+    + additionalCharges.length
+    + (additionalChargesTotal > 0 ? 1 : 0)
+    + (doc.tax_enabled ? 1 : 0);
+  const cardHeight = 10 + lineCount * 8 + 18;
+  const startY = y;
+
+  pdf.setFillColor(255, 255, 255);
+  pdf.setDrawColor(232, 226, 221);
   pdf.setLineWidth(0.2);
-  pdf.line(x, y, x + boxWidth, y);
-  y += 3;
+  pdf.roundedRect(x, startY, boxWidth, cardHeight, 3, 3, 'FD');
+  y += 5;
 
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
+  pdf.setFontSize(9);
   pdf.setTextColor(95, 95, 95);
-  pdf.text('Subtotal productos/servicios', x, y + 5);
-  pdf.text(toMoney(doc.subtotal || 0, symbol), x + boxWidth, y + 5, { align: 'right' });
+  pdf.text('Subtotal productos/servicios', x + 5, y + 5);
+  pdf.text(toMoney(doc.subtotal || 0, symbol), x + boxWidth - 5, y + 5, { align: 'right' });
   y += 8;
 
   additionalCharges.forEach((charge) => {
-    pdf.text(charge.name, x, y + 5);
-    pdf.text(toMoney(charge.amount, symbol), x + boxWidth, y + 5, { align: 'right' });
+    pdf.text(charge.name, x + 5, y + 5);
+    pdf.text(toMoney(charge.amount, symbol), x + boxWidth - 5, y + 5, { align: 'right' });
     y += 8;
   });
 
   if (additionalChargesTotal > 0) {
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(60, 60, 60);
-    pdf.text('Subtotal antes de impuestos', x, y + 5);
-    pdf.text(toMoney(subtotalBeforeTax, symbol), x + boxWidth, y + 5, { align: 'right' });
+    pdf.setDrawColor(238, 234, 230);
+    pdf.line(x + 5, y, x + boxWidth - 5, y);
+    pdf.text('Subtotal antes de impuestos', x + 5, y + 5);
+    pdf.text(toMoney(subtotalBeforeTax, symbol), x + boxWidth - 5, y + 5, { align: 'right' });
     y += 8;
     pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(95, 95, 95);
   }
 
   if (doc.tax_enabled) {
-    pdf.text(`ITBIS / IVA (${doc.tax_pct || 0}%)`, x, y + 5);
-    pdf.text(toMoney(taxAmount, symbol), x + boxWidth, y + 5, { align: 'right' });
+    pdf.text(`ITBIS / IVA (${doc.tax_pct || 0}%)`, x + 5, y + 5);
+    pdf.text(toMoney(taxAmount, symbol), x + boxWidth - 5, y + 5, { align: 'right' });
     y += 8;
   }
 
   pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
-  pdf.roundedRect(x, y, boxWidth, 13, 2, 2, 'F');
+  pdf.roundedRect(x + 4, y + 2, boxWidth - 8, 15, 3, 3, 'F');
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(10);
   pdf.setTextColor(255, 255, 255);
-  pdf.text('TOTAL', x + 4, y + 8.5);
+  pdf.text('TOTAL', x + 9, y + 11);
   pdf.setFontSize(13);
-  pdf.text(toMoney(totalFinal, symbol), x + boxWidth - 4, y + 8.5, { align: 'right' });
+  pdf.text(toMoney(totalFinal, symbol), x + boxWidth - 9, y + 11, { align: 'right' });
 
-  return y + 19;
+  return startY + cardHeight + 4;
 }
 
 function drawNotes(pdf, { doc, type, y, brandRgb }) {
@@ -446,55 +501,176 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
   return y;
 }
 
-export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const meta = getDocMeta(doc, type);
-  const brandColor = doc.brand_color || '#D94F8A';
-  const brandRgb = hexToRgb(brandColor);
-  const logoImage = await loadImageAsDataUrl(doc.logo_url);
-  const items = getValidItems(doc);
-  const additionalCharges = getAdditionalCharges(doc);
-  const additionalChargesTotal = Number(
-    doc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0)
-  );
-  const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? Number(doc.subtotal || 0) + additionalChargesTotal);
-  const taxAmount = doc.tax_enabled ? (subtotalBeforeTax * (Number(doc.tax_pct || 0) / 100)) : 0;
-  const totalFinal = Number(doc.total_final || 0) || subtotalBeforeTax + taxAmount;
-  const contentBottom = () => pdf.internal.pageSize.getHeight() - PAGE.marginBottom - PAGE.footerHeight;
+function getAttachmentDisplaySize(attachmentImage, maxWidth, maxHeight) {
+  const width = Number(attachmentImage?.width || 0);
+  const height = Number(attachmentImage?.height || 0);
 
-  let y = drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, isFirstPage: true });
+  if (!width || !height) {
+    return { width: Math.min(maxWidth, 120), height: Math.min(maxHeight, 120) };
+  }
+
+  const ratio = width / height;
+  let targetWidth = maxWidth;
+  let targetHeight = targetWidth / ratio;
+
+  if (targetHeight > maxHeight) {
+    targetHeight = maxHeight;
+    targetWidth = targetHeight * ratio;
+  }
+
+  return {
+    width: Math.max(10, targetWidth),
+    height: Math.max(10, targetHeight),
+  };
+}
+
+function drawAttachmentPage(pdf, {
+  doc,
+  meta,
+  attachment,
+  attachmentIndex,
+  attachmentCount,
+  imageAsset,
+  brandColor,
+  brandRgb,
+}) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = PAGE.marginTop;
+
+  const bandBg = withAlpha(brandColor, 0.1);
+  pdf.setFillColor(bandBg.r, bandBg.g, bandBg.b);
+  pdf.roundedRect(PAGE.marginX, y - 4, pageWidth - PAGE.marginX * 2, 14, 3, 3, 'F');
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(12);
+  pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+  pdf.text('PROPUESTA VISUAL', PAGE.marginX + 4, y + 4);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(120, 120, 120);
+  pdf.text(`${meta.label} · N° ${meta.number || '-'} · Anexo ${attachmentIndex + 1} de ${attachmentCount}`, pageWidth - PAGE.marginX - 4, y + 4, {
+    align: 'right',
+  });
+
+  y += 18;
+
+  if (attachment.title) {
+    const titleLines = pdf.splitTextToSize(attachment.title, pageWidth - PAGE.marginX * 2);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(14);
+    pdf.setTextColor(35, 35, 35);
+    pdf.text(titleLines, PAGE.marginX, y);
+    y += titleLines.length * 6;
+  }
+
+  if (attachment.description) {
+    const descriptionLines = pdf.splitTextToSize(attachment.description, pageWidth - PAGE.marginX * 2);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor(105, 105, 105);
+    pdf.text(descriptionLines, PAGE.marginX, y);
+    y += descriptionLines.length * 4.8 + 4;
+  }
+
+  const maxWidth = pageWidth - PAGE.marginX * 2;
+  const maxHeight = pageHeight - y - PAGE.marginBottom - PAGE.footerHeight - 8;
+
+  pdf.setDrawColor(235, 230, 226);
+  pdf.setLineWidth(0.2);
+  pdf.roundedRect(PAGE.marginX, y, maxWidth, maxHeight, 4, 4, 'S');
+
+  if (imageAsset?.dataUrl) {
+    const displaySize = getAttachmentDisplaySize(imageAsset, maxWidth - 10, maxHeight - 10);
+    const imageX = (pageWidth - displaySize.width) / 2;
+    const imageY = y + Math.max(5, (maxHeight - displaySize.height) / 2);
+
+    try {
+      pdf.addImage(imageAsset.dataUrl, undefined, imageX, imageY, displaySize.width, displaySize.height, undefined, 'FAST');
+    } catch {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(140, 140, 140);
+      pdf.text('No se pudo incrustar esta imagen en el PDF.', pageWidth / 2, y + maxHeight / 2, { align: 'center' });
+    }
+    return;
+  }
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(140, 140, 140);
+  pdf.text('No se pudo cargar esta imagen.', pageWidth / 2, y + maxHeight / 2, { align: 'center' });
+}
+
+export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
+  const resolvedDoc = resolveDocumentBranding(doc);
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const meta = getDocMeta(resolvedDoc, type);
+  const brandColor = resolvedDoc.brand_color || '#D94F8A';
+  const brandRgb = hexToRgb(brandColor);
+  const logoImage = await loadImageAsDataUrl(resolvedDoc.logo_url);
+  const items = getValidItems(resolvedDoc);
+  const additionalCharges = getAdditionalCharges(resolvedDoc);
+  const additionalChargesTotal = Number(
+    resolvedDoc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0)
+  );
+  const subtotalBeforeTax = Number(resolvedDoc.subtotal_before_tax ?? Number(resolvedDoc.subtotal || 0) + additionalChargesTotal);
+  const taxAmount = resolvedDoc.tax_enabled ? (subtotalBeforeTax * (Number(resolvedDoc.tax_pct || 0) / 100)) : 0;
+  const totalFinal = Number(resolvedDoc.total_final || 0) || subtotalBeforeTax + taxAmount;
+  const contentBottom = () => pdf.internal.pageSize.getHeight() - PAGE.marginBottom - PAGE.footerHeight;
+  const visualAttachments = await resolveVisualAttachmentsForDisplay(getVisualAttachmentsForPdf(resolvedDoc));
+
+  let y = drawDocumentHeader(pdf, { doc: resolvedDoc, meta, brandColor, brandRgb, logoImage, isFirstPage: true });
   y = drawTableHeader(pdf, y, brandRgb);
 
   items.forEach((item, index) => {
     const rowHeight = getRowHeight(pdf, item);
     if (y + rowHeight > contentBottom()) {
       pdf.addPage();
-      y = drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, isFirstPage: false });
+      y = drawDocumentHeader(pdf, { doc: resolvedDoc, meta, brandColor, brandRgb, logoImage, isFirstPage: false });
       y = drawTableHeader(pdf, y, brandRgb);
     }
 
     y = drawTableRow(pdf, item, y, index, symbol);
   });
 
-  const noteLines = (doc.notes || type === 'quote') ? 2 : 0;
+  const noteLines = (resolvedDoc.notes || type === 'quote') ? 2 : 0;
   const footerHeight = noteLines * 5
-    + (doc.doc_show_signature ? 28 : 0)
-    + (getSocialDetails(doc).length > 0 ? 12 : 0);
+    + (resolvedDoc.doc_show_signature ? 28 : 0)
+    + (getSocialDetails(resolvedDoc).length > 0 ? 12 : 0);
   const totalsHeight = 58 + additionalCharges.length * 8 + footerHeight;
   if (y + totalsHeight > contentBottom()) {
     pdf.addPage();
-    y = drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, isFirstPage: false });
+    y = drawDocumentHeader(pdf, { doc: resolvedDoc, meta, brandColor, brandRgb, logoImage, isFirstPage: false });
   } else {
     y += 8;
   }
 
-  y = drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y });
-  drawNotes(pdf, { doc, type, y, brandRgb });
+  y = drawTotals(pdf, { doc: resolvedDoc, taxAmount, totalFinal, symbol, brandRgb, y });
+  drawNotes(pdf, { doc: resolvedDoc, type, y, brandRgb });
+
+  for (let index = 0; index < visualAttachments.length; index += 1) {
+    const attachment = visualAttachments[index];
+    const imageAsset = attachment.resolved_url ? await loadImageAsDataUrl(attachment.resolved_url) : null;
+
+    pdf.addPage();
+    drawAttachmentPage(pdf, {
+      doc: resolvedDoc,
+      meta,
+      attachment,
+      attachmentIndex: index,
+      attachmentCount: visualAttachments.length,
+      imageAsset,
+      brandColor,
+      brandRgb,
+    });
+  }
 
   const totalPages = pdf.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     pdf.setPage(pageNumber);
-    drawPageFooter(pdf, pageNumber, totalPages);
+    drawPageFooter(pdf, { doc: resolvedDoc, pageNumber, totalPages });
   }
 
   pdf.save(`${meta.label}-${meta.number || 'documento'}.pdf`);

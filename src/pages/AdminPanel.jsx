@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Loader2,
   Mail,
+  Palette,
   Pencil,
   RefreshCw,
   Search,
@@ -34,15 +35,21 @@ import {
 import { toast } from 'sonner';
 import EditTemplateModal from '@/components/email/EditTemplateModal';
 import PreviewModal from '@/components/email/PreviewModal';
+import BroadcastModal from '@/components/email/BroadcastModal';
+import EmailCampaignComposer from '@/components/email/EmailCampaignComposer';
+import BrandProfilesManager from '@/components/admin/BrandProfilesManager';
 
 const BRAND_PRIMARY = '#D45387';
 const REQUIRED_TEMPLATE_NAMES = [
+  'welcome',
   'promo_especial',
   'newsletter_general',
+  'payment-confirmation',
   'reminder_onboarding',
   'payment_confirmed',
   'welcome_email',
   'invitation-access',
+  'access-granted',
 ];
 
 function fmtDate(value) {
@@ -179,9 +186,12 @@ function UserEditModal({ row, onClose, onSave, isSaving }) {
 }
 
 export default function AdminPanel() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, userProfile } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('usuarios');
+  const ownerId = user?.id || userProfile?.id || null;
+  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
+  const ownerName = userProfile?.full_name || ownerEmail || '';
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -195,9 +205,9 @@ export default function AdminPanel() {
   const [isNewTemplate, setIsNewTemplate] = useState(false);
   const [templatePreview, setTemplatePreview] = useState(null);
 
-  const [audience, setAudience] = useState('all');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [didAutoSeedTemplates, setDidAutoSeedTemplates] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastTemplateId, setBroadcastTemplateId] = useState('');
 
   const { data: adminData, isLoading, isError, error, refetch } = useAdminDirectory();
   const inviteMutation = useInviteUser();
@@ -229,40 +239,6 @@ export default function AdminPanel() {
       toast.success('Templates inicializados.');
     },
     onError: (err) => toast.error(err.message || 'No se pudieron inicializar los templates.'),
-  });
-
-  const sendCampaignMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedTemplateId) {
-        throw new Error('Selecciona un template para enviar.');
-      }
-
-      const campaign = await emailService.createCampaign({
-        templateId: selectedTemplateId,
-        name: `Campaña ${new Date().toLocaleDateString('es-DO')}`,
-        targetSegment: audience,
-      });
-      return emailService.sendCampaign(campaign.id);
-    },
-    onSuccess: ({ sent, total }) => {
-      toast.success(`Campaña enviada: ${sent}/${total} correos.`);
-    },
-    onError: (err) => toast.error(err.message || 'No se pudo enviar la campaña.'),
-  });
-
-  const sendTemplateNowMutation = useMutation({
-    mutationFn: async (template) => {
-      const campaign = await emailService.createCampaign({
-        templateId: template.id,
-        name: `Envío rápido - ${template.name} - ${new Date().toLocaleDateString('es-DO')}`,
-        targetSegment: 'with_access',
-      });
-      return emailService.sendCampaign(campaign.id);
-    },
-    onSuccess: ({ sent, total }) => {
-      toast.success(`Template enviado: ${sent}/${total} correos.`);
-    },
-    onError: (err) => toast.error(err.message || 'No se pudo enviar el template.'),
   });
 
   useEffect(() => {
@@ -383,6 +359,7 @@ export default function AdminPanel() {
       <div className="flex gap-2 rounded-lg border bg-card p-1 w-fit">
         {[
           { key: 'usuarios', label: 'Usuarios', icon: UserRound },
+          { key: 'brandings', label: 'Mis marcas', icon: Palette },
           { key: 'emails', label: 'Emails', icon: Mail },
           { key: 'templates', label: 'Templates', icon: Pencil },
         ].map((tab) => (
@@ -622,57 +599,20 @@ export default function AdminPanel() {
       ) : null}
 
       {activeTab === 'emails' ? (
-        <Card className="p-4 space-y-4">
-          <h2 className="text-lg font-semibold">Envío de campañas</h2>
-          <p className="text-sm text-muted-foreground">
-            Selecciona un template y una audiencia para enviar correos masivos.
-          </p>
+        <EmailCampaignComposer
+          templates={templatesQuery.data || []}
+          onSent={() => {
+            queryClient.invalidateQueries({ queryKey: ['email-logs'] });
+          }}
+        />
+      ) : null}
 
-          <div className="grid md:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs font-semibold">Template</Label>
-              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                <SelectTrigger className="h-9 mt-1 text-sm">
-                  <SelectValue placeholder="Selecciona un template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(templatesQuery.data || []).filter((tpl) => tpl.is_active).map((tpl) => (
-                    <SelectItem key={tpl.id} value={tpl.id}>
-                      {tpl.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-xs font-semibold">Audiencia</Label>
-              <Select value={audience} onValueChange={setAudience}>
-                <SelectTrigger className="h-9 mt-1 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="with_access">Con acceso</SelectItem>
-                  <SelectItem value="without_access">Sin acceso</SelectItem>
-                  <SelectItem value="admins">Solo admins</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <Button
-              className="h-9 text-sm"
-              style={{ backgroundColor: BRAND_PRIMARY }}
-              onClick={() => sendCampaignMutation.mutate()}
-              disabled={sendCampaignMutation.isPending || !selectedTemplateId}
-            >
-              {sendCampaignMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
-              Enviar campaña
-            </Button>
-          </div>
-        </Card>
+      {activeTab === 'brandings' ? (
+        <BrandProfilesManager
+          ownerId={ownerId}
+          ownerEmail={ownerEmail}
+          ownerName={ownerName}
+        />
       ) : null}
 
       {activeTab === 'templates' ? (
@@ -728,10 +668,6 @@ export default function AdminPanel() {
                   </tr>
                 ) : (
                   (templatesQuery.data || []).map((tpl) => {
-                    const isSendingThisTemplate =
-                      sendTemplateNowMutation.isPending &&
-                      sendTemplateNowMutation.variables?.id === tpl.id;
-
                     return (
                       <tr key={tpl.id} className="border-t">
                         <td className="px-3 py-2.5 text-sm font-medium">{tpl.name}</td>
@@ -759,14 +695,12 @@ export default function AdminPanel() {
                             <Button
                               className="h-8 px-2 text-xs"
                               style={{ backgroundColor: BRAND_PRIMARY }}
-                              onClick={() => sendTemplateNowMutation.mutate(tpl)}
-                              disabled={isSendingThisTemplate}
+                              onClick={() => {
+                                setBroadcastTemplateId(tpl.id);
+                                setShowBroadcast(true);
+                              }}
                             >
-                              {isSendingThisTemplate ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                              ) : (
-                                <Send className="h-3.5 w-3.5 mr-1" />
-                              )}
+                              <Send className="h-3.5 w-3.5 mr-1" />
                               Enviar
                             </Button>
                           </div>
@@ -820,6 +754,17 @@ export default function AdminPanel() {
 
       {templatePreview ? (
         <PreviewModal template={templatePreview} onClose={() => setTemplatePreview(null)} />
+      ) : null}
+
+      {showBroadcast ? (
+        <BroadcastModal
+          templates={templatesQuery.data || []}
+          initialTemplate={broadcastTemplateId}
+          onClose={() => {
+            setShowBroadcast(false);
+            setBroadcastTemplateId('');
+          }}
+        />
       ) : null}
     </div>
   );

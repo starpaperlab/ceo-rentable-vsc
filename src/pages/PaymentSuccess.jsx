@@ -7,6 +7,11 @@ import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
+import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
+import { trackPurchase } from '@/lib/metaPixel';
+
+const AUTH_SESSION_ERROR =
+  'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
@@ -17,6 +22,7 @@ export default function PaymentSuccess() {
   const [planCode, setPlanCode] = useState(null);
   const [message, setMessage] = useState('Confirmando tu pago...');
   const hasProcessedRef = useRef(false);
+  const hasTrackedPurchaseRef = useRef(false);
 
   const planLabel =
     planCode === 'founder_lifetime'
@@ -33,16 +39,16 @@ export default function PaymentSuccess() {
       const params = new URLSearchParams(window.location.search);
       const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
       const orderId = `${params.get('order_id') || params.get('orderId') || params.get('token') || ''}`.trim();
-      const nextPlanCode = `${params.get('plan') || ''}`.trim().toLowerCase();
+      const nextPlanCode = normalizeCheckoutPlan(params.get('plan'));
       setProvider(nextProvider || 'paypal');
-      if (['founder_lifetime', 'monthly'].includes(nextPlanCode)) {
+      if (nextPlanCode) {
         setPlanCode(nextPlanCode);
       }
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const currentUser = sessionData?.session?.user;
       if (sessionError || !currentUser) {
-        throw new Error('No se pudo obtener sesión')
+        throw new Error(AUTH_SESSION_ERROR)
       }
 
       setUser(currentUser);
@@ -56,8 +62,18 @@ export default function PaymentSuccess() {
           setStatus('error');
           return;
         }
-        if (['founder_lifetime', 'monthly'].includes(capture.planCode)) {
-          setPlanCode(capture.planCode);
+        const normalizedCapturePlan = normalizeCheckoutPlan(capture.planCode);
+        const resolvedPlanCode = normalizedCapturePlan || nextPlanCode || planCode || null;
+        if (normalizedCapturePlan) {
+          setPlanCode(normalizedCapturePlan);
+        }
+
+        if (!hasTrackedPurchaseRef.current) {
+          hasTrackedPurchaseRef.current = true;
+          trackPurchase(
+            resolvedPlanCode,
+            capture.captureId || orderId || null
+          );
         }
 
         setMessage('Actualizando tu acceso...');
@@ -78,8 +94,8 @@ export default function PaymentSuccess() {
         .select('has_access, plan')
         .eq('id', currentUser.id)
         .maybeSingle();
-      if (['founder_lifetime', 'monthly'].includes(profile?.plan)) {
-        setPlanCode(profile.plan);
+      if (normalizeCheckoutPlan(profile?.plan)) {
+        setPlanCode(normalizeCheckoutPlan(profile.plan));
       }
 
       const { data: subscription } = await supabase
@@ -107,6 +123,10 @@ export default function PaymentSuccess() {
     navigate('/Dashboard', { replace: true });
   };
 
+  const goToLogin = () => {
+    navigate(getLoginPath(planCode, { mode: 'login' }), { replace: true });
+  };
+
   if (status === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -124,7 +144,11 @@ export default function PaymentSuccess() {
         <Card className="p-8 max-w-md text-center space-y-4">
           <p className="text-lg font-bold text-foreground">Algo salió mal</p>
           <p className="text-sm text-muted-foreground">{message || 'No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.'}</p>
-          <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
+          {message === AUTH_SESSION_ERROR ? (
+            <Button variant="outline" onClick={goToLogin}>Iniciar sesión</Button>
+          ) : (
+            <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
+          )}
         </Card>
       </div>
     );

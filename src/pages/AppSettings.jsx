@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
+import { useAutosave } from '@/hooks/useAutosave';
+import { useDraftRecovery } from '@/hooks/useDraftRecovery';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +16,8 @@ import { Save, Upload, Info, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import PageTour from '@/components/shared/PageTour';
+import AutosaveStatus from '@/components/shared/AutosaveStatus';
+import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
 import { useAuth } from '@/lib/AuthContext';
 import {
   extractMissingColumnFromError,
@@ -26,7 +30,7 @@ import {
 const TOUR_STEPS = [
   { title: 'Configuración 🛠️', description: 'Aquí ajustas los datos de tu negocio: nombre, moneda, metas y el branding que aparece en tus facturas y cotizaciones.' },
   { title: 'Meta de margen 🎯', description: 'Define el margen % que quieres lograr. Este número se usa para calcular tu CEO Score y darte alertas cuando un producto no lo alcanza.' },
-  { title: 'Branding en documentos 🎨', description: 'El logo, color y tipografía que configures aquí aparecerán en todas tus facturas y cotizaciones exportadas.' },
+  { title: 'Branding en documentos 🎨', description: 'El logo, color y tipografía que configures aquí aparecerán en todas tus facturas y cotizaciones.' },
 ];
 
 const BRAND_COLORS = ['#D94F8A', '#B57EDC', '#C9A227', '#4CAF50', '#2196F3'];
@@ -56,219 +60,274 @@ const GOOGLE_FONTS = [
   { label: 'Open Sans (Neutral)', value: 'Open Sans' },
 ];
 
+function buildSettingsForm(config = {}, userProfile, ownerEmail) {
+  return {
+    business_name: config.business_name || '',
+    brand_color: config.brand_color || '#D94F8A',
+    font_family: config.font_family || 'Inter',
+    logo_url: config.logo_url || '',
+    fiscal_name: config.fiscal_name || '',
+    fiscal_id: config.fiscal_id || '',
+    fiscal_address: config.fiscal_address || '',
+    contact_name: config.contact_name || userProfile?.full_name || '',
+    contact_title: config.contact_title || '',
+    contact_email: config.contact_email || ownerEmail,
+    phone_primary: config.phone_primary || '',
+    phone_secondary: config.phone_secondary || '',
+    address: config.address || config.fiscal_address || '',
+    city_country: config.city_country || '',
+    instagram_url: config.instagram_url || '',
+    facebook_url: config.facebook_url || '',
+    tiktok_url: config.tiktok_url || '',
+    linkedin_url: config.linkedin_url || '',
+    website_url: config.website_url || '',
+    whatsapp_url: config.whatsapp_url || '',
+    logo_position: config.logo_position || 'left',
+    ...DEFAULT_DOCUMENT_PREFS,
+    doc_show_socials: config.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
+    doc_show_fiscal_id: config.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
+    doc_show_address: config.doc_show_address ?? DEFAULT_DOCUMENT_PREFS.doc_show_address,
+    doc_show_contact: config.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
+    doc_show_signature: config.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
+    currency: config.currency || 'USD',
+    quarterly_goal: Number(config.quarterly_goal || 0),
+    target_margin_pct: Number(config.target_margin_pct || 40),
+    logo_size: config.logo_size || 'medium',
+    logo_width: Number(config.logo_width || LOGO_SIZE_OPTIONS.medium),
+  };
+}
+
+function getLogoWidth({ logoSize, logoWidth }) {
+  if (logoSize === 'custom') {
+    const customWidth = Number(logoWidth || 0);
+    return Number.isFinite(customWidth) && customWidth > 0 ? customWidth : LOGO_SIZE_OPTIONS.medium;
+  }
+  return LOGO_SIZE_OPTIONS[logoSize] || LOGO_SIZE_OPTIONS.medium;
+}
+
+function serializeSettingsForm(raw) {
+  return {
+    ...raw,
+    fiscal_address: raw.fiscal_address || raw.address || '',
+    quarterly_goal: Number(raw.quarterly_goal || 0),
+    target_margin_pct: Number(raw.target_margin_pct || 0),
+    logo_width: getLogoWidth({ logoSize: raw.logo_size, logoWidth: raw.logo_width }),
+  };
+}
+
+function isMeaningfulSettingsDraft(payload) {
+  return (
+    Boolean(`${payload?.business_name || ''}`.trim()) ||
+    Boolean(`${payload?.fiscal_name || ''}`.trim()) ||
+    Boolean(`${payload?.contact_name || ''}`.trim()) ||
+    Boolean(`${payload?.contact_email || ''}`.trim()) ||
+    Boolean(`${payload?.logo_url || ''}`.trim()) ||
+    Boolean(`${payload?.website_url || ''}`.trim()) ||
+    Boolean(`${payload?.instagram_url || ''}`.trim()) ||
+    Boolean(`${payload?.facebook_url || ''}`.trim()) ||
+    Boolean(`${payload?.whatsapp_url || ''}`.trim()) ||
+    payload?.currency !== 'USD' ||
+    Number(payload?.quarterly_goal || 0) > 0 ||
+    Number(payload?.target_margin_pct || 0) !== 40
+  );
+}
+
 export default function AppSettings() {
   const { setCurrency } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
+  const { user, userProfile } = useAuth();
   const ownerId = user?.id || userProfile?.id || null;
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const settingsAdminMode = false;
   const queryClient = useQueryClient();
+  const autosaveUserId = ownerId || ownerEmail || 'anon';
 
   const { data: configs = [], isLoading } = useQuery({
-    queryKey: ['business-config', ownerId, ownerEmail, adminMode],
+    queryKey: ['business-config', ownerId, ownerEmail, settingsAdminMode],
     queryFn: () => fetchOwnedRows({
       table: 'business_config',
       ownerId,
       ownerEmail,
-      adminMode,
+      adminMode: settingsAdminMode,
       orderBy: 'updated_at',
       ascending: false,
     }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    enabled: !!(ownerId || ownerEmail),
   });
 
   const config = configs[0] || {};
+  const baselineForm = useMemo(
+    () => buildSettingsForm(config, userProfile, ownerEmail),
+    [config, ownerEmail, userProfile]
+  );
 
-  const [form, setForm] = useState({
-    business_name: '',
-    brand_color: '#D94F8A',
-    font_family: 'Inter',
-    logo_url: '',
-    fiscal_name: '',
-    fiscal_id: '',
-    fiscal_address: '',
-    contact_name: userProfile?.full_name || '',
-    contact_title: '',
-    contact_email: ownerEmail,
-    phone_primary: '',
-    phone_secondary: '',
-    address: '',
-    city_country: '',
-    instagram_url: '',
-    facebook_url: '',
-    tiktok_url: '',
-    linkedin_url: '',
-    website_url: '',
-    whatsapp_url: '',
-    logo_position: 'left',
-    ...DEFAULT_DOCUMENT_PREFS,
-    currency: 'USD',
-    quarterly_goal: 0,
-    target_margin_pct: 40,
-    logo_size: 'medium',
-    logo_width: LOGO_SIZE_OPTIONS.medium,
-  });
+  const [form, setForm] = useState(() => buildSettingsForm({}, userProfile, ownerEmail));
+  const [currentConfigId, setCurrentConfigId] = useState(null);
+  const [currentRemoteUpdatedAt, setCurrentRemoteUpdatedAt] = useState(null);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
+  const [hasUserEdited, setHasUserEdited] = useState(false);
 
   useEffect(() => {
-    if (config.id) {
-      setForm({
-        business_name: config.business_name || '',
-        brand_color: config.brand_color || '#D94F8A',
-        font_family: config.font_family || 'Inter',
-        logo_url: config.logo_url || '',
-        fiscal_name: config.fiscal_name || '',
-        fiscal_id: config.fiscal_id || '',
-        fiscal_address: config.fiscal_address || '',
-        contact_name: config.contact_name || userProfile?.full_name || '',
-        contact_title: config.contact_title || '',
-        contact_email: config.contact_email || ownerEmail,
-        phone_primary: config.phone_primary || '',
-        phone_secondary: config.phone_secondary || '',
-        address: config.address || config.fiscal_address || '',
-        city_country: config.city_country || '',
-        instagram_url: config.instagram_url || '',
-        facebook_url: config.facebook_url || '',
-        tiktok_url: config.tiktok_url || '',
-        linkedin_url: config.linkedin_url || '',
-        website_url: config.website_url || '',
-        whatsapp_url: config.whatsapp_url || '',
-        logo_position: config.logo_position || 'left',
-        doc_show_socials: config.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
-        doc_show_fiscal_id: config.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
-        doc_show_address: config.doc_show_address ?? DEFAULT_DOCUMENT_PREFS.doc_show_address,
-        doc_show_contact: config.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
-        doc_show_signature: config.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
-        currency: config.currency || 'USD',
-        quarterly_goal: config.quarterly_goal || 0,
-        target_margin_pct: config.target_margin_pct || 40,
-        logo_size: config.logo_size || 'medium',
-        logo_width: config.logo_width || LOGO_SIZE_OPTIONS.medium,
-      });
+    if (isLoading || hasBootstrapped) return;
+    setForm(baselineForm);
+    setCurrentConfigId(config.id || null);
+    setCurrentRemoteUpdatedAt(config.updated_at || null);
+    setHasBootstrapped(true);
+  }, [baselineForm, config.id, config.updated_at, hasBootstrapped, isLoading]);
+
+  useEffect(() => {
+    if (!config.id) return;
+    setCurrentConfigId((prev) => prev || config.id);
+    setCurrentRemoteUpdatedAt((prev) => prev || config.updated_at || null);
+  }, [config.id, config.updated_at]);
+
+  const draftRecovery = useDraftRecovery({
+    module: 'business_config',
+    userId: autosaveUserId,
+    recordId: currentConfigId || 'new',
+    remoteUpdatedAt: currentRemoteUpdatedAt,
+    baselineSnapshot: serializeSettingsForm(baselineForm),
+    enabled: hasBootstrapped && Boolean(autosaveUserId),
+    isMeaningfulDraft: isMeaningfulSettingsDraft,
+  });
+
+  const persistSettings = useCallback(async (data) => {
+    const skippedColumns = new Set();
+
+    if (!settingsAdminMode && !ownerId && !ownerEmail) {
+      throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
     }
-  }, [config.id]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (data) => {
-      const skippedColumns = new Set();
+    if (ownerId) {
+      try {
+        await ensureDbUserRecord({ user, userProfile });
+      } catch (profileError) {
+        console.warn('No se pudo asegurar perfil antes de guardar configuración:', profileError?.message || profileError);
+      }
+    }
 
-      if (!adminMode && !ownerId && !ownerEmail) {
-        throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
+    const serialized = serializeSettingsForm(data);
+    const payload = {
+      ...serialized,
+      user_id: ownerId,
+      created_by: ownerEmail,
+      updated_at: new Date().toISOString(),
+    };
+
+    const runSave = async (safePayload) => {
+      if (currentConfigId) {
+        await updateOwnedRowById({
+          table: 'business_config',
+          id: currentConfigId,
+          payload: safePayload,
+          ownerId,
+          ownerEmail,
+          adminMode: settingsAdminMode,
+        });
+        return {
+          id: currentConfigId,
+          updated_at: safePayload.updated_at,
+        };
       }
 
-      if (ownerId) {
-        try {
-          await ensureDbUserRecord({ user, userProfile });
-        } catch (profileError) {
-          console.warn('No se pudo asegurar perfil antes de guardar configuración:', profileError?.message || profileError);
-        }
+      const { data: insertedRow, error } = await supabase
+        .from('business_config')
+        .insert({ ...safePayload, created_at: new Date().toISOString() })
+        .select()
+        .single();
+      if (error) throw error;
+
+      if (insertedRow?.id) {
+        setCurrentConfigId(insertedRow.id);
       }
 
-      const payload = {
-        ...data,
-        fiscal_address: data.fiscal_address || data.address || '',
-        user_id: ownerId,
-        created_by: ownerEmail,
-        updated_at: new Date().toISOString(),
-      };
+      return insertedRow;
+    };
 
-      const runSave = async (safePayload) => {
-        if (config.id) {
-          await updateOwnedRowById({
-            table: 'business_config',
-            id: config.id,
-            payload: safePayload,
-            ownerId,
-            ownerEmail,
-            adminMode,
-          });
-          return;
-        }
+    const runSaveWithMissingColumnFallback = async (initialPayload) => {
+      const safePayload = { ...initialPayload };
 
-        const { error } = await supabase
-          .from('business_config')
-          .insert({ ...safePayload, created_at: new Date().toISOString() });
-        if (error) throw error;
-      };
-
-      const runSaveWithMissingColumnFallback = async (initialPayload) => {
-        const safePayload = { ...initialPayload };
-
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          try {
-            await runSave(safePayload);
-            return;
-          } catch (error) {
-            const missingColumn = extractMissingColumnFromError(error);
-            if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
-              skippedColumns.add(missingColumn);
-              delete safePayload[missingColumn];
-              continue;
-            }
-            throw error;
-          }
-        }
-
-        throw new Error('No se pudo guardar la configuración porque Supabase sigue reportando columnas faltantes.');
-      };
-
-      if (config.id) {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
         try {
-          await runSaveWithMissingColumnFallback(payload);
-          return { skippedColumns: Array.from(skippedColumns) };
+          return await runSave(safePayload);
         } catch (error) {
-          if (
-            isMissingColumnError(error, 'business_config.user_id') ||
-            isMissingColumnError(error, 'user_id') ||
-            isMissingColumnError(error, 'business_config.created_by') ||
-            isMissingColumnError(error, 'created_by')
-          ) {
-            const noUserId = { ...payload };
-            delete noUserId.user_id;
-            delete noUserId.created_by;
-            await runSave(noUserId);
-            return { skippedColumns: Array.from(skippedColumns) };
-          }
-          if (hasOwnerConstraintIssue(error, 'business_config')) {
-            const noUserId = { ...payload };
-            delete noUserId.user_id;
-            await runSave(noUserId);
-            return { skippedColumns: Array.from(skippedColumns) };
+          const missingColumn = extractMissingColumnFromError(error);
+          if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
+            skippedColumns.add(missingColumn);
+            delete safePayload[missingColumn];
+            continue;
           }
           throw error;
         }
       }
 
-      try {
-        await runSaveWithMissingColumnFallback(payload);
-        return { skippedColumns: Array.from(skippedColumns) };
-      } catch (error) {
-        if (isMissingColumnError(error, 'business_config.user_id') || isMissingColumnError(error, 'user_id')) {
-          const noUserId = { ...payload };
-          delete noUserId.user_id;
-          await runSave(noUserId);
-          return { skippedColumns: Array.from(skippedColumns) };
-        }
+      throw new Error('No se pudo guardar la configuración porque Supabase sigue reportando columnas faltantes.');
+    };
 
-        if (isMissingColumnError(error, 'business_config.created_by') || isMissingColumnError(error, 'created_by')) {
-          const noCreatedBy = { ...payload };
-          delete noCreatedBy.created_by;
-          await runSave(noCreatedBy);
-          return { skippedColumns: Array.from(skippedColumns) };
-        }
-
-        if (hasOwnerConstraintIssue(error, 'business_config')) {
-          const noUserId = { ...payload };
-          delete noUserId.user_id;
-          await runSave(noUserId);
-          return { skippedColumns: Array.from(skippedColumns) };
-        }
-
+    let savedRow;
+    try {
+      savedRow = await runSaveWithMissingColumnFallback(payload);
+    } catch (error) {
+      if (
+        isMissingColumnError(error, 'business_config.user_id') ||
+        isMissingColumnError(error, 'user_id') ||
+        isMissingColumnError(error, 'business_config.created_by') ||
+        isMissingColumnError(error, 'created_by')
+      ) {
+        const noUserPayload = { ...payload };
+        delete noUserPayload.user_id;
+        delete noUserPayload.created_by;
+        savedRow = await runSave(noUserPayload);
+      } else if (hasOwnerConstraintIssue(error, 'business_config')) {
+        const noUserPayload = { ...payload };
+        delete noUserPayload.user_id;
+        savedRow = await runSave(noUserPayload);
+      } else {
         throw error;
       }
-    },
-    onSuccess: (result) => {
+    }
+
+    const nextUpdatedAt = savedRow?.updated_at || payload.updated_at;
+    setCurrentRemoteUpdatedAt(nextUpdatedAt);
+    setCurrency(serialized.currency);
+
+    return {
+      skippedColumns: Array.from(skippedColumns),
+      payload: serialized,
+      remoteUpdatedAt: nextUpdatedAt,
+      saved: savedRow,
+    };
+  }, [currentConfigId, ownerEmail, ownerId, setCurrency, settingsAdminMode, user, userProfile]);
+
+  const autosaveSerializer = useCallback((value) => serializeSettingsForm(value), []);
+
+  const autosave = useAutosave({
+    module: 'business_config',
+    userId: autosaveUserId,
+    recordId: currentConfigId || 'new',
+    data: form,
+    serialize: autosaveSerializer,
+    remoteSave: async (payload) => {
+      const result = await persistSettings(payload);
       queryClient.invalidateQueries({ queryKey: ['business-config'] });
-      setCurrency(form.currency);
+      return {
+        updated_at: result.remoteUpdatedAt,
+      };
+    },
+    remoteEnabled: Boolean(ownerId || ownerEmail),
+    remoteUpdatedAt: currentRemoteUpdatedAt,
+    enabled: hasBootstrapped && hasUserEdited && draftRecovery.resolved,
+    paused: !draftRecovery.resolved,
+    localDelay: 900,
+    remoteDelay: 8000,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (data) => persistSettings(data),
+    onSuccess: (result) => {
+      autosave.markRemoteSynced(result.payload, {
+        remoteUpdatedAt: result.remoteUpdatedAt,
+      });
+      queryClient.invalidateQueries({ queryKey: ['business-config'] });
       if (result?.skippedColumns?.length > 0) {
         toast.warning(`Configuración guardada parcialmente. Faltan columnas en Supabase: ${result.skippedColumns.join(', ')}`);
         return;
@@ -279,6 +338,20 @@ export default function AppSettings() {
       toast.error(`No se pudo guardar configuración: ${error.message}`);
     },
   });
+
+  const update = (field, value) => {
+    setHasUserEdited(true);
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleRecoverDraft = () => {
+    const recovered = draftRecovery.recoverDraft();
+    if (!recovered) return;
+
+    setForm(buildSettingsForm(recovered, userProfile, ownerEmail));
+    setHasUserEdited(true);
+    toast.success('Borrador recuperado');
+  };
 
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -302,7 +375,7 @@ export default function AppSettings() {
     if (uploadError) {
       try {
         const dataUrl = await fallbackToDataUrl();
-        setForm(prev => ({ ...prev, logo_url: dataUrl }));
+        update('logo_url', dataUrl);
         toast.warning('No pudimos subir el logo al storage. Se guardará dentro de tu configuración.');
       } catch {
         toast.error(`No se pudo subir el logo: ${uploadError.message}`);
@@ -319,24 +392,39 @@ export default function AppSettings() {
       return;
     }
 
-    setForm(prev => ({ ...prev, logo_url: publicUrlData.publicUrl }));
+    update('logo_url', publicUrlData.publicUrl);
     toast.success('Logo cargado');
   };
 
-  const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
   const logoWidth = form.logo_size === 'custom'
     ? Number(form.logo_width || LOGO_SIZE_OPTIONS.medium)
     : LOGO_SIZE_OPTIONS[form.logo_size] || LOGO_SIZE_OPTIONS.medium;
 
-  if (isLoading) {
+  const autosaveStatus = saveMutation.isPending ? 'saving' : autosave.status;
+
+  if (isLoading || !hasBootstrapped) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
   return (
     <div className="p-4 lg:p-8 max-w-3xl mx-auto space-y-6">
+      <DraftRecoveryDialog
+        open={draftRecovery.shouldPrompt}
+        savedAt={draftRecovery.draftSavedAt}
+        onRecover={handleRecoverDraft}
+        onDiscard={draftRecovery.discardDraft}
+      />
+
       <PageTour pageName="AppSettings" userEmail={ownerEmail} steps={TOUR_STEPS} />
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-foreground">Configuración</h1>
+
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Configuración</h1>
+            <p className="text-sm text-muted-foreground mt-1">Tu negocio y branding se guardan en segundo plano mientras trabajas.</p>
+          </div>
+          <AutosaveStatus status={autosaveStatus} className="self-start" />
+        </div>
       </motion.div>
 
       <Tabs defaultValue="business">
@@ -354,28 +442,32 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs">Nombre comercial</Label>
-                <Input value={form.business_name} onChange={e => update('business_name', e.target.value)} className="mt-1" />
+                <Input value={form.business_name} onChange={(e) => update('business_name', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Nombre legal</Label>
-                <Input value={form.fiscal_name} onChange={e => update('fiscal_name', e.target.value)} className="mt-1" />
+                <Input value={form.fiscal_name} onChange={(e) => update('fiscal_name', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">RNC / identificación fiscal</Label>
-                <Input value={form.fiscal_id} onChange={e => update('fiscal_id', e.target.value)} className="mt-1" />
+                <Input value={form.fiscal_id} onChange={(e) => update('fiscal_id', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Ciudad / país</Label>
-                <Input value={form.city_country} onChange={e => update('city_country', e.target.value)} className="mt-1" placeholder="Santo Domingo, RD" />
+                <Input value={form.city_country} onChange={(e) => update('city_country', e.target.value)} className="mt-1" placeholder="Santo Domingo, RD" />
               </div>
             </div>
             <div>
               <Label className="text-xs">Dirección</Label>
               <Input
                 value={form.address || form.fiscal_address}
-                onChange={e => {
-                  update('address', e.target.value);
-                  update('fiscal_address', e.target.value);
+                onChange={(e) => {
+                  setHasUserEdited(true);
+                  setForm((prev) => ({
+                    ...prev,
+                    address: e.target.value,
+                    fiscal_address: e.target.value,
+                  }));
                 }}
                 className="mt-1"
               />
@@ -390,23 +482,23 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs">Persona de contacto</Label>
-                <Input value={form.contact_name} onChange={e => update('contact_name', e.target.value)} className="mt-1" />
+                <Input value={form.contact_name} onChange={(e) => update('contact_name', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Cargo de la persona de contacto</Label>
-                <Input value={form.contact_title} onChange={e => update('contact_title', e.target.value)} className="mt-1" />
+                <Input value={form.contact_title} onChange={(e) => update('contact_title', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Email de contacto</Label>
-                <Input type="email" value={form.contact_email} onChange={e => update('contact_email', e.target.value)} className="mt-1" />
+                <Input type="email" value={form.contact_email} onChange={(e) => update('contact_email', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Teléfono principal</Label>
-                <Input value={form.phone_primary} onChange={e => update('phone_primary', e.target.value)} className="mt-1" />
+                <Input value={form.phone_primary} onChange={(e) => update('phone_primary', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Teléfono secundario / WhatsApp</Label>
-                <Input value={form.phone_secondary} onChange={e => update('phone_secondary', e.target.value)} className="mt-1" />
+                <Input value={form.phone_secondary} onChange={(e) => update('phone_secondary', e.target.value)} className="mt-1" />
               </div>
             </div>
           </Card>
@@ -419,27 +511,27 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs">Instagram</Label>
-                <Input value={form.instagram_url} onChange={e => update('instagram_url', e.target.value)} className="mt-1" placeholder="@tuempresa o URL" />
+                <Input value={form.instagram_url} onChange={(e) => update('instagram_url', e.target.value)} className="mt-1" placeholder="@tuempresa o URL" />
               </div>
               <div>
                 <Label className="text-xs">Facebook</Label>
-                <Input value={form.facebook_url} onChange={e => update('facebook_url', e.target.value)} className="mt-1" />
+                <Input value={form.facebook_url} onChange={(e) => update('facebook_url', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">TikTok</Label>
-                <Input value={form.tiktok_url} onChange={e => update('tiktok_url', e.target.value)} className="mt-1" />
+                <Input value={form.tiktok_url} onChange={(e) => update('tiktok_url', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">LinkedIn</Label>
-                <Input value={form.linkedin_url} onChange={e => update('linkedin_url', e.target.value)} className="mt-1" />
+                <Input value={form.linkedin_url} onChange={(e) => update('linkedin_url', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Página web</Label>
-                <Input value={form.website_url} onChange={e => update('website_url', e.target.value)} className="mt-1" />
+                <Input value={form.website_url} onChange={(e) => update('website_url', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">WhatsApp link</Label>
-                <Input value={form.whatsapp_url} onChange={e => update('whatsapp_url', e.target.value)} className="mt-1" placeholder="https://wa.me/..." />
+                <Input value={form.whatsapp_url} onChange={(e) => update('whatsapp_url', e.target.value)} className="mt-1" placeholder="https://wa.me/..." />
               </div>
             </div>
           </Card>
@@ -452,20 +544,20 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs">Moneda global</Label>
-                <Select value={form.currency} onValueChange={v => update('currency', v)}>
+                <Select value={form.currency} onValueChange={(value) => update('currency', value)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {['USD', 'EUR', 'DOP', 'MXN', 'COP'].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {['USD', 'EUR', 'DOP', 'MXN', 'COP'].map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label className="text-xs">Meta trimestral</Label>
-                <Input type="number" value={form.quarterly_goal || ''} onChange={e => update('quarterly_goal', parseFloat(e.target.value) || 0)} className="mt-1" />
+                <Input type="number" value={form.quarterly_goal || ''} onChange={(e) => update('quarterly_goal', parseFloat(e.target.value) || 0)} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs">Meta de margen (%)</Label>
-                <Input type="number" value={form.target_margin_pct || ''} onChange={e => update('target_margin_pct', parseFloat(e.target.value) || 0)} className="mt-1" />
+                <Input type="number" value={form.target_margin_pct || ''} onChange={(e) => update('target_margin_pct', parseFloat(e.target.value) || 0)} className="mt-1" />
               </div>
             </div>
           </Card>
@@ -503,7 +595,7 @@ export default function AppSettings() {
                   </div>
                 )}
                 <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" id="logo-upload" />
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => document.getElementById('logo-upload').click()}>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => document.getElementById('logo-upload')?.click()}>
                   Subir Logo
                 </Button>
               </div>
@@ -512,7 +604,7 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Tamaño del Logo</Label>
-                <Select value={form.logo_size} onValueChange={v => update('logo_size', v)}>
+                <Select value={form.logo_size} onValueChange={(value) => update('logo_size', value)}>
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
@@ -535,7 +627,7 @@ export default function AppSettings() {
                     min="12"
                     max="70"
                     value={form.logo_width || ''}
-                    onChange={e => update('logo_width', Number(e.target.value || 0))}
+                    onChange={(e) => update('logo_width', Number(e.target.value || 0))}
                     className="mt-2"
                     placeholder="Ancho en mm"
                   />
@@ -544,7 +636,7 @@ export default function AppSettings() {
               )}
               <div>
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Posición del Logo</Label>
-                <Select value={form.logo_position} onValueChange={v => update('logo_position', v)}>
+                <Select value={form.logo_position} onValueChange={(value) => update('logo_position', value)}>
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
@@ -560,13 +652,13 @@ export default function AppSettings() {
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Color Primario</Label>
               <div className="flex gap-3 mt-2 flex-wrap">
-                {BRAND_COLORS.map(c => (
+                {BRAND_COLORS.map((color) => (
                   <button
-                    key={c}
+                    key={color}
                     type="button"
-                    className={`w-10 h-10 rounded-full transition-all ${form.brand_color === c ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => update('brand_color', c)}
+                    className={`w-10 h-10 rounded-full transition-all ${form.brand_color === color ? 'ring-2 ring-offset-2 ring-foreground scale-110' : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => update('brand_color', color)}
                   />
                 ))}
               </div>
@@ -574,13 +666,13 @@ export default function AppSettings() {
                 <input
                   type="color"
                   value={form.brand_color}
-                  onChange={e => update('brand_color', e.target.value)}
+                  onChange={(e) => update('brand_color', e.target.value)}
                   className="w-10 h-10 rounded-lg cursor-pointer border border-border bg-transparent p-0.5"
                   title="Elegir color personalizado"
                 />
                 <Input
                   value={form.brand_color}
-                  onChange={e => update('brand_color', e.target.value)}
+                  onChange={(e) => update('brand_color', e.target.value)}
                   placeholder="#D94F8A"
                   className="font-mono text-sm h-10 w-36"
                   maxLength={7}
@@ -594,14 +686,14 @@ export default function AppSettings() {
 
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Tipografía para Documentos</Label>
-              <Select value={form.font_family} onValueChange={v => update('font_family', v)}>
+              <Select value={form.font_family} onValueChange={(value) => update('font_family', value)}>
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {GOOGLE_FONTS.map(f => (
-                    <SelectItem key={f.value} value={f.value}>
-                      {f.label}
+                  {GOOGLE_FONTS.map((font) => (
+                    <SelectItem key={font.value} value={font.value}>
+                      {font.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -624,7 +716,7 @@ export default function AppSettings() {
             ].map(([field, label]) => (
               <div key={field} className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
                 <Label htmlFor={field} className="text-sm">{label}</Label>
-                <Switch id={field} checked={Boolean(form[field])} onCheckedChange={checked => update(field, checked)} />
+                <Switch id={field} checked={Boolean(form[field])} onCheckedChange={(checked) => update(field, checked)} />
               </div>
             ))}
           </Card>
@@ -633,11 +725,15 @@ export default function AppSettings() {
 
       <Button
         className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-        onClick={() => saveMutation.mutate({ ...form, logo_width: logoWidth })}
+        onClick={() => {
+          autosave.cancelPending();
+          autosave.flushLocalDraft();
+          saveMutation.mutate({ ...form, logo_width: logoWidth });
+        }}
         disabled={saveMutation.isPending}
       >
         <Save className="h-4 w-4 mr-2" />
-        Guardar Configuración
+        {saveMutation.isPending ? 'Guardando...' : 'Guardar Configuración'}
       </Button>
     </div>
   );

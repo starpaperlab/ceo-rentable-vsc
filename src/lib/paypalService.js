@@ -1,6 +1,9 @@
 import { ENV_CONFIG } from '@/config/env';
 import { supabase } from '@/lib/supabase';
 
+const AUTH_SESSION_ERROR =
+  'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
+
 function getCreateOrderEndpoint() {
   return '/api/paypal/create-order';
 }
@@ -9,35 +12,44 @@ function getCaptureOrderEndpoint() {
   return '/api/paypal/capture-order';
 }
 
-function getAccessTokenFromStorage() {
-  if (typeof window === 'undefined') return null;
+function isAuthenticationFailure(code, message) {
+  const normalizedCode = `${code || ''}`.trim().toUpperCase()
+  const normalizedMessage = `${message || ''}`.trim().toLowerCase()
 
-  try {
-    const raw = window.localStorage.getItem('ceo-rentable-os-auth');
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    return (
-      parsed?.currentSession?.access_token ||
-      parsed?.session?.access_token ||
-      parsed?.access_token ||
-      null
-    );
-  } catch {
-    return null;
+  if (
+    [
+      'AUTH_REQUIRED',
+      'PAYPAL_ORDER_UNAUTHORIZED',
+      'PAYPAL_CAPTURE_UNAUTHORIZED',
+      'PAYPAL_ORDER_FORBIDDEN',
+    ].includes(normalizedCode)
+  ) {
+    return true
   }
+
+  return (
+    normalizedMessage.includes('client authentication failed') ||
+    normalizedMessage.includes('invalid refresh token') ||
+    normalizedMessage.includes('invalid jwt') ||
+    normalizedMessage.includes('jwt expired') ||
+    normalizedMessage.includes('session invalid') ||
+    normalizedMessage.includes('sesión inválida') ||
+    normalizedMessage.includes('sesion invalida') ||
+    normalizedMessage.includes('sesión expirada') ||
+    normalizedMessage.includes('sesion expirada')
+  )
 }
 
 async function getAccessToken() {
-  const { data: sessionData } = await supabase.auth.getSession();
-  let token = sessionData?.session?.access_token || null;
-  if (token) return token;
+  const { data: sessionData } = await supabase.auth.getSession()
+  let token = sessionData?.session?.access_token || null
+  if (token) return token
 
-  const { data: refreshedData } = await supabase.auth.refreshSession();
-  token = refreshedData?.session?.access_token || null;
-  if (token) return token;
+  const { data: refreshedData } = await supabase.auth.refreshSession()
+  token = refreshedData?.session?.access_token || null
+  if (token) return token
 
-  return getAccessTokenFromStorage();
+  return null
 }
 
 export async function createPayPalOrder(planCode) {
@@ -46,7 +58,7 @@ export async function createPayPalOrder(planCode) {
     return {
       success: false,
       code: 'AUTH_REQUIRED',
-      error: 'Debes iniciar sesión para continuar al pago.',
+      error: AUTH_SESSION_ERROR,
     };
   }
 
@@ -65,10 +77,16 @@ export async function createPayPalOrder(planCode) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.success === false) {
+    const failureCode = payload?.code || 'PAYPAL_ORDER_FAILED'
+    const failureMessage = payload?.error || 'No se pudo crear la orden de PayPal.'
     return {
       success: false,
-      code: payload?.code || 'PAYPAL_ORDER_FAILED',
-      error: payload?.error || 'No se pudo crear la orden de PayPal.',
+      code: isAuthenticationFailure(failureCode, failureMessage)
+        ? 'AUTH_REQUIRED'
+        : failureCode,
+      error: isAuthenticationFailure(failureCode, failureMessage)
+        ? AUTH_SESSION_ERROR
+        : failureMessage,
     };
   }
 
@@ -97,7 +115,7 @@ export async function capturePayPalOrder(orderId) {
     return {
       success: false,
       code: 'AUTH_REQUIRED',
-      error: 'Debes iniciar sesión para confirmar el pago.',
+      error: AUTH_SESSION_ERROR,
     };
   }
 
@@ -116,10 +134,16 @@ export async function capturePayPalOrder(orderId) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.success === false) {
+    const failureCode = payload?.code || 'PAYPAL_CAPTURE_FAILED'
+    const failureMessage = payload?.error || 'No se pudo confirmar el pago de PayPal.'
     return {
       success: false,
-      code: payload?.code || 'PAYPAL_CAPTURE_FAILED',
-      error: payload?.error || 'No se pudo confirmar el pago de PayPal.',
+      code: isAuthenticationFailure(failureCode, failureMessage)
+        ? 'AUTH_REQUIRED'
+        : failureCode,
+      error: isAuthenticationFailure(failureCode, failureMessage)
+        ? AUTH_SESSION_ERROR
+        : failureMessage,
     };
   }
 
@@ -129,6 +153,8 @@ export async function capturePayPalOrder(orderId) {
     captureId: payload?.captureId || null,
     amount: payload?.amount ?? null,
     currency: payload?.currency || null,
+    planCode: payload?.planCode || null,
+    planType: payload?.planType || null,
     status: payload?.status || 'completed',
   };
 }

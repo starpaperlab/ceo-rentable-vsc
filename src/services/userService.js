@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import { sendCustomEmail } from '@/lib/emailService';
-import { buildInvitationEmailHtml, buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
+import { buildInvitationLink, ensureInvitationLink } from '@/lib/invitationEmail';
+import { emailService as adminEmailService } from '@/services/emailService';
 
 function normalizeEmail(email = '') {
   return `${email}`.trim().toLowerCase();
@@ -94,12 +94,23 @@ export const userService = {
         is_lifetime: true,
       });
 
-      const accessEmailResult = await sendCustomEmail(
-        await getCurrentUserId(),
-        normalizedEmail,
-        'Tu acceso fue activado',
-        `<p>Hola ${updated.full_name || normalizedEmail},</p><p>Tu acceso ya fue activado en CEO Rentable OS™.</p>`
-      );
+      let accessEmailResult = { success: true };
+      try {
+        await adminEmailService.sendNamedTemplate(
+          'access-granted',
+          normalizedEmail,
+          {
+            name: updated.full_name || normalizedEmail,
+            email: normalizedEmail,
+          },
+          {
+            userId: await getCurrentUserId(),
+            sourceType: 'registered',
+          }
+        );
+      } catch (error) {
+        accessEmailResult = { success: false, error: error.message || 'Error desconocido' };
+      }
       if (accessEmailResult?.success === false && !isResendNotConfiguredResult(accessEmailResult)) {
         throw new Error(`El acceso se activó, pero no se pudo enviar el correo: ${accessEmailResult.error || 'Error desconocido'}`);
       }
@@ -149,18 +160,24 @@ export const userService = {
     const { data: invitation, error: inviteError } = await invitationQuery.select('*').single();
     if (inviteError) throw inviteError;
 
-    const invitationHtml = buildInvitationEmailHtml({
-      fullName: full_name || normalizedEmail,
-      inviteLink: invitationLink,
-      role: safeRole,
-    });
-
-    const invitationEmailResult = await sendCustomEmail(
-      await getCurrentUserId(),
-      normalizedEmail,
-      'Invitación a CEO Rentable OS™',
-      invitationHtml
-    );
+    let invitationEmailResult = { success: true };
+    try {
+      await adminEmailService.sendNamedTemplate(
+        'invitation-access',
+        normalizedEmail,
+        {
+          name: full_name || normalizedEmail,
+          email: normalizedEmail,
+          invite_link: invitationLink,
+        },
+        {
+          userId: await getCurrentUserId(),
+          sourceType: 'manual',
+        }
+      );
+    } catch (error) {
+      invitationEmailResult = { success: false, error: error.message || 'Error desconocido' };
+    }
     if (invitationEmailResult?.success === false && !isResendNotConfiguredResult(invitationEmailResult)) {
       throw new Error(`La invitación se guardó, pero no se pudo enviar el correo: ${invitationEmailResult.error || 'Error desconocido'}`);
     }

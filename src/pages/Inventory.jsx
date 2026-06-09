@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Package, ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Monitor, Wrench } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import InventoryItemForm from '@/components/inventory/InventoryItemForm';
 import {
   deleteOwnedRowById,
   fetchOwnedRows,
@@ -52,16 +53,6 @@ export default function Inventory() {
   const [showForm, setShowForm] = useState(false);
   const [movementItem, setMovementItem] = useState(null);
   const [movementForm, setMovementForm] = useState({ type: 'entrada', quantity: 1, reason: '' });
-  const [itemForm, setItemForm] = useState({
-    product_name: '',
-    sku: '',
-    descripcion: '',
-    sale_price: 0,
-    costo_unitario: 0,
-    current_stock: 0,
-    min_stock_alert: 5,
-    unit: 'unidad',
-  });
 
   const addOwnerToPayload = (payload) => ({
     ...payload,
@@ -117,50 +108,58 @@ export default function Inventory() {
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
 
-  const saveItemMutation = useMutation({
-    mutationFn: async (payload) => {
-      if (!adminMode && !ownerId && !ownerEmail) {
-        throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
-      }
+  const persistInventoryItem = async (payload, { targetItem = null } = {}) => {
+    if (!adminMode && !ownerId && !ownerEmail) {
+      throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
+    }
 
-      if (ownerId) {
-        try {
-          await ensureDbUserRecord({ user, userProfile });
-        } catch (profileError) {
-          console.warn('No se pudo asegurar perfil antes de guardar inventario:', profileError?.message || profileError);
-        }
+    if (ownerId) {
+      try {
+        await ensureDbUserRecord({ user, userProfile });
+      } catch (profileError) {
+        console.warn('No se pudo asegurar perfil antes de guardar inventario:', profileError?.message || profileError);
       }
+    }
 
-      if (editingItem?.id) {
-        await updateOwnedRowById({
-          table: 'inventory_items',
-          id: editingItem.id,
-          payload,
-          ownerId,
-          ownerEmail,
-          adminMode,
-        });
-        return;
-      }
+    const safePayload = {
+      ...payload,
+      product_name: `${payload?.product_name || ''}`.trim(),
+      sku: `${payload?.sku || ''}`.trim() || null,
+      descripcion: `${payload?.descripcion || ''}`.trim() || null,
+      sale_price: Number(payload?.sale_price || 0),
+      costo_unitario: Number(payload?.costo_unitario || 0),
+      current_stock: Number(payload?.current_stock || 0),
+      min_stock_alert: Number(payload?.min_stock_alert || 0),
+      unit: `${payload?.unit || 'unidad'}`.trim() || 'unidad',
+    };
+    const now = new Date().toISOString();
 
-      return insertOwned('inventory_items', addOwnerToPayload({ ...payload, product_type: 'fisico' }));
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
-      setShowForm(false);
-      setEditingItem(null);
-      setItemForm({
-        product_name: '',
-        sku: '',
-        descripcion: '',
-        sale_price: 0,
-        costo_unitario: 0,
-        current_stock: 0,
-        min_stock_alert: 5,
-        unit: 'unidad',
+    if (targetItem?.id) {
+      await updateOwnedRowById({
+        table: 'inventory_items',
+        id: targetItem.id,
+        payload: safePayload,
+        ownerId,
+        ownerEmail,
+        adminMode,
       });
-      toast.success('Producto guardado');
-    },
+
+      return {
+        payload: safePayload,
+        remoteUpdatedAt: now,
+      };
+    }
+
+    const saved = await insertOwned('inventory_items', addOwnerToPayload({ ...safePayload, product_type: 'fisico' }));
+    return {
+      payload: safePayload,
+      remoteUpdatedAt: saved?.updated_at || now,
+      saved,
+    };
+  };
+
+  const saveItemMutation = useMutation({
+    mutationFn: async (payload) => persistInventoryItem(payload, { targetItem: editingItem }),
     onError: (error) => {
       toast.error(`No se pudo guardar el producto: ${error.message}`);
     },
@@ -312,16 +311,6 @@ export default function Inventory() {
             <Button
               onClick={() => {
                 setEditingItem(null);
-                setItemForm({
-                  product_name: '',
-                  sku: '',
-                  descripcion: '',
-                  sale_price: 0,
-                  costo_unitario: 0,
-                  current_stock: 0,
-                  min_stock_alert: 5,
-                  unit: 'unidad',
-                });
                 setShowForm(true);
               }}
             >
@@ -330,43 +319,25 @@ export default function Inventory() {
           </div>
 
           {(showForm || editingItem) && (
-            <Card className="p-5 space-y-4 border-primary/30">
-              <h3 className="font-semibold text-sm">{editingItem ? 'Editar producto' : 'Nuevo producto fisico'}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Nombre *</Label>
-                  <Input value={itemForm.product_name} onChange={(event) => setItemForm((prev) => ({ ...prev, product_name: event.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">SKU</Label>
-                  <Input value={itemForm.sku} onChange={(event) => setItemForm((prev) => ({ ...prev, sku: event.target.value }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Precio venta</Label>
-                  <Input type="number" value={itemForm.sale_price || ''} onChange={(event) => setItemForm((prev) => ({ ...prev, sale_price: parseFloat(event.target.value) || 0 }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Costo unitario</Label>
-                  <Input type="number" value={itemForm.costo_unitario || ''} onChange={(event) => setItemForm((prev) => ({ ...prev, costo_unitario: parseFloat(event.target.value) || 0 }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Stock</Label>
-                  <Input type="number" value={itemForm.current_stock || ''} onChange={(event) => setItemForm((prev) => ({ ...prev, current_stock: parseFloat(event.target.value) || 0 }))} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Alerta minima</Label>
-                  <Input type="number" value={itemForm.min_stock_alert || ''} onChange={(event) => setItemForm((prev) => ({ ...prev, min_stock_alert: parseFloat(event.target.value) || 0 }))} className="mt-1" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs">Descripcion</Label>
-                  <Input value={itemForm.descripcion} onChange={(event) => setItemForm((prev) => ({ ...prev, descripcion: event.target.value }))} className="mt-1" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => { setShowForm(false); setEditingItem(null); }}>Cancelar</Button>
-                <Button onClick={() => saveItemMutation.mutate(itemForm)} disabled={!itemForm.product_name || saveItemMutation.isPending}>Guardar</Button>
-              </div>
-            </Card>
+            <InventoryItemForm
+              key={editingItem?.id || 'new-inventory-item'}
+              item={editingItem}
+              onSubmit={async (payload) => {
+                const result = await saveItemMutation.mutateAsync(payload);
+                queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
+                return result;
+              }}
+              onRemoteSave={(payload) => persistInventoryItem(payload, { targetItem: editingItem })}
+              onSaved={() => {
+                setShowForm(false);
+                setEditingItem(null);
+                toast.success(editingItem?.id ? 'Producto actualizado' : 'Producto guardado');
+              }}
+              onCancel={() => { setShowForm(false); setEditingItem(null); }}
+              isLoading={saveItemMutation.isPending}
+              autosaveUserId={ownerId || ownerEmail || 'anon'}
+              remoteUpdatedAt={editingItem?.updated_at || null}
+            />
           )}
 
           {fisicos.length === 0 ? (
@@ -409,16 +380,6 @@ export default function Inventory() {
                         size="sm"
                         onClick={() => {
                           setEditingItem(item);
-                          setItemForm({
-                            product_name: item.product_name || '',
-                            sku: item.sku || '',
-                            descripcion: item.descripcion || '',
-                            sale_price: item.sale_price || 0,
-                            costo_unitario: item.costo_unitario || 0,
-                            current_stock: item.current_stock || 0,
-                            min_stock_alert: item.min_stock_alert || 0,
-                            unit: item.unit || 'unidad',
-                          });
                           setShowForm(true);
                         }}
                       >

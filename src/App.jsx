@@ -19,6 +19,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AccessGuard from '@/components/shared/AccessGuard';
 import AdminRouteGuard from '@/components/shared/AdminRouteGuard';
+import MetaPixelRouteTracker from '@/components/tracking/MetaPixelRouteTracker';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -72,6 +73,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Login />} />
       <Route path="/diagnostico" element={<Diagnostico />} />
       <Route path="/acceso" element={<Acceso />} />
       <Route path="/activar-acceso" element={<ActivateAccess />} />
@@ -140,6 +142,7 @@ function App() {
 
   return (
     <Router>
+      <MetaPixelRouteTracker />
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <AuthenticatedApp />

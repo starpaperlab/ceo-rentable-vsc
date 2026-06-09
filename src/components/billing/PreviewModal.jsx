@@ -1,54 +1,87 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, Download } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { resolveDocumentBranding } from '@/lib/documentBranding';
 import { generateBillingDocumentPdf } from '@/lib/documentPdf';
+import { resolveVisualAttachmentsForDisplay, sanitizeVisualAttachments } from '@/lib/visualAttachments';
 
 export default function PreviewModal({ document: doc, type, onClose }) {
   const { symbol } = useCurrency();
   const previewRef = useRef(null);
+  const resolvedDoc = resolveDocumentBranding(doc);
+  const [resolvedAttachments, setResolvedAttachments] = useState([]);
 
-  const docNumber = type === 'invoice' ? doc.invoice_number : doc.quote_number;
+  const docNumber = type === 'invoice' ? resolvedDoc.invoice_number : resolvedDoc.quote_number;
   const docLabel = type === 'invoice' ? 'FACTURA' : 'COTIZACIÓN';
   const recipientLabel = type === 'invoice' ? 'FACTURADO A' : 'COTIZADO PARA';
-  const brandColor = doc.brand_color || '#D94F8A';
-  const fontFamily = doc.font_family || 'Inter';
+  const brandColor = resolvedDoc.brand_color || '#D94F8A';
+  const fontFamily = resolvedDoc.font_family || 'Inter';
   const fontUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;600;700&display=swap`;
 
-  const additionalCharges = (doc.additional_charges || []).filter((charge) => charge.name && Number(charge.amount || 0) > 0);
-  const additionalChargesTotal = Number(doc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0));
-  const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? ((doc.subtotal || 0) + additionalChargesTotal));
-  const taxAmount = doc.tax_enabled ? subtotalBeforeTax * ((doc.tax_pct || 0) / 100) : 0;
-  const totalFinal = Number(doc.total_final ?? subtotalBeforeTax + taxAmount);
-  const validItems = (doc.line_items || []).filter(i => i.description);
-  const logoWidth = Number(doc.logo_width || 24);
-  const logoPosition = doc.logo_position || 'left';
+  const additionalCharges = (resolvedDoc.additional_charges || []).filter((charge) => charge.name && Number(charge.amount || 0) > 0);
+  const additionalChargesTotal = Number(resolvedDoc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0));
+  const subtotalBeforeTax = Number(resolvedDoc.subtotal_before_tax ?? ((resolvedDoc.subtotal || 0) + additionalChargesTotal));
+  const taxAmount = resolvedDoc.tax_enabled ? subtotalBeforeTax * ((resolvedDoc.tax_pct || 0) / 100) : 0;
+  const totalFinal = Number(resolvedDoc.total_final ?? subtotalBeforeTax + taxAmount);
+  const validItems = (resolvedDoc.line_items || []).filter(i => i.description);
+  const logoWidth = Number(resolvedDoc.logo_width || 24);
+  const displayLogoWidth = Math.min(logoWidth * 3.1, 118);
+  const logoPosition = resolvedDoc.logo_position || 'left';
   const logoAlign = logoPosition === 'center' ? 'center' : logoPosition === 'right' ? 'flex-end' : 'flex-start';
   const textAlign = logoPosition === 'center' ? 'center' : logoPosition === 'right' ? 'right' : 'left';
   const companyDetails = [
-    doc.doc_show_fiscal_id !== false && doc.fiscal_id ? `RNC / ID: ${doc.fiscal_id}` : '',
-    doc.doc_show_address !== false && (doc.address || doc.fiscal_address) ? (doc.address || doc.fiscal_address) : '',
-    doc.doc_show_address !== false && doc.city_country ? doc.city_country : '',
+    resolvedDoc.doc_show_fiscal_id !== false && resolvedDoc.fiscal_id ? `RNC / ID: ${resolvedDoc.fiscal_id}` : '',
+    resolvedDoc.doc_show_address !== false && (resolvedDoc.address || resolvedDoc.fiscal_address) ? (resolvedDoc.address || resolvedDoc.fiscal_address) : '',
+    resolvedDoc.doc_show_address !== false && resolvedDoc.city_country ? resolvedDoc.city_country : '',
   ].filter(Boolean);
   const contactDetails = [
-    doc.doc_show_contact !== false && doc.contact_name ? [doc.contact_name, doc.contact_title].filter(Boolean).join(' · ') : '',
-    doc.doc_show_contact !== false && doc.contact_email ? doc.contact_email : '',
-    doc.doc_show_contact !== false && doc.phone_primary ? doc.phone_primary : '',
-    doc.doc_show_contact !== false && doc.phone_secondary ? doc.phone_secondary : '',
+    resolvedDoc.doc_show_contact !== false && resolvedDoc.contact_name ? [resolvedDoc.contact_name, resolvedDoc.contact_title].filter(Boolean).join(' · ') : '',
+    resolvedDoc.doc_show_contact !== false && resolvedDoc.contact_email ? resolvedDoc.contact_email : '',
+    resolvedDoc.doc_show_contact !== false && resolvedDoc.phone_primary ? resolvedDoc.phone_primary : '',
+    resolvedDoc.doc_show_contact !== false && resolvedDoc.phone_secondary ? resolvedDoc.phone_secondary : '',
   ].filter(Boolean);
   const socialDetails = [
-    doc.website_url,
-    doc.instagram_url,
-    doc.facebook_url,
-    doc.tiktok_url,
-    doc.linkedin_url,
-    doc.whatsapp_url,
+    resolvedDoc.website_url,
+    resolvedDoc.instagram_url,
+    resolvedDoc.facebook_url,
+    resolvedDoc.tiktok_url,
+    resolvedDoc.linkedin_url,
+    resolvedDoc.whatsapp_url,
   ].filter(Boolean);
-  const signerName = doc.contact_name || doc.company_name || 'Firma autorizada';
-  const signerMeta = [doc.contact_title, doc.contact_email].filter(Boolean).join(' · ');
+  const signerName = resolvedDoc.contact_name || resolvedDoc.company_name || 'Firma autorizada';
+  const signerMeta = [resolvedDoc.contact_title, resolvedDoc.contact_email].filter(Boolean).join(' · ');
+  const visualAttachments = useMemo(
+    () => sanitizeVisualAttachments(resolvedDoc.visual_attachments || []).filter((attachment) => attachment.include_in_pdf !== false),
+    [resolvedDoc.visual_attachments]
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    const hydrateAttachments = async () => {
+      const nextAttachments = await resolveVisualAttachmentsForDisplay(visualAttachments);
+      if (active) {
+        setResolvedAttachments(nextAttachments);
+      }
+    };
+
+    if (visualAttachments.length === 0) {
+      setResolvedAttachments([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    hydrateAttachments();
+
+    return () => {
+      active = false;
+    };
+  }, [visualAttachments]);
 
   const handleExportPDF = async () => {
-    await generateBillingDocumentPdf({ doc, type, symbol });
+    await generateBillingDocumentPdf({ doc: resolvedDoc, type, symbol });
   };
 
   return (
@@ -74,13 +107,13 @@ export default function PreviewModal({ document: doc, type, onClose }) {
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '24px', marginBottom: '32px' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: logoAlign, textAlign }}>
-              {doc.logo_url && (
+              {resolvedDoc.logo_url && (
                 <img
-                  src={doc.logo_url}
+                  src={resolvedDoc.logo_url}
                   alt="Logo"
                   style={{
-                    width: `${logoWidth * 3.6}px`,
-                    maxHeight: '86px',
+                    width: `${displayLogoWidth}px`,
+                    maxHeight: '64px',
                     height: 'auto',
                     objectFit: 'contain',
                     marginBottom: '8px',
@@ -89,10 +122,10 @@ export default function PreviewModal({ document: doc, type, onClose }) {
                 />
               )}
               <p style={{ fontSize: '18px', fontWeight: 'bold', color: brandColor, margin: 0 }}>
-                {doc.company_name || 'Mi Empresa'}
+                {resolvedDoc.company_name || 'Mi Empresa'}
               </p>
-              {doc.fiscal_name && doc.fiscal_name !== doc.company_name && (
-                <p style={{ fontSize: '12px', color: '#666', margin: '3px 0 0 0' }}>{doc.fiscal_name}</p>
+              {resolvedDoc.fiscal_name && resolvedDoc.fiscal_name !== resolvedDoc.company_name && (
+                <p style={{ fontSize: '12px', color: '#666', margin: '3px 0 0 0' }}>{resolvedDoc.fiscal_name}</p>
               )}
               {companyDetails.map((detail) => (
                 <p key={detail} style={{ fontSize: '11px', color: '#777', margin: '2px 0 0 0' }}>{detail}</p>
@@ -104,16 +137,16 @@ export default function PreviewModal({ document: doc, type, onClose }) {
             <div style={{ textAlign: 'right', minWidth: '150px' }}>
               <p style={{ fontSize: '28px', fontWeight: 'bold', color: brandColor, margin: '0 0 4px 0' }}>{docLabel}</p>
               <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>N° {docNumber}</p>
-              <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>Fecha: {doc.date}</p>
+              <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>Fecha: {resolvedDoc.date}</p>
             </div>
           </div>
 
           {/* Client */}
           <div style={{ backgroundColor: `${brandColor}12`, borderRadius: '10px', padding: '16px', marginBottom: '24px', border: `1px solid ${brandColor}26` }}>
             <p style={{ fontSize: '10px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 6px 0' }}>{recipientLabel}</p>
-            <p style={{ fontSize: '15px', fontWeight: 'bold', color: '#222', margin: '0 0 4px 0' }}>{doc.client_name || '-'}</p>
-            {doc.client_email && <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>{doc.client_email}</p>}
-            {doc.client_phone && <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>📞 {doc.client_phone}</p>}
+            <p style={{ fontSize: '15px', fontWeight: 'bold', color: '#222', margin: '0 0 4px 0' }}>{resolvedDoc.client_name || '-'}</p>
+            {resolvedDoc.client_email && <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>{resolvedDoc.client_email}</p>}
+            {resolvedDoc.client_phone && <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>📞 {resolvedDoc.client_phone}</p>}
           </div>
 
           {/* Table */}
@@ -147,7 +180,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
             <div style={{ width: '240px' }}>
 	              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
 	                <span>Subtotal productos/servicios</span>
-	                <span>{symbol}{(doc.subtotal || 0).toLocaleString()}</span>
+	                <span>{symbol}{(resolvedDoc.subtotal || 0).toLocaleString()}</span>
 	              </div>
 	              {additionalCharges.map((charge, index) => (
 	                <div key={`${charge.name}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
@@ -161,9 +194,9 @@ export default function PreviewModal({ document: doc, type, onClose }) {
 	                  <span>{symbol}{subtotalBeforeTax.toLocaleString()}</span>
 	                </div>
 	              )}
-              {doc.tax_enabled && (
+              {resolvedDoc.tax_enabled && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
-                  <span>ITBIS / IVA ({doc.tax_pct}%)</span>
+                  <span>ITBIS / IVA ({resolvedDoc.tax_pct}%)</span>
                   <span>{symbol}{taxAmount.toLocaleString()}</span>
                 </div>
               )}
@@ -177,9 +210,9 @@ export default function PreviewModal({ document: doc, type, onClose }) {
           {/* Footer note */}
           <div style={{ marginTop: '32px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
             <p style={{ fontSize: '11px', color: '#aaa', margin: 0 }}>
-              {doc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '')}
+              {resolvedDoc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '')}
             </p>
-            {doc.doc_show_signature && (
+            {resolvedDoc.doc_show_signature && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '28px' }}>
                 <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>
                   <strong style={{ color: '#555' }}>{signerName}</strong>
@@ -188,12 +221,66 @@ export default function PreviewModal({ document: doc, type, onClose }) {
                 <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>Aceptado por cliente</div>
               </div>
             )}
-            {doc.doc_show_socials !== false && socialDetails.length > 0 && (
+            {resolvedDoc.doc_show_socials !== false && socialDetails.length > 0 && (
               <p style={{ fontSize: '10px', color: '#999', margin: '18px 0 0 0', lineHeight: 1.5 }}>
                 {socialDetails.join(' · ')}
               </p>
             )}
           </div>
+
+          {resolvedAttachments.length > 0 ? (
+            <div style={{ marginTop: '32px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ fontSize: '10px', fontWeight: '700', color: brandColor, textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
+                  Anexos visuales
+                </p>
+                <p style={{ fontSize: '12px', color: '#777', margin: '6px 0 0 0' }}>
+                  Estas páginas se incluirán al final del PDF como propuesta visual.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gap: '18px' }}>
+                {resolvedAttachments.map((attachment, index) => (
+                  <div key={attachment.id} style={{ border: '1px solid #ece7e2', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#fff' }}>
+                    <div style={{ backgroundColor: `${brandColor}10`, padding: '14px 16px', borderBottom: `1px solid ${brandColor}20` }}>
+                      <p style={{ fontSize: '11px', fontWeight: '700', color: brandColor, margin: 0 }}>
+                        Propuesta visual {index + 1}
+                      </p>
+                      {attachment.title ? (
+                        <p style={{ fontSize: '15px', fontWeight: '700', color: '#222', margin: '5px 0 0 0' }}>
+                          {attachment.title}
+                        </p>
+                      ) : null}
+                      {attachment.description ? (
+                        <p style={{ fontSize: '12px', color: '#666', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+                          {attachment.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div style={{ padding: '18px', backgroundColor: '#faf8f6' }}>
+                      {attachment.resolved_url ? (
+                        <img
+                          src={attachment.resolved_url}
+                          alt={attachment.title || `Anexo visual ${index + 1}`}
+                          style={{
+                            width: '100%',
+                            maxHeight: '420px',
+                            objectFit: 'contain',
+                            borderRadius: '10px',
+                            backgroundColor: '#fff',
+                          }}
+                        />
+                      ) : (
+                        <div style={{ padding: '48px 20px', textAlign: 'center', fontSize: '12px', color: '#999', backgroundColor: '#fff', borderRadius: '10px' }}>
+                          No pudimos cargar la imagen de este anexo para la vista previa.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
