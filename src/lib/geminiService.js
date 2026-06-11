@@ -16,7 +16,7 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 // HELPER: Llamar a Gemini API
 // ───────────────────────────────────────────────────────────────
 
-async function callGeminiAPI(prompt, systemContext = '') {
+async function callGeminiAPI(prompt, systemContext = '', generationConfigOverrides = {}) {
   if (!GEMINI_API_KEY) {
     console.warn('⚠️ VITE_GEMINI_API_KEY no configurada');
     return {
@@ -45,6 +45,7 @@ async function callGeminiAPI(prompt, systemContext = '') {
           topP: 0.95,
           topK: 40,
           maxOutputTokens: 2048,
+          ...generationConfigOverrides,
         },
       }),
     });
@@ -167,64 +168,129 @@ Responde en formato estructurado con emojis. Sé específico y práctico.
 // 2️⃣ DIAGNÓSTICO DEL NEGOCIO
 // ───────────────────────────────────────────────────────────────
 
+const MONTHLY_SALES_LABELS = {
+  less_500: 'Menos de RD$30,000 al mes',
+  '500_2000': 'Entre RD$30,000 y RD$120,000 al mes',
+  more_2000: 'Más de RD$120,000 al mes',
+};
+
 /**
- * Genera un diagnóstico completo del negocio basado en preguntas
- * @param {object} answers - Respuestas del usuario a preguntas clave
- * @returns {object} Diagnóstico con puntuación y recomendaciones
+ * Clasifica el CEO Score en una etiqueta de salud financiera
+ * @param {number} score - Puntuación 0-100
+ * @returns {'Crítico'|'Inestable'|'Saludable'}
  */
-export async function generateBusinessDiagnosis(answers) {
-  const {
-    businessName = 'Mi Negocio',
-    businessType = 'servicios',
-    monthlyRevenue = 0,
-    employees = 0,
-    primaryChallenges = [],
-    goals = [],
-  } = answers;
+export function getCeoScoreClassification(score) {
+  if (score < 40) return 'Crítico';
+  if (score < 70) return 'Inestable';
+  return 'Saludable';
+}
 
-  const prompt = `
-Eres un consultor estratégico para emprendedoras en LATAM.
-Genera un diagnóstico profesional basado en esta información.
+/**
+ * Diagnóstico de respaldo (sin IA) basado en las respuestas reales del diagnóstico
+ */
+function buildFallbackDiagnosis({ monthly_sales, knows_margin, controls_costs, knows_best_product, ceo_score = 0 }) {
+  const classification = getCeoScoreClassification(ceo_score);
+  const salesLabel = MONTHLY_SALES_LABELS[monthly_sales] || 'tus ventas mensuales';
 
-INFORMACIÓN DEL NEGOCIO:
-- Nombre: ${businessName}
-- Tipo: ${businessType}
-- Ingresos mensuales: $${monthlyRevenue}
-- Empleados: ${employees}
-- Desafíos principales: ${primaryChallenges.join(', ') || 'No especificados'}
-- Metas para los próximos 6 meses: ${goals.join(', ') || 'No especificadas'}
-
-PROPORCIONA:
-1. **Diagnóstico**: Evaluación honesta del estado actual del negocio (2 párrafos)
-2. **Fortalezas**: 3 aspectos positivos identificados
-3. **Oportunidades de mejora**: 3 áreas críticas a trabajar
-4. **Plan de acción 30 días**: 5 pasos prácticos e inmediatos
-5. **Puntuación de madurez**: 1-10 (siendo 10 completamente optimizado)
-
-Usa emojis y sé motivador pero realista. Escribe en español.
-  `;
-
-  const result = await callGeminiAPI(prompt);
-
-  if (!result.success && result.fallback) {
-    return {
-      success: true,
-      fallback: true,
-      diagnosis: 'Diagnóstico genérico disponible',
-      score: 5,
-      actions: [
-        '📊 Documenta tus ingresos y gastos diarios',
-        '🎯 Define 3 metas claras para los próximos 90 días',
-        '💼 Implementa un CRM simple para clientes',
-      ],
-    };
+  const recommendations = [];
+  if (!knows_margin) {
+    recommendations.push('📊 Calcula el margen de ganancia real de cada producto o servicio que vendes.');
+  }
+  if (!controls_costs) {
+    recommendations.push('🧾 Registra todos tus costos fijos y variables del mes para tener control real.');
+  }
+  if (!knows_best_product) {
+    recommendations.push('🏆 Identifica qué producto o servicio te deja más ganancia y enfócate en venderlo más.');
+  }
+  if (recommendations.length < 2) {
+    recommendations.push('🎯 Define una meta de ventas mensual y revisa tu avance cada semana.');
+  }
+  if (recommendations.length < 3) {
+    recommendations.push('💡 Separa las finanzas personales de las del negocio si aún no lo haces.');
   }
 
   return {
-    success: result.success,
-    diagnosis: result.text,
-    timestamp: new Date().toISOString(),
+    success: true,
+    fallback: true,
+    diagnosis: `Tu negocio está en un punto ${classification.toLowerCase()} (CEO Score: ${ceo_score}/100), con base en ${salesLabel} y tus respuestas sobre control financiero. Hay oportunidades claras para mejorar tu rentabilidad si tomas acción esta semana.`,
+    recommendations: recommendations.slice(0, 3),
   };
+}
+
+/**
+ * Genera un diagnóstico del negocio basado en las respuestas reales del diagnóstico rápido
+ * @param {object} answers - { monthly_sales, knows_margin, controls_costs, knows_best_product, ceo_score }
+ * @returns {object} { success, fallback, diagnosis, recommendations }
+ */
+export async function generateBusinessDiagnosis(answers = {}) {
+  const {
+    monthly_sales,
+    knows_margin = false,
+    controls_costs = false,
+    knows_best_product = false,
+    ceo_score = 0,
+  } = answers;
+
+  const classification = getCeoScoreClassification(ceo_score);
+  const salesLabel = MONTHLY_SALES_LABELS[monthly_sales] || 'No especificado';
+
+  const prompt = `
+Eres un consultor financiero experto en PYMES de LATAM para CEO Rentable OS™.
+Una persona emprendedora completó un diagnóstico rápido de 4 preguntas. Estas son sus respuestas reales:
+
+- Ventas mensuales aproximadas: ${salesLabel}
+- ¿Conoce su margen de ganancia?: ${knows_margin ? 'Sí' : 'No'}
+- ¿Tiene control de sus costos?: ${controls_costs ? 'Sí' : 'No'}
+- ¿Sabe qué producto o servicio le deja más dinero?: ${knows_best_product ? 'Sí' : 'No'}
+- CEO Score calculado: ${ceo_score}/100 (clasificación: ${classification})
+
+Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional, sin comentarios) con esta forma exacta:
+{
+  "diagnosis": "Diagnóstico honesto, motivador y específico de 2-3 frases en español, basado en estas respuestas concretas",
+  "recommendations": ["Recomendación accionable 1", "Recomendación accionable 2", "Recomendación accionable 3"]
+}
+
+El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acción concreta y aplicable en los próximos 7-30 días, relacionada directamente con las respuestas anteriores. Inicia cada recomendación con un emoji.
+  `;
+
+  const result = await callGeminiAPI(prompt, '', {
+    responseMimeType: 'application/json',
+    responseSchema: {
+      type: 'object',
+      properties: {
+        diagnosis: { type: 'string' },
+        recommendations: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+      required: ['diagnosis', 'recommendations'],
+    },
+  });
+
+  if (!result.success && result.fallback) {
+    return buildFallbackDiagnosis(answers);
+  }
+
+  try {
+    const cleaned = result.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    const parsed = JSON.parse(cleaned);
+
+    if (!parsed.diagnosis || !Array.isArray(parsed.recommendations) || parsed.recommendations.length === 0) {
+      throw new Error('Formato inesperado en respuesta de Gemini');
+    }
+
+    return {
+      success: true,
+      fallback: false,
+      diagnosis: parsed.diagnosis,
+      recommendations: parsed.recommendations.slice(0, 3),
+      timestamp: new Date().toISOString(),
+    };
+  } catch (parseError) {
+    console.error('❌ Error interpretando respuesta de Gemini:', parseError.message);
+    return buildFallbackDiagnosis(answers);
+  }
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -348,6 +414,7 @@ Reglas:
 export default {
   analyzeProfitability,
   generateBusinessDiagnosis,
+  getCeoScoreClassification,
   suggestImprovements,
   chatResponse,
 };

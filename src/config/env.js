@@ -68,6 +68,13 @@ if (!GEMINI_API_KEY) {
 
 
 // ───────────────────────────────────────────────────────────────
+// WHATSAPP
+// ───────────────────────────────────────────────────────────────
+
+const WHATSAPP_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER || '18092517070';
+
+
+// ───────────────────────────────────────────────────────────────
 // APP CONFIGURATION
 // ───────────────────────────────────────────────────────────────
 
@@ -142,6 +149,12 @@ export const ENV_CONFIG = {
   gemini: {
     apiKey: GEMINI_API_KEY,
     enabled: !!GEMINI_API_KEY,
+  },
+
+  // WhatsApp
+  whatsapp: {
+    number: WHATSAPP_NUMBER,
+    enabled: !!WHATSAPP_NUMBER,
   },
 
   // App

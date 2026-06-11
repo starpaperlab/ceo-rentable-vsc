@@ -254,6 +254,28 @@ export function trackLead(payload = {}) {
   return trackStandardEvent('Lead', payload);
 }
 
+export function trackContact(payload = {}) {
+  if (!getMetaPixelId()) return false;
+
+  initializeMetaPixel();
+  return trackStandardEvent('Contact', payload);
+}
+
+export function trackCustomEvent(eventName, payload = {}) {
+  if (!eventName || !isBrowser() || !getMetaPixelId()) return false;
+
+  initializeMetaPixel();
+
+  const fbq = ensureFbqStub();
+  if (typeof fbq !== 'function') {
+    return false;
+  }
+
+  fbq('trackCustom', eventName, payload);
+  logMetaEvent(eventName, payload);
+  return true;
+}
+
 export function trackInitiateCheckout(plan) {
   const planConfig = getPlanEventConfig(plan);
   if (!planConfig || !getMetaPixelId()) {
@@ -327,6 +349,8 @@ export default {
   trackPageView,
   trackViewContent,
   trackLead,
+  trackContact,
+  trackCustomEvent,
   trackInitiateCheckout,
   trackCompleteRegistration,
   trackPurchase,

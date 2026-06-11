@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
-import { generateBusinessDiagnosis } from '@/lib/geminiService'
-import { trackLead } from '@/lib/metaPixel'
-import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader } from 'lucide-react'
+import { generateBusinessDiagnosis, getCeoScoreClassification } from '@/lib/geminiService'
+import { trackLead, trackContact, trackCustomEvent, trackInitiateCheckout } from '@/lib/metaPixel'
+import { ENV_CONFIG } from '@/config/env'
+import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle } from 'lucide-react'
 
 const QUESTIONS = [
   {
@@ -47,7 +48,7 @@ function calcScore(answers) {
 
 function ScoreArc({ score }) {
   const color = score < 40 ? '#ef4444' : score < 70 ? '#f59e0b' : '#10b981'
-  const label = score < 40 ? 'Crítico' : score < 70 ? 'Inestable' : 'Saludable'
+  const label = getCeoScoreClassification(score)
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-36 h-36 flex items-center justify-center">
@@ -126,32 +127,31 @@ export default function Diagnostico() {
       const finalScore = calcScore(newAnswers)
       setScore(finalScore)
 
-      // Guardar respuestas en leads
-      const { data: existingLeads, error } = await supabase
-        .from('leads')
-        .select('id')
-        .eq('email', lead.email)
-        .limit(1)
-
-      if (!error && existingLeads?.length > 0) {
-        await supabase
-          .from('leads')
-          .update({
-            monthly_sales: newAnswers.monthly_sales,
-            knows_margin: newAnswers.knows_margin,
-            controls_costs: newAnswers.controls_costs,
-            knows_best_product: newAnswers.knows_best_product,
-            ceo_score: finalScore,
-            updated_at: new Date(),
-          })
-          .eq('id', existingLeads[0].id)
+      // Guardar respuestas en el lead vía RPC (visitantes anónimos no tienen
+      // permiso de select/update directo sobre la tabla leads)
+      const { error: leadError } = await supabase.rpc('update_diagnostico_lead', {
+        p_email: lead.email,
+        p_monthly_sales: newAnswers.monthly_sales,
+        p_knows_margin: newAnswers.knows_margin,
+        p_controls_costs: newAnswers.controls_costs,
+        p_knows_best_product: newAnswers.knows_best_product,
+        p_ceo_score: finalScore,
+      })
+      if (leadError) {
+        console.error(leadError)
       }
 
-      // Generar análisis con Gemini
+      // Generar análisis con Gemini usando las respuestas reales del diagnóstico
       setLoadingAnalysis(true)
-      const geminiAnalysis = await generateBusinessDiagnosis(newAnswers)
+      const geminiAnalysis = await generateBusinessDiagnosis({ ...newAnswers, ceo_score: finalScore })
       setAnalysis(geminiAnalysis)
       setLoadingAnalysis(false)
+
+      trackCustomEvent('DiagnosticoCompletado', {
+        ceo_score: finalScore,
+        classification: getCeoScoreClassification(finalScore),
+      })
+
       setStep(2)
     }
   }
@@ -160,8 +160,26 @@ export default function Diagnostico() {
     setStep(3)
   }
 
-  const handleSignUp = () => {
-    navigate('/paywall')
+  const handleWhatsApp = () => {
+    const classification = getCeoScoreClassification(score)
+    const message = `Hola! Hice el diagnóstico CEO Score™ de CEO Rentable OS y obtuve ${score}/100 (${classification}). Quiero mejorar mi negocio 🚀`
+
+    trackContact({
+      content_name: 'diagnostico_whatsapp',
+      ceo_score: score,
+      classification,
+    })
+
+    window.open(
+      `https://wa.me/${ENV_CONFIG.whatsapp.number}?text=${encodeURIComponent(message)}`,
+      '_blank',
+      'noopener,noreferrer'
+    )
+  }
+
+  const handleFounderCTA = () => {
+    trackInitiateCheckout('founder_lifetime')
+    navigate('/paywall?plan=founder_lifetime&checkout=true')
   }
 
   return (
@@ -340,6 +358,14 @@ export default function Diagnostico() {
               >
                 Ver cómo mejorar <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-12 text-sm font-semibold border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 rounded-xl mt-3"
+                onClick={handleWhatsApp}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" /> Enviar mi resultado por WhatsApp
+              </Button>
             </motion.div>
           )}
 
@@ -367,10 +393,10 @@ export default function Diagnostico() {
 
               <div className="space-y-3">
                 <Button
-                  onClick={handleSignUp}
+                  onClick={handleFounderCTA}
                   className="w-full h-14 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
                 >
-                  Entrar al sistema completo <ArrowRight className="h-5 w-5 ml-1" />
+                  Conviértete en Founder ahora <ArrowRight className="h-5 w-5 ml-1" />
                 </Button>
                 <Button
                   variant="outline"
