@@ -168,10 +168,39 @@ Responde en formato estructurado con emojis. Sé específico y práctico.
 // 2️⃣ DIAGNÓSTICO DEL NEGOCIO
 // ───────────────────────────────────────────────────────────────
 
+const BUSINESS_TYPE_LABELS = {
+  productos: 'productos',
+  servicios: 'servicios',
+  ambos: 'productos y servicios',
+};
+
 const MONTHLY_SALES_LABELS = {
-  less_500: 'Menos de RD$30,000 al mes',
-  '500_2000': 'Entre RD$30,000 y RD$120,000 al mes',
-  more_2000: 'Más de RD$120,000 al mes',
+  under_30k: 'Menos de RD$30,000 al mes',
+  '30k_120k': 'Entre RD$30,000 y RD$120,000 al mes',
+  '120k_300k': 'Entre RD$120,000 y RD$300,000 al mes',
+  over_300k: 'Más de RD$300,000 al mes',
+};
+
+const CLIENT_VOLUME_LABELS = {
+  under_10: 'menos de 10 clientes al mes',
+  '10_50': 'entre 10 y 50 clientes al mes',
+  '51_200': 'entre 51 y 200 clientes al mes',
+  over_200: 'más de 200 clientes al mes',
+};
+
+const MANAGEMENT_METHOD_LABELS = {
+  cuaderno: 'un cuaderno o anotaciones manuales',
+  excel: 'hojas de cálculo (Excel/Sheets)',
+  sistema: 'un sistema o software de gestión',
+  sin_control: 'sin ningún control formal',
+};
+
+const MAIN_PROBLEM_LABELS = {
+  ventas: 'le faltan ventas',
+  rentabilidad: 'no sabe si está siendo realmente rentable',
+  cobros: 'tiene problemas para cobrar a tiempo',
+  inventario: 'tiene problemas de inventario',
+  flujo_caja: 'tiene problemas de flujo de caja',
 };
 
 /**
@@ -188,9 +217,51 @@ export function getCeoScoreClassification(score) {
 /**
  * Diagnóstico de respaldo (sin IA) basado en las respuestas reales del diagnóstico
  */
-function buildFallbackDiagnosis({ monthly_sales, knows_margin, controls_costs, knows_best_product, ceo_score = 0 }) {
+function buildFallbackDiagnosis(answers = {}) {
+  const {
+    business_type,
+    monthly_sales,
+    knows_margin,
+    controls_costs,
+    knows_best_product,
+    management_method,
+    main_problem,
+    ceo_score = 0,
+  } = answers;
+
   const classification = getCeoScoreClassification(ceo_score);
   const salesLabel = MONTHLY_SALES_LABELS[monthly_sales] || 'tus ventas mensuales';
+  const businessLabel = BUSINESS_TYPE_LABELS[business_type] || 'tu negocio';
+  const problemLabel = MAIN_PROBLEM_LABELS[main_problem] || 'la falta de control financiero';
+
+  const diagnosis = `Tu negocio está en un punto ${classification.toLowerCase()} (CEO Score: ${ceo_score}/100). Vendes ${businessLabel} con ${salesLabel}, y tu principal reto hoy es que ${problemLabel}. Hay oportunidades claras para mejorar si tomas acción esta semana.`;
+
+  let profitability;
+  if (!knows_margin) {
+    profitability =
+      '📉 No conoces tu margen real, así que es probable que estés ganando menos de lo que crees, o incluso perdiendo dinero en algunos productos o servicios sin darte cuenta.';
+  } else if (!knows_best_product) {
+    profitability =
+      '📊 Conoces tu margen general, pero no identificas cuál producto o servicio es el más rentable, lo que te impide enfocar tus esfuerzos donde más ganas.';
+  } else {
+    profitability =
+      '✅ Tienes una buena base para entender tu rentabilidad. El siguiente paso es darle seguimiento constante para tomar decisiones más rápido.';
+  }
+
+  let cashflow;
+  if (!controls_costs) {
+    cashflow =
+      '💸 Sin control de tus gastos, tu flujo de caja depende del azar: es común gastar más de lo que entra sin notarlo, hasta que falta dinero para algo importante.';
+  } else if (main_problem === 'cobros') {
+    cashflow =
+      '⏳ Tienes tus costos bajo control, pero los atrasos en tus cobros pueden estar generando presiones de caja innecesarias.';
+  } else if (main_problem === 'flujo_caja') {
+    cashflow =
+      '⚠️ Identificas el flujo de caja como tu problema principal: necesitas un calendario de entradas y salidas para anticipar los baches antes de que ocurran.';
+  } else {
+    cashflow =
+      '✅ Tu flujo de caja parece manejable. Sigue revisando entradas y salidas cada semana para anticipar baches a tiempo.';
+  }
 
   const recommendations = [];
   if (!knows_margin) {
@@ -202,6 +273,12 @@ function buildFallbackDiagnosis({ monthly_sales, knows_margin, controls_costs, k
   if (!knows_best_product) {
     recommendations.push('🏆 Identifica qué producto o servicio te deja más ganancia y enfócate en venderlo más.');
   }
+  if (main_problem === 'cobros') {
+    recommendations.push('📞 Define una política de cobro clara y da seguimiento semanal a las cuentas pendientes.');
+  }
+  if (management_method === 'cuaderno' || management_method === 'sin_control') {
+    recommendations.push('💻 Pasa tu control financiero a un sistema digital para evitar errores y ahorrar tiempo.');
+  }
   if (recommendations.length < 2) {
     recommendations.push('🎯 Define una meta de ventas mensual y revisa tu avance cada semana.');
   }
@@ -212,45 +289,62 @@ function buildFallbackDiagnosis({ monthly_sales, knows_margin, controls_costs, k
   return {
     success: true,
     fallback: true,
-    diagnosis: `Tu negocio está en un punto ${classification.toLowerCase()} (CEO Score: ${ceo_score}/100), con base en ${salesLabel} y tus respuestas sobre control financiero. Hay oportunidades claras para mejorar tu rentabilidad si tomas acción esta semana.`,
+    diagnosis,
+    profitability,
+    cashflow,
     recommendations: recommendations.slice(0, 3),
   };
 }
 
 /**
  * Genera un diagnóstico del negocio basado en las respuestas reales del diagnóstico rápido
- * @param {object} answers - { monthly_sales, knows_margin, controls_costs, knows_best_product, ceo_score }
- * @returns {object} { success, fallback, diagnosis, recommendations }
+ * @param {object} answers - { business_type, monthly_sales, client_volume, knows_margin,
+ *   controls_costs, knows_best_product, management_method, main_problem, ceo_score }
+ * @returns {object} { success, fallback, diagnosis, profitability, cashflow, recommendations }
  */
 export async function generateBusinessDiagnosis(answers = {}) {
   const {
+    business_type,
     monthly_sales,
+    client_volume,
     knows_margin = false,
     controls_costs = false,
     knows_best_product = false,
+    management_method,
+    main_problem,
     ceo_score = 0,
   } = answers;
 
   const classification = getCeoScoreClassification(ceo_score);
+  const businessLabel = BUSINESS_TYPE_LABELS[business_type] || 'No especificado';
   const salesLabel = MONTHLY_SALES_LABELS[monthly_sales] || 'No especificado';
+  const clientVolumeLabel = CLIENT_VOLUME_LABELS[client_volume] || 'No especificado';
+  const managementLabel = MANAGEMENT_METHOD_LABELS[management_method] || 'No especificado';
+  const mainProblemLabel = MAIN_PROBLEM_LABELS[main_problem] || 'No especificado';
 
   const prompt = `
 Eres un consultor financiero experto en PYMES de LATAM para CEO Rentable OS™.
-Una persona emprendedora completó un diagnóstico rápido de 4 preguntas. Estas son sus respuestas reales:
+Una persona emprendedora completó un diagnóstico rápido de 8 preguntas. Estas son sus respuestas reales:
 
+- Su negocio vende principalmente: ${businessLabel}
 - Ventas mensuales aproximadas: ${salesLabel}
-- ¿Conoce su margen de ganancia?: ${knows_margin ? 'Sí' : 'No'}
-- ¿Tiene control de sus costos?: ${controls_costs ? 'Sí' : 'No'}
+- Clientes que atiende al mes: ${clientVolumeLabel}
+- ¿Conoce su margen de ganancia real?: ${knows_margin ? 'Sí' : 'No'}
+- ¿Controla todos sus gastos?: ${controls_costs ? 'Sí' : 'No'}
 - ¿Sabe qué producto o servicio le deja más dinero?: ${knows_best_product ? 'Sí' : 'No'}
+- ¿Cómo administra actualmente su negocio?: ${managementLabel}
+- Su principal problema hoy: ${mainProblemLabel}
 - CEO Score calculado: ${ceo_score}/100 (clasificación: ${classification})
 
 Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional, sin comentarios) con esta forma exacta:
 {
-  "diagnosis": "Diagnóstico honesto, motivador y específico de 2-3 frases en español, basado en estas respuestas concretas",
+  "diagnosis": "Diagnóstico general honesto, motivador y específico de 2-3 frases en español, basado en el conjunto de estas respuestas",
+  "profitability": "Análisis de 1-2 frases sobre la RENTABILIDAD del negocio (qué tan bien conoce y controla sus márgenes y su producto o servicio más rentable), iniciando con un emoji",
+  "cashflow": "Análisis de 1-2 frases sobre el FLUJO DE CAJA del negocio (control de gastos, cobros, riesgo de quedarse sin efectivo), iniciando con un emoji",
   "recommendations": ["Recomendación accionable 1", "Recomendación accionable 2", "Recomendación accionable 3"]
 }
 
-El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acción concreta y aplicable en los próximos 7-30 días, relacionada directamente con las respuestas anteriores. Inicia cada recomendación con un emoji.
+El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acción concreta y aplicable en los próximos 7-30 días, relacionada directamente con las respuestas anteriores y priorizando su principal problema hoy (${mainProblemLabel}). Inicia cada recomendación con un emoji.
   `;
 
   const result = await callGeminiAPI(prompt, '', {
@@ -259,12 +353,14 @@ El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acció
       type: 'object',
       properties: {
         diagnosis: { type: 'string' },
+        profitability: { type: 'string' },
+        cashflow: { type: 'string' },
         recommendations: {
           type: 'array',
           items: { type: 'string' },
         },
       },
-      required: ['diagnosis', 'recommendations'],
+      required: ['diagnosis', 'profitability', 'cashflow', 'recommendations'],
     },
   });
 
@@ -276,7 +372,13 @@ El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acció
     const cleaned = result.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
     const parsed = JSON.parse(cleaned);
 
-    if (!parsed.diagnosis || !Array.isArray(parsed.recommendations) || parsed.recommendations.length === 0) {
+    if (
+      !parsed.diagnosis ||
+      !parsed.profitability ||
+      !parsed.cashflow ||
+      !Array.isArray(parsed.recommendations) ||
+      parsed.recommendations.length === 0
+    ) {
       throw new Error('Formato inesperado en respuesta de Gemini');
     }
 
@@ -284,6 +386,8 @@ El array "recommendations" debe tener entre 2 y 3 elementos, cada uno una acció
       success: true,
       fallback: false,
       diagnosis: parsed.diagnosis,
+      profitability: parsed.profitability,
+      cashflow: parsed.cashflow,
       recommendations: parsed.recommendations.slice(0, 3),
       timestamp: new Date().toISOString(),
     };

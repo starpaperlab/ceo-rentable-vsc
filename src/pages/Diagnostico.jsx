@@ -7,43 +7,120 @@ import { supabase } from '@/lib/supabase'
 import { generateBusinessDiagnosis, getCeoScoreClassification } from '@/lib/geminiService'
 import { trackLead, trackContact, trackCustomEvent, trackInitiateCheckout } from '@/lib/metaPixel'
 import { ENV_CONFIG } from '@/config/env'
-import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle, Lock } from 'lucide-react'
+
+const SALES_OPTIONS = [
+  { label: 'Menos de RD$30,000', value: 'under_30k', score: 5 },
+  { label: 'RD$30,000 a RD$120,000', value: '30k_120k', score: 12 },
+  { label: 'RD$120,000 a RD$300,000', value: '120k_300k', score: 20 },
+  { label: 'Más de RD$300,000', value: 'over_300k', score: 25 },
+]
+
+const SALES_SCORES = SALES_OPTIONS.reduce((acc, opt) => {
+  acc[opt.value] = opt.score
+  return acc
+}, {})
+
+const PROBLEM_SEGMENTS = {
+  ventas: 'PROBLEMA_VENTAS',
+  rentabilidad: 'PROBLEMA_RENTABILIDAD',
+  cobros: 'PROBLEMA_COBROS',
+  inventario: 'PROBLEMA_INVENTARIO',
+  flujo_caja: 'PROBLEMA_FLUJO_CAJA',
+}
 
 const QUESTIONS = [
+  {
+    id: 'business_type',
+    text: '¿Tu negocio vende principalmente?',
+    type: 'choice',
+    options: [
+      { label: 'Productos', value: 'productos' },
+      { label: 'Servicios', value: 'servicios' },
+      { label: 'Ambos', value: 'ambos' },
+    ],
+  },
   {
     id: 'monthly_sales',
     text: '¿Cuánto vendes al mes?',
     subtext: '(Aproximadamente)',
     type: 'choice',
+    options: SALES_OPTIONS,
+  },
+  {
+    id: 'client_volume',
+    text: '¿Cuántos clientes atiendes al mes?',
+    type: 'choice',
     options: [
-      { label: 'Menos de RD$30,000', value: 'less_500', score: 5 },
-      { label: 'RD$30,000 – RD$120,000', value: '500_2000', score: 15 },
-      { label: 'Más de RD$120,000', value: 'more_2000', score: 25 },
+      { label: 'Menos de 10', value: 'under_10' },
+      { label: '10 a 50', value: '10_50' },
+      { label: '51 a 200', value: '51_200' },
+      { label: 'Más de 200', value: 'over_200' },
     ],
   },
   {
     id: 'knows_margin',
-    text: '¿Conoces tu margen de ganancia?',
+    text: '¿Conoces tu margen de ganancia real?',
     type: 'yesno',
   },
   {
     id: 'controls_costs',
-    text: '¿Tienes control de tus costos?',
+    text: '¿Controlas todos tus gastos?',
     type: 'yesno',
   },
   {
     id: 'knows_best_product',
-    text: '¿Sabes qué producto te deja más dinero?',
+    text: '¿Sabes cuál producto o servicio deja más dinero?',
     type: 'yesno',
+  },
+  {
+    id: 'management_method',
+    text: '¿Cómo administras actualmente tu negocio?',
+    type: 'choice',
+    options: [
+      { label: 'Cuaderno', value: 'cuaderno' },
+      { label: 'Excel', value: 'excel' },
+      { label: 'Sistema', value: 'sistema' },
+      { label: 'No llevo control', value: 'sin_control' },
+    ],
+  },
+  {
+    id: 'main_problem',
+    text: '¿Cuál es tu principal problema hoy?',
+    type: 'choice',
+    options: [
+      { label: 'Ventas', value: 'ventas' },
+      { label: 'Rentabilidad', value: 'rentabilidad' },
+      { label: 'Cobros', value: 'cobros' },
+      { label: 'Inventario', value: 'inventario' },
+      { label: 'Flujo de caja', value: 'flujo_caja' },
+    ],
   },
 ]
 
 function calcScore(answers) {
-  let score = answers.monthly_sales === 'more_2000' ? 25 : answers.monthly_sales === '500_2000' ? 15 : 5
+  let score = SALES_SCORES[answers.monthly_sales] ?? 5
   if (answers.knows_margin) score += 25
   if (answers.controls_costs) score += 25
   if (answers.knows_best_product) score += 25
   return score
+}
+
+function computeSegments(answers, score) {
+  const segment_business =
+    answers.business_type === 'productos'
+      ? 'PRODUCTOS'
+      : answers.business_type === 'servicios'
+        ? 'SERVICIOS'
+        : 'MIXTO'
+
+  const classification = getCeoScoreClassification(score)
+  const segment_score =
+    classification === 'Crítico' ? 'BAJO_SCORE' : classification === 'Inestable' ? 'MEDIO_SCORE' : 'ALTO_SCORE'
+
+  const segment_problem = PROBLEM_SEGMENTS[answers.main_problem] || null
+
+  return { segment_business, segment_score, segment_problem }
 }
 
 function ScoreArc({ score }) {
@@ -81,39 +158,54 @@ function ScoreArc({ score }) {
   )
 }
 
+function DiagnosisBlock({ diagnosis }) {
+  return (
+    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl mb-4">
+      <h3 className="text-sm font-bold text-pink-300 mb-2">💡 Diagnóstico</h3>
+      <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{diagnosis}</p>
+    </div>
+  )
+}
+
+function PremiumBlocks({ analysis }) {
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+        <h3 className="text-sm font-bold text-emerald-300 mb-2">💰 Rentabilidad</h3>
+        <p className="text-sm text-white/80 leading-relaxed">{analysis.profitability}</p>
+      </div>
+      <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+        <h3 className="text-sm font-bold text-blue-300 mb-2">💵 Flujo de caja</h3>
+        <p className="text-sm text-white/80 leading-relaxed">{analysis.cashflow}</p>
+      </div>
+      {analysis.recommendations && analysis.recommendations.length > 0 && (
+        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+          <h3 className="text-sm font-bold text-amber-300 mb-3">📋 Plan de acción</h3>
+          <div className="space-y-2">
+            {analysis.recommendations.slice(0, 3).map((rec, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="text-amber-400 font-bold">{i + 1}.</span>
+                <p className="text-white/80">{rec}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Diagnostico() {
   const navigate = useNavigate()
-  const [step, setStep] = useState(0) // 0=capture, 1=questions, 2=result, 3=cta
-  const [lead, setLead] = useState({ name: '', email: '' })
+  const [step, setStep] = useState(0) // 0=preguntas, 1=resultado parcial + captura, 2=resultado completo
   const [answers, setAnswers] = useState({})
   const [qIndex, setQIndex] = useState(0)
-  const [saving, setSaving] = useState(false)
   const [score, setScore] = useState(null)
+  const [segments, setSegments] = useState(null)
   const [analysis, setAnalysis] = useState(null)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
-
-  const handleCapture = async () => {
-    if (!lead.name.trim() || !lead.email.trim()) return
-    setSaving(true)
-    const { error } = await supabase.from('leads').insert({
-      ...lead,
-      source: 'diagnostico',
-      status: 'new',
-      created_at: new Date(),
-    })
-    setSaving(false)
-    if (error) {
-      console.error(error)
-      return
-    }
-
-    trackLead({
-      content_name: 'diagnostico_gratuito',
-      status: 'new',
-    })
-
-    setStep(1)
-  }
+  const [lead, setLead] = useState({ name: '', email: '' })
+  const [saving, setSaving] = useState(false)
 
   const handleAnswer = async (value) => {
     const q = QUESTIONS[qIndex]
@@ -122,42 +214,75 @@ export default function Diagnostico() {
 
     if (qIndex < QUESTIONS.length - 1) {
       setQIndex((i) => i + 1)
-    } else {
-      // Todas las preguntas respondidas
-      const finalScore = calcScore(newAnswers)
-      setScore(finalScore)
-
-      // Guardar respuestas en el lead vía RPC (visitantes anónimos no tienen
-      // permiso de select/update directo sobre la tabla leads)
-      const { error: leadError } = await supabase.rpc('update_diagnostico_lead', {
-        p_email: lead.email,
-        p_monthly_sales: newAnswers.monthly_sales,
-        p_knows_margin: newAnswers.knows_margin,
-        p_controls_costs: newAnswers.controls_costs,
-        p_knows_best_product: newAnswers.knows_best_product,
-        p_ceo_score: finalScore,
-      })
-      if (leadError) {
-        console.error(leadError)
-      }
-
-      // Generar análisis con Gemini usando las respuestas reales del diagnóstico
-      setLoadingAnalysis(true)
-      const geminiAnalysis = await generateBusinessDiagnosis({ ...newAnswers, ceo_score: finalScore })
-      setAnalysis(geminiAnalysis)
-      setLoadingAnalysis(false)
-
-      trackCustomEvent('DiagnosticoCompletado', {
-        ceo_score: finalScore,
-        classification: getCeoScoreClassification(finalScore),
-      })
-
-      setStep(2)
+      return
     }
+
+    // Última pregunta respondida: calcular CEO Score y segmentos en cliente
+    const finalScore = calcScore(newAnswers)
+    const finalSegments = computeSegments(newAnswers, finalScore)
+    setScore(finalScore)
+    setSegments(finalSegments)
+
+    trackCustomEvent('DiagnosticoCuestionarioCompletado', {
+      ceo_score: finalScore,
+      classification: getCeoScoreClassification(finalScore),
+      business_type: newAnswers.business_type,
+      main_problem: newAnswers.main_problem,
+      segment_score: finalSegments.segment_score,
+    })
+
+    setStep(1)
+
+    setLoadingAnalysis(true)
+    const geminiAnalysis = await generateBusinessDiagnosis({ ...newAnswers, ceo_score: finalScore })
+    setAnalysis(geminiAnalysis)
+    setLoadingAnalysis(false)
   }
 
-  const handleProceedToPlan = () => {
-    setStep(3)
+  const handleCapture = async () => {
+    if (!lead.name.trim() || !lead.email.trim()) return
+    setSaving(true)
+
+    const { error } = await supabase.from('leads').insert({
+      name: lead.name.trim(),
+      email: lead.email.trim(),
+      source: 'diagnostico',
+      status: 'new',
+      business_type: answers.business_type,
+      monthly_sales: answers.monthly_sales,
+      client_volume: answers.client_volume,
+      knows_margin: answers.knows_margin,
+      controls_costs: answers.controls_costs,
+      knows_best_product: answers.knows_best_product,
+      management_method: answers.management_method,
+      main_problem: answers.main_problem,
+      ceo_score: score,
+      segment_business: segments?.segment_business,
+      segment_score: segments?.segment_score,
+      segment_problem: segments?.segment_problem,
+      created_at: new Date(),
+    })
+
+    setSaving(false)
+    if (error) {
+      console.error(error)
+    }
+
+    trackLead({
+      content_name: 'diagnostico_gratuito',
+      status: 'new',
+      ceo_score: score,
+      segment_business: segments?.segment_business,
+      segment_score: segments?.segment_score,
+      segment_problem: segments?.segment_problem,
+    })
+
+    trackCustomEvent('DiagnosticoCompletado', {
+      ceo_score: score,
+      classification: getCeoScoreClassification(score),
+    })
+
+    setStep(2)
   }
 
   const handleWhatsApp = () => {
@@ -196,58 +321,8 @@ export default function Diagnostico() {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* STEP 0 — CAPTURE */}
+          {/* STEP 0 — PREGUNTAS */}
           {step === 0 && (
-            <motion.div
-              key="s0"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl"
-            >
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center gap-2 bg-pink-500/10 border border-pink-500/20 text-pink-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
-                  <Zap className="h-3 w-3" /> Diagnóstico gratuito · 3 minutos
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
-                  Descubre si tu negocio
-                  <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
-                    realmente está ganando dinero
-                  </span>
-                </h1>
-                <p className="text-white/50 text-sm mt-3">Responde 4 preguntas y obtén tu CEO Score™ gratis.</p>
-              </div>
-              <div className="space-y-3">
-                <Input
-                  placeholder="Tu nombre"
-                  value={lead.name}
-                  onChange={(e) => setLead((p) => ({ ...p, name: e.target.value }))}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
-                />
-                <Input
-                  placeholder="Tu email"
-                  type="email"
-                  value={lead.email}
-                  onChange={(e) => setLead((p) => ({ ...p, email: e.target.value }))}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
-                />
-                <Button
-                  className="w-full h-12 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
-                  onClick={handleCapture}
-                  disabled={!lead.name.trim() || !lead.email.trim() || saving}
-                >
-                  {saving ? 'Un momento...' : 'Comenzar diagnóstico'} <ArrowRight className="h-4 w-4 ml-1" />
-                </Button>
-                <p className="text-center text-xs text-white/25 mt-2">Sin spam. Solo resultados.</p>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 1 — QUESTIONS */}
-          {step === 1 && (
             <motion.div
               key={`q${qIndex}`}
               initial={{ opacity: 0, x: 30 }}
@@ -255,6 +330,22 @@ export default function Diagnostico() {
               exit={{ opacity: 0, x: -30 }}
               className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl"
             >
+              {qIndex === 0 && (
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center gap-2 bg-pink-500/10 border border-pink-500/20 text-pink-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
+                    <Zap className="h-3 w-3" /> Diagnóstico gratuito · 3 minutos
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+                    Descubre si tu negocio
+                    <br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
+                      realmente está ganando dinero
+                    </span>
+                  </h1>
+                  <p className="text-white/50 text-sm mt-3">Responde 8 preguntas y obtén tu CEO Score™ gratis.</p>
+                </div>
+              )}
+
               {/* Progress */}
               <div className="flex gap-1.5 mb-8">
                 {QUESTIONS.map((_, i) => (
@@ -273,7 +364,7 @@ export default function Diagnostico() {
               {QUESTIONS[qIndex].subtext && (
                 <p className="text-white/40 text-sm mb-6">{QUESTIONS[qIndex].subtext}</p>
               )}
-              <div className="space-y-3">
+              <div className="space-y-3 mt-4">
                 {QUESTIONS[qIndex].type === 'choice' ? (
                   QUESTIONS[qIndex].options.map((opt) => (
                     <button
@@ -304,10 +395,10 @@ export default function Diagnostico() {
             </motion.div>
           )}
 
-          {/* STEP 2 — RESULT (con Gemini Analysis) */}
-          {step === 2 && (
+          {/* STEP 1 — RESULTADO PARCIAL (BORROSO) + CAPTURA */}
+          {step === 1 && (
             <motion.div
-              key="s2"
+              key="s1"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
@@ -323,101 +414,133 @@ export default function Diagnostico() {
               {loadingAnalysis && (
                 <div className="flex items-center justify-center gap-2 p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl mb-6">
                   <Loader className="h-5 w-5 text-blue-400 animate-spin" />
-                  <p className="text-sm text-blue-300">Generando análisis con IA...</p>
+                  <p className="text-sm text-blue-300">Generando tu diagnóstico con IA...</p>
                 </div>
               )}
 
               {analysis && !loadingAnalysis && (
-                <div className="space-y-4">
-                  {/* Análisis principal */}
-                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-                    <h3 className="text-sm font-bold text-pink-300 mb-2">💡 Diagnóstico IA</h3>
-                    <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{analysis.diagnosis}</p>
-                  </div>
+                <>
+                  <DiagnosisBlock diagnosis={analysis.diagnosis} />
 
-                  {/* Recomendaciones */}
-                  {analysis.recommendations && analysis.recommendations.length > 0 && (
-                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-                      <h3 className="text-sm font-bold text-emerald-300 mb-3">📋 Plan de acción</h3>
-                      <div className="space-y-2">
-                        {analysis.recommendations.slice(0, 3).map((rec, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="text-emerald-400 font-bold">{i + 1}.</span>
-                            <p className="text-white/80">{rec}</p>
-                          </div>
-                        ))}
+                  <div className="relative mt-2">
+                    <div className="blur-sm select-none pointer-events-none" aria-hidden="true">
+                      <PremiumBlocks analysis={analysis} />
+                    </div>
+
+                    <div className="absolute inset-0 -m-2 flex items-center justify-center rounded-2xl bg-gradient-to-b from-[#1a0a12]/30 via-[#1a0a12]/85 to-[#1a0a12] p-4">
+                      <div className="w-full max-w-sm text-center">
+                        <Lock className="h-6 w-6 text-pink-300 mx-auto mb-3" />
+                        <h3 className="text-base sm:text-lg font-black text-white mb-2 leading-snug">
+                          Tu diagnóstico completo está listo.
+                        </h3>
+                        <p className="text-white/60 text-xs sm:text-sm mb-5 leading-relaxed">
+                          Descubre cuánto dinero podrías estar perdiendo y qué hacer para corregirlo.
+                        </p>
+                        <div className="space-y-3">
+                          <Input
+                            placeholder="Tu nombre"
+                            value={lead.name}
+                            onChange={(e) => setLead((p) => ({ ...p, name: e.target.value }))}
+                            className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
+                            onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
+                          />
+                          <Input
+                            placeholder="Tu email"
+                            type="email"
+                            value={lead.email}
+                            onChange={(e) => setLead((p) => ({ ...p, email: e.target.value }))}
+                            className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
+                            onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
+                          />
+                          <Button
+                            className="w-full h-12 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
+                            onClick={handleCapture}
+                            disabled={!lead.name.trim() || !lead.email.trim() || saving}
+                          >
+                            {saving ? 'Un momento...' : 'Desbloquear mi diagnóstico'} <ArrowRight className="h-4 w-4 ml-1" />
+                          </Button>
+                          <p className="text-center text-xs text-white/25">Sin spam. Solo resultados.</p>
+                        </div>
                       </div>
                     </div>
-                  )}
+                  </div>
+                </>
+              )}
+            </motion.div>
+          )}
+
+          {/* STEP 2 — RESULTADO COMPLETO */}
+          {step === 2 && (
+            <motion.div
+              key="s2"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[85vh]"
+            >
+              <p className="text-xs text-pink-300/60 font-semibold uppercase tracking-widest text-center mb-6">
+                Tu CEO Score™
+              </p>
+              <div className="flex justify-center mb-6">
+                <ScoreArc score={score} />
+              </div>
+
+              {analysis && (
+                <div className="space-y-4">
+                  <DiagnosisBlock diagnosis={analysis.diagnosis} />
+                  <PremiumBlocks analysis={analysis} />
                 </div>
               )}
 
               <Button
-                className="w-full h-12 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl mt-6"
-                onClick={handleProceedToPlan}
-              >
-                Ver cómo mejorar <ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-
-              <Button
                 variant="outline"
-                className="w-full h-12 text-sm font-semibold border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 rounded-xl mt-3"
+                className="w-full h-12 text-sm font-semibold border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 rounded-xl mt-6"
                 onClick={handleWhatsApp}
               >
                 <MessageCircle className="h-4 w-4 mr-2" /> Enviar mi resultado por WhatsApp
               </Button>
-            </motion.div>
-          )}
 
-          {/* STEP 3 — CTA */}
-          {step === 3 && (
-            <motion.div
-              key="s3"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl text-center"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mx-auto mb-5">
-                <TrendingUp className="h-7 w-7 text-white" />
-              </div>
-              <h2 className="text-2xl font-black text-white mb-3">
-                Ahora mira tu negocio completo
-              </h2>
-              <p className="text-white/50 text-sm leading-relaxed mb-8">
-                Este diagnóstico es solo una vista rápida.
-                <br />
-                Dentro del sistema puedes ver exactamente cuánto ganas,
-                <br />
-                qué estás perdiendo y cómo mejorar.
-              </p>
+              <div className="mt-8 pt-6 border-t border-white/10 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mx-auto mb-5">
+                  <TrendingUp className="h-7 w-7 text-white" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white mb-3">Ahora mira tu negocio completo</h2>
+                <p className="text-white/50 text-sm leading-relaxed mb-8">
+                  Este diagnóstico es solo una vista rápida.
+                  <br />
+                  Dentro del sistema puedes ver exactamente cuánto ganas,
+                  <br />
+                  qué estás perdiendo y cómo mejorar.
+                </p>
 
-              <div className="space-y-3">
-                <Button
-                  onClick={handleFounderCTA}
-                  className="w-full h-14 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
-                >
-                  Conviértete en Founder ahora <ArrowRight className="h-5 w-5 ml-1" />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-12 text-sm font-semibold border-white/20 bg-transparent text-white hover:bg-white/10 rounded-xl"
-                  onClick={() => navigate('/paywall')}
-                >
-                  Ver planes y precios
-                </Button>
-              </div>
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleFounderCTA}
+                    className="w-full h-14 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
+                  >
+                    Conviértete en Founder ahora <ArrowRight className="h-5 w-5 ml-1" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 text-sm font-semibold border-white/20 bg-transparent text-white hover:bg-white/10 rounded-xl"
+                    onClick={() => navigate('/paywall')}
+                  >
+                    Ver planes y precios
+                  </Button>
+                </div>
 
-              <div className="mt-8 pt-6 border-t border-white/10 grid grid-cols-3 gap-4 text-center">
-                {[
-                  ['📊', 'Rentabilidad real'],
-                  ['🎯', 'CEO Score en vivo'],
-                  ['📄', 'Facturas automáticas'],
-                ].map(([icon, label]) => (
-                  <div key={label}>
-                    <p className="text-xl mb-1">{icon}</p>
-                    <p className="text-[11px] text-white/40 font-medium">{label}</p>
-                  </div>
-                ))}
+                <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+                  {[
+                    ['📊', 'Rentabilidad real'],
+                    ['🎯', 'CEO Score en vivo'],
+                    ['📄', 'Facturas automáticas'],
+                  ].map(([icon, label]) => (
+                    <div key={label}>
+                      <p className="text-xl mb-1">{icon}</p>
+                      <p className="text-[11px] text-white/40 font-medium">{label}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}

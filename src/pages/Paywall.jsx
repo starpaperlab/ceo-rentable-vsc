@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { createPayPalOrder } from '@/lib/paypalService'
 import { ENV_CONFIG } from '@/config/env'
@@ -21,6 +22,29 @@ import { ArrowRight, CheckCircle2, Zap, AlertCircle, Loader } from 'lucide-react
 const SESSION_ERROR_MESSAGE =
   'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
 
+const BASE_FEATURES = [
+  'Dashboard financiero',
+  'Facturas y cotizaciones',
+  'Clientes',
+  'Inventario',
+  'CEO Score',
+  'Reportes',
+]
+
+const FOUNDER_EXTRA_FEATURES = [
+  'Acceso de por vida a CEO Rentable OS',
+  'Actualizaciones futuras del sistema incluidas',
+  'Nuevos módulos financieros y comerciales incluidos',
+  'Precio congelado para siempre',
+  'Founder Badge',
+  'Soporte prioritario',
+  'Acceso anticipado a futuras funciones de IA y automatización',
+]
+
+const ALL_FEATURES = [...BASE_FEATURES, ...FOUNDER_EXTRA_FEATURES]
+
+const FOUNDER_LIFETIME_TOTAL_SLOTS = 20
+
 const PLANS = [
   {
     id: 'monthly',
@@ -28,13 +52,7 @@ const PLANS = [
     period: '/mes',
     description:
       'Ideal para emprendedoras que quieren controlar sus ganancias y tomar mejores decisiones financieras.',
-    features: [
-      'Control financiero mensual',
-      'Dashboard financiero completo',
-      'Facturas y cotizaciones automáticas',
-      'Gestión de clientes e inventario',
-      'Cancela cuando quieras',
-    ],
+    features: BASE_FEATURES,
     cta: 'Comprar mensual',
     paymentNote: 'Pago mensual · Procesado de forma segura por PayPal',
     recommended: false,
@@ -44,13 +62,7 @@ const PLANS = [
     name: 'Founder Lifetime',
     period: '',
     description: 'Oferta Founder por tiempo limitado',
-    features: [
-      'Pago único',
-      'Acceso permanente a CEO Rentable OS',
-      'Precio futuro: RD$9,997',
-      'Dashboard financiero y módulos comerciales',
-      'Soporte por email',
-    ],
+    features: ['Todo lo del plan Mensual', ...FOUNDER_EXTRA_FEATURES],
     cta: 'Comprar lifetime',
     paymentNote: 'Pago único · Procesado de forma segura por PayPal',
     recommended: true,
@@ -76,6 +88,7 @@ export default function Paywall() {
   const { user, userProfile, isLoadingAuth, isLoadingProfile } = useAuth()
   const [loading, setLoading] = useState({})
   const [error, setError] = useState(null)
+  const [founderStats, setFounderStats] = useState(null)
   const [autoCheckoutStatus, setAutoCheckoutStatus] = useState('idle')
   const autoCheckoutStartedRef = useRef(false)
   const requestedPlan = normalizeCheckoutPlan(searchParams.get('plan'))
@@ -104,6 +117,23 @@ export default function Paywall() {
   useEffect(() => {
     trackViewContent(selectedPlan)
   }, [selectedPlan])
+
+  useEffect(() => {
+    let active = true
+    supabase
+      .rpc('get_founder_lifetime_stats', { p_total_limit: FOUNDER_LIFETIME_TOTAL_SLOTS })
+      .then(({ data, error: statsError }) => {
+        if (!active) return
+        if (statsError) {
+          console.error(statsError)
+          return
+        }
+        setFounderStats(data)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   async function handleCheckout(planId, { direct = false } = {}) {
     if (!user) {
@@ -352,6 +382,25 @@ export default function Paywall() {
                     </p>
                   </div>
 
+                  {plan.id === 'founder_lifetime' && founderStats && (
+                    <div className="mb-6 p-3 rounded-xl bg-pink-50 border border-pink-200">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#D45387] mb-1.5">
+                        <span>🔥 Cupos Founder</span>
+                        <span>
+                          Quedan {founderStats.remaining} de {founderStats.total_limit} accesos Founder
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-pink-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#D45387] to-purple-500 rounded-full"
+                          style={{
+                            width: `${Math.min(100, (founderStats.claimed / founderStats.total_limit) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <Button
                     onClick={() => {
                       fireInitiateCheckout(plan.id)
@@ -386,17 +435,64 @@ export default function Paywall() {
                   </Button>
 
                   <div className="space-y-3">
-                    {plan.features.map((feature) => (
-                      <div key={feature} className="flex items-start gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-[#D45387] flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-gray-700">{feature}</span>
-                      </div>
-                    ))}
+                    {plan.features.map((feature, featureIdx) => {
+                      const isAllMonthlyFeature = plan.id === 'founder_lifetime' && featureIdx === 0
+                      return (
+                        <div key={feature} className="flex items-start gap-3">
+                          <CheckCircle2
+                            className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                              isAllMonthlyFeature ? 'text-purple-500' : 'text-[#D45387]'
+                            }`}
+                          />
+                          <span className={`text-sm ${isAllMonthlyFeature ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
+                            {feature}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </motion.div>
             )
           })}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden mb-12">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left p-4 text-gray-500 font-semibold uppercase text-xs tracking-wide">
+                    Funcionalidad
+                  </th>
+                  <th className="p-4 text-center text-gray-700 font-bold">Mensual</th>
+                  <th className="p-4 text-center font-bold" style={{ color: '#D45387' }}>
+                    Founder Lifetime
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_FEATURES.map((feature) => {
+                  const includedInMonthly = BASE_FEATURES.includes(feature)
+                  return (
+                    <tr key={feature} className="border-b border-gray-100 last:border-0">
+                      <td className="p-4 text-gray-700">{feature}</td>
+                      <td className="p-4 text-center">
+                        {includedInMonthly ? (
+                          <CheckCircle2 className="w-5 h-5 text-[#D45387] mx-auto" />
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-center">
+                        <CheckCircle2 className="w-5 h-5 text-[#D45387] mx-auto" />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="bg-gray-50 rounded-2xl p-8 border border-gray-200 text-center">
