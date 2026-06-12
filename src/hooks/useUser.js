@@ -60,6 +60,11 @@ function isMissingUsersSegmentationColumn(error) {
   return message.includes('access_source') || message.includes('is_lifetime');
 }
 
+function isMissingColumn(error, columnName) {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return message.includes(columnName.toLowerCase());
+}
+
 async function updateUserWithSegmentation(userId, patch) {
   const runUpdate = async (nextPatch) =>
     supabase
@@ -71,10 +76,17 @@ async function updateUserWithSegmentation(userId, patch) {
 
   let { data, error } = await runUpdate(patch);
 
+  if (error && isMissingColumn(error, 'access_status')) {
+    const fallback = { ...patch };
+    delete fallback.access_status;
+    ({ data, error } = await runUpdate(fallback));
+  }
+
   if (error && isMissingUsersSegmentationColumn(error)) {
     const fallback = { ...patch };
     delete fallback.access_source;
     delete fallback.is_lifetime;
+    delete fallback.access_status;
     ({ data, error } = await runUpdate(fallback));
   }
 
@@ -115,6 +127,7 @@ async function inviteOrActivateUser({ email, full_name }) {
       role: safeRole,
       plan,
       has_access: true,
+      access_status: 'active',
       access_source: 'manual_lifetime',
       is_lifetime: true,
     });
@@ -289,8 +302,14 @@ export function useAdminDirectory() {
     queryFn: async () => {
       let { data: users, error: usersError } = await supabase
         .from('users')
-        .select('id,email,full_name,role,plan,has_access,access_source,is_lifetime,created_at,last_login_at')
+        .select('id,email,full_name,role,plan,has_access,access_status,access_source,is_lifetime,created_at,last_login_at')
         .order('created_at', { ascending: false });
+      if (usersError && isMissingColumn(usersError, 'access_status')) {
+        ({ data: users, error: usersError } = await supabase
+          .from('users')
+          .select('id,email,full_name,role,plan,has_access,access_source,is_lifetime,created_at,last_login_at')
+          .order('created_at', { ascending: false }));
+      }
       if (usersError && isMissingUsersSegmentationColumn(usersError)) {
         ({ data: users, error: usersError } = await supabase
           .from('users')
@@ -335,7 +354,7 @@ export function useAdminDirectory() {
           has_access: user.has_access === true,
           access_source: user.access_source || 'legacy',
           is_lifetime: user.is_lifetime === true,
-          access_status: user.has_access ? 'active' : 'no_access',
+          access_status: user.access_status || (user.has_access ? 'active' : 'pending_payment'),
           invitation_status: invitation?.status || null,
           created_at: user.created_at,
           last_login_at: user.last_login_at,
@@ -360,7 +379,7 @@ export function useAdminDirectory() {
           has_access: invitation.has_access === true,
           access_source: 'manual_invitation_pending',
           is_lifetime: true,
-          access_status: invitation.status === 'pending' ? 'pending' : 'invited',
+          access_status: 'pending_payment',
           invitation_status: invitation.status || 'pending',
           created_at: invitation.created_at,
           last_login_at: null,
@@ -393,9 +412,17 @@ export function useUpdateUser() {
         safeUpdates.plan = safeUpdates.plan && safeUpdates.plan !== 'admin' ? safeUpdates.plan : 'founder';
         safeUpdates.has_access = true;
         safeUpdates.is_lifetime = true;
+        safeUpdates.access_status = safeUpdates.access_status || 'active';
       }
 
-      const { error } = await supabase.from('users').update(safeUpdates).eq('id', userId);
+      let { error } = await supabase.from('users').update(safeUpdates).eq('id', userId);
+
+      if (error && isMissingColumn(error, 'access_status')) {
+        const fallback = { ...safeUpdates };
+        delete fallback.access_status;
+        ({ error } = await supabase.from('users').update(fallback).eq('id', userId));
+      }
+
       if (error) throw error;
       return true;
     },

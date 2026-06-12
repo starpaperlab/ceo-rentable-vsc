@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAccessGuard } from '@/hooks/useAccessGuard';
-import Paywall from '@/pages/Paywall';
+import AccessBlocked from '@/components/shared/AccessBlocked';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 export default function AccessGuard({ children }) {
@@ -19,7 +19,7 @@ export default function AccessGuard({ children }) {
   }
 
   if (!hasAccess) {
-    return <Paywall />;
+    return <AccessBlocked />;
   }
 
   return <>{children}</>;

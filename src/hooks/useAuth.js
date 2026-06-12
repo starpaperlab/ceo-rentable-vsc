@@ -8,6 +8,10 @@ const DEFAULT_TIMEZONE = 'America/Santo_Domingo';
 const LEGACY_PROFILE_COLUMNS = ['id', 'email', 'full_name'];
 const RECOVERY_INTENT = 'password_recovery';
 const INVITATION_ACCEPT_ENDPOINT = '/api/accept-invitation';
+const PROFILE_REFRESH_INTERVAL_MS = 60 * 1000;
+// Planes de pago vigentes que otorgan acceso (no incluye 'free'; 'admin' se
+// resuelve aparte vía role/plan === 'admin').
+export const ACTIVE_PAID_PLANS = ['monthly', 'founder', 'founder_lifetime', 'subscription'];
 const ENABLE_ADMIN_EMAIL_FALLBACK =
   import.meta.env.DEV && import.meta.env.VITE_ENABLE_ADMIN_EMAIL_FALLBACK === 'true';
 const ENV_ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
@@ -449,6 +453,33 @@ async function applyPendingInvitationIfAny(authUser, authSession) {
   }
 }
 
+// Función central de acceso: decide si un perfil puede usar el sistema.
+// admin: siempre. user: requiere has_access + access_status activo + un plan
+// de pago vigente (no 'free'). Si access_status todavía no existe en el
+// esquema (columna no migrada), se infiere desde has_access para no romper
+// el acceso de quienes ya lo tenían.
+export function hasActiveAccess(profile) {
+  if (!profile) {
+    return false;
+  }
+
+  if (profile.role === 'admin' || profile.plan === 'admin') {
+    return true;
+  }
+
+  if (profile.has_access !== true) {
+    return false;
+  }
+
+  const accessStatus = profile.access_status ?? 'active';
+
+  if (accessStatus !== 'active') {
+    return false;
+  }
+
+  return ACTIVE_PAID_PLANS.includes(profile.plan);
+}
+
 export function getRedirectPathForRole(profile) {
   if (!profile) {
     return '/login';
@@ -602,13 +633,16 @@ export function useProvideAuth() {
     };
   }, []);
 
-  const refreshUserProfile = async () => {
+  const refreshUserProfile = async (options = {}) => {
     if (!user) {
       setUserProfile(null);
       return null;
     }
 
-    setIsLoadingProfile(true);
+    const silent = options.silent === true;
+    if (!silent) {
+      setIsLoadingProfile(true);
+    }
 
     try {
       const profile = await ensureUserProfile(user);
@@ -621,9 +655,28 @@ export function useProvideAuth() {
       return fallbackProfile;
 
     } finally {
-      setIsLoadingProfile(false);
+      if (!silent) {
+        setIsLoadingProfile(false);
+      }
     }
   };
+
+  // Refresca el perfil cada PROFILE_REFRESH_INTERVAL_MS para que un bloqueo o
+  // cambio de acceso hecho desde el panel admin se refleje sin que la sesion
+  // activa tenga que cerrar sesion o esperar el refresh de token.
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      void refreshUserProfile({ silent: true });
+    }, PROFILE_REFRESH_INTERVAL_MS);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user?.id]);
 
   const login = async (email, password) => {
     setAuthError(null);
@@ -772,7 +825,7 @@ export function useProvideAuth() {
   };
 
   const isAdmin = () => userProfile?.role === 'admin';
-  const hasAccess = () => isAdmin() || userProfile?.has_access === true;
+  const hasAccess = () => hasActiveAccess(userProfile);
 
   return {
     session,

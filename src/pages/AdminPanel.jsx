@@ -19,7 +19,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertTriangle,
+  CheckCircle2,
+  Clock,
   Loader2,
+  Lock,
   Mail,
   Palette,
   Pencil,
@@ -40,6 +43,22 @@ import EmailCampaignComposer from '@/components/email/EmailCampaignComposer';
 import BrandProfilesManager from '@/components/admin/BrandProfilesManager';
 
 const BRAND_PRIMARY = '#D45387';
+
+// Planes reales vigentes en el sistema (ver useAuth.ACTIVE_PAID_PLANS). 'admin' no
+// se ofrece aquí: se asigna automáticamente cuando role = 'admin'.
+const PLAN_OPTIONS = [
+  { value: 'free', label: 'Gratis' },
+  { value: 'monthly', label: 'Mensual' },
+  { value: 'founder', label: 'Founder' },
+  { value: 'founder_lifetime', label: 'Founder Lifetime' },
+  { value: 'subscription', label: 'Subscription (Legacy)' },
+];
+
+function planLabel(plan, role) {
+  if (role === 'admin' || plan === 'admin') return 'Admin';
+  return PLAN_OPTIONS.find((opt) => opt.value === plan)?.label || plan || '—';
+}
+
 const REQUIRED_TEMPLATE_NAMES = [
   'welcome',
   'promo_especial',
@@ -61,6 +80,15 @@ function fmtDate(value) {
   }
 }
 
+function fmtDateTime(value) {
+  if (!value) return '—';
+  try {
+    return format(new Date(value), 'dd/MM/yyyy HH:mm', { locale: es });
+  } catch {
+    return '—';
+  }
+}
+
 function RoleBadge({ role }) {
   const isAdmin = role === 'admin';
   return (
@@ -74,10 +102,49 @@ function AccessBadge({ status }) {
   if (status === 'active') {
     return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Activo</Badge>;
   }
-  if (status === 'pending') {
-    return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Pendiente</Badge>;
+  if (status === 'pending_payment') {
+    return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Pendiente de pago</Badge>;
+  }
+  if (status === 'blocked') {
+    return <Badge className="bg-red-100 text-red-700 border-red-200">Bloqueado</Badge>;
+  }
+  if (status === 'cancelled') {
+    return <Badge className="bg-slate-200 text-slate-700 border-slate-300">Cancelado</Badge>;
   }
   return <Badge className="bg-orange-100 text-orange-700 border-orange-200">Sin acceso</Badge>;
+}
+
+function PlanBadge({ plan, role }) {
+  if (role === 'admin' || plan === 'admin') {
+    return <Badge className="bg-pink-100 text-pink-700 border-pink-200">Admin</Badge>;
+  }
+
+  const className =
+    plan === 'founder_lifetime'
+      ? 'bg-purple-100 text-purple-700 border-purple-200'
+      : plan === 'founder'
+        ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+        : plan === 'monthly'
+          ? 'bg-blue-100 text-blue-700 border-blue-200'
+          : plan === 'subscription'
+            ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+            : 'bg-slate-100 text-slate-700 border-slate-200';
+
+  return <Badge className={className}>{planLabel(plan, role)}</Badge>;
+}
+
+function HasAccessIndicator({ value }) {
+  return value ? (
+    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600" title="has_access = true">
+      <CheckCircle2 className="h-3.5 w-3.5" />
+      has_access
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-[11px] text-red-500" title="has_access = false">
+      <XCircle className="h-3.5 w-3.5" />
+      has_access
+    </span>
+  );
 }
 
 function StatCard({ label, value, accentClass = 'text-foreground' }) {
@@ -108,14 +175,20 @@ function SetupRequiredAlert() {
 
 function UserEditModal({ row, onClose, onSave, isSaving }) {
   const [role, setRole] = useState(row.role || 'user');
-  const [hasAccess, setHasAccess] = useState(row.has_access === true);
+  const [plan, setPlan] = useState(row.plan === 'admin' ? 'free' : row.plan || 'free');
   const isManualLifetime = row.access_source === 'manual_lifetime';
+  const isAdminRole = role === 'admin';
+
+  const planOptions =
+    row.plan === 'subscription' ? PLAN_OPTIONS : PLAN_OPTIONS.filter((opt) => opt.value !== 'subscription');
+
+  const runAction = (updates, successMessage) => onSave(updates, successMessage);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-5 space-y-4">
+      <Card className="w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Editar acceso</h3>
+          <h3 className="text-base font-semibold">Editar usuario</h3>
           <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
             <X className="h-4 w-4" />
           </Button>
@@ -125,6 +198,14 @@ function UserEditModal({ row, onClose, onSave, isSaving }) {
           <p className="text-xs text-muted-foreground">Usuario</p>
           <p className="text-sm font-medium mt-1">{row.full_name}</p>
           <p className="text-xs text-muted-foreground">{row.email}</p>
+        </div>
+
+        <div className="flex items-center justify-between border rounded-lg px-3 py-2">
+          <span className="text-sm">Estado actual</span>
+          <div className="flex items-center gap-2">
+            <AccessBadge status={row.access_status} />
+            <HasAccessIndicator value={row.has_access} />
+          </div>
         </div>
 
         <div>
@@ -142,42 +223,115 @@ function UserEditModal({ row, onClose, onSave, isSaving }) {
             <p className="mt-1 text-[11px] text-muted-foreground">
               Este usuario fue creado como manual lifetime y no puede elevarse a admin desde este flujo.
             </p>
+          ) : (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              El rol admin es solo para uso interno del equipo, no para clientas.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Label className="text-xs font-semibold">Plan</Label>
+          <Select value={plan} onValueChange={setPlan} disabled={isAdminRole}>
+            <SelectTrigger className="mt-1 h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {planOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isAdminRole ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">Las cuentas admin usan el plan "Admin" automáticamente.</p>
+          ) : plan === 'free' ? (
+            <p className="mt-1 text-[11px] text-amber-600">
+              Al guardar con plan Gratis, el acceso quedará en "Pendiente de pago".
+            </p>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between border rounded-lg px-3 py-2">
-          <span className="text-sm">Acceso a plataforma</span>
-          <Button
-            type="button"
-            variant={hasAccess ? 'default' : 'outline'}
-            className="h-8 text-xs"
-            onClick={() => setHasAccess((prev) => !prev)}
-            style={hasAccess ? { backgroundColor: BRAND_PRIMARY } : undefined}
-          >
-            {hasAccess ? 'Activo' : 'Sin acceso'}
-          </Button>
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-xs font-semibold text-muted-foreground">Acciones de acceso</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 text-xs text-emerald-600 hover:text-emerald-700"
+              onClick={() =>
+                runAction(
+                  {
+                    role: 'user',
+                    plan: plan === 'free' ? 'founder' : plan,
+                    has_access: true,
+                    access_status: 'active',
+                  },
+                  'Acceso activado correctamente.'
+                )
+              }
+              disabled={isSaving}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+              Activar acceso
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 text-xs text-amber-600 hover:text-amber-700"
+              onClick={() =>
+                runAction({ has_access: false, access_status: 'pending_payment' }, 'Marcado como pendiente de pago.')
+              }
+              disabled={isSaving}
+            >
+              <Clock className="h-3.5 w-3.5 mr-1" />
+              Pendiente de pago
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 text-xs text-red-600 hover:text-red-700 col-span-2"
+              onClick={() => runAction({ has_access: false, access_status: 'blocked' }, 'Acceso bloqueado.')}
+              disabled={isSaving}
+            >
+              <Lock className="h-3.5 w-3.5 mr-1" />
+              Bloquear acceso
+            </Button>
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2 pt-2 border-t">
           <Button variant="outline" onClick={onClose} className="h-8 text-xs">
-            Cancelar
+            Cerrar
           </Button>
           <Button
             className="h-8 text-xs"
             style={{ backgroundColor: BRAND_PRIMARY }}
-            onClick={() =>
-              onSave({
+            onClick={() => {
+              const updates = {
                 role: isManualLifetime ? 'user' : role,
-                has_access: hasAccess,
-                plan: isManualLifetime ? 'founder' : role === 'admin' ? 'admin' : row.plan || 'founder',
-                access_source: isManualLifetime ? 'manual_lifetime' : row.access_source,
-                is_lifetime: isManualLifetime ? true : row.is_lifetime,
-              })
-            }
+                plan: isAdminRole ? 'admin' : plan,
+              };
+
+              if (!isAdminRole && plan === 'free') {
+                updates.has_access = false;
+                updates.access_status = 'pending_payment';
+              }
+
+              if (isManualLifetime) {
+                updates.access_source = 'manual_lifetime';
+                updates.is_lifetime = true;
+              }
+
+              runAction(updates, 'Cambios guardados.');
+            }}
             disabled={isSaving}
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-            Guardar
+            Guardar cambios
           </Button>
         </div>
       </Card>
@@ -471,28 +625,30 @@ export default function AdminPanel() {
                   <tr>
                     <th className="text-left px-3 py-2 font-semibold">Usuario</th>
                     <th className="text-left px-3 py-2 font-semibold">Rol</th>
+                    <th className="text-left px-3 py-2 font-semibold">Plan</th>
                     <th className="text-left px-3 py-2 font-semibold">Acceso</th>
                     <th className="text-left px-3 py-2 font-semibold">Registro</th>
+                    <th className="text-left px-3 py-2 font-semibold">Último login</th>
                     <th className="text-right px-3 py-2 font-semibold">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
+                      <td colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
                         Cargando usuarios...
                       </td>
                     </tr>
                   ) : isError ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-sm text-red-600">
+                      <td colSpan={7} className="text-center py-8 text-sm text-red-600">
                         {error?.message || 'No se pudo cargar el listado de usuarios.'}
                       </td>
                     </tr>
                   ) : filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
+                      <td colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
                         No hay resultados con esos filtros.
                       </td>
                     </tr>
@@ -510,42 +666,27 @@ export default function AdminPanel() {
                           <RoleBadge role={row.role} />
                         </td>
                         <td className="px-3 py-2.5">
+                          <PlanBadge plan={row.plan} role={row.role} />
+                        </td>
+                        <td className="px-3 py-2.5 space-y-1">
                           <AccessBadge status={row.access_status} />
+                          <div>
+                            <HasAccessIndicator value={row.has_access} />
+                          </div>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground">{fmtDate(row.created_at)}</td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground">{fmtDateTime(row.last_login_at)}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex justify-end gap-1.5">
                             {row.source === 'user' ? (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  className="h-8 px-2 text-xs"
-                                  onClick={() => setEditingRow(row)}
-                                >
-                                  <Pencil className="h-3.5 w-3.5 mr-1" />
-                                  Editar
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  className="h-8 px-2 text-xs"
-                                  onClick={() =>
-                                    updateUserMutation.mutate(
-                                      {
-                                        userId: row.user_id,
-                                        updates: { has_access: !row.has_access },
-                                      },
-                                      {
-                                        onSuccess: () => toast.success('Acceso actualizado.'),
-                                        onError: (err) => toast.error(err.message || 'No se pudo actualizar acceso.'),
-                                      }
-                                    )
-                                  }
-                                  disabled={updateUserMutation.isPending}
-                                >
-                                  {row.has_access ? <XCircle className="h-3.5 w-3.5 mr-1" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1" />}
-                                  {row.has_access ? 'Bloquear' : 'Activar'}
-                                </Button>
-                              </>
+                              <Button
+                                variant="outline"
+                                className="h-8 px-2 text-xs"
+                                onClick={() => setEditingRow(row)}
+                              >
+                                <Pencil className="h-3.5 w-3.5 mr-1" />
+                                Editar
+                              </Button>
                             ) : (
                               <>
                                 <Button
@@ -720,12 +861,12 @@ export default function AdminPanel() {
           row={editingRow}
           isSaving={updateUserMutation.isPending}
           onClose={() => setEditingRow(null)}
-          onSave={(updates) => {
+          onSave={(updates, successMessage) => {
             updateUserMutation.mutate(
               { userId: editingRow.user_id, updates },
               {
                 onSuccess: () => {
-                  toast.success('Usuario actualizado.');
+                  toast.success(successMessage || 'Usuario actualizado.');
                   setEditingRow(null);
                 },
                 onError: (err) => toast.error(err.message || 'No se pudo guardar el cambio.'),
