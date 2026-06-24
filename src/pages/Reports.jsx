@@ -20,8 +20,10 @@ const REPORTS_TOUR_STEPS = [
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { fetchOwnedRows, updateOwnedRowById } from '@/lib/supabaseOwnership';
+import { enrichInvoicesWithPayments, getInvoicePaymentSummary, getPaymentStatusMeta, groupPaymentsByInvoice } from '@/lib/invoicePayments';
 
 const TABS = [
+  { id: 'receivables', label: 'Cuentas por cobrar', icon: AlertTriangle },
   { id: 'inventory', label: 'Inventario', icon: Package },
   { id: 'profitability', label: 'Rentabilidad', icon: TrendingUp },
   { id: 'sales', label: 'Ventas', icon: ShoppingCart },
@@ -63,7 +65,7 @@ export default function Reports() {
   const ownerId = user?.id || userProfile?.id || null;
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
   const adminMode = isAdmin?.() === true;
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState('receivables');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -79,24 +81,70 @@ export default function Reports() {
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
 
+  const { data: invoicePayments = [], isLoading: loadingPayments } = useQuery({
+    queryKey: ['invoice-payments', ownerId, ownerEmail, adminMode],
+    queryFn: () => fetchOwnedRows({ table: 'invoice_payments', ownerId, ownerEmail, adminMode }),
+    enabled: adminMode || !!(ownerId || ownerEmail),
+  });
+
   const { data: inventoryItems = [], isLoading: loadingInventory } = useQuery({
     queryKey: ['inventory-items', ownerId, ownerEmail, adminMode],
     queryFn: () => fetchOwnedRows({ table: 'inventory_items', ownerId, ownerEmail, adminMode }),
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
 
-  const isLoading = loadingProd || loadingInv || loadingInventory;
+  const isLoading = loadingProd || loadingInv || loadingInventory || loadingPayments;
+
+  const paymentsByInvoiceId = useMemo(() => groupPaymentsByInvoice(invoicePayments), [invoicePayments]);
+  const invoicesWithPayments = useMemo(
+    () => enrichInvoicesWithPayments(invoices, paymentsByInvoiceId),
+    [invoices, paymentsByInvoiceId]
+  );
 
   const paidInvoices = useMemo(
-    () => invoices.filter((invoice) => isPaidStatus(invoice.status)),
-    [invoices]
+    () => invoicesWithPayments.filter((invoice) => {
+      const summary = invoice.payment_summary || getInvoicePaymentSummary(invoice, paymentsByInvoiceId[invoice.id] || []);
+      return summary.paymentStatus === 'paid' || (!summary.hasPayments && isPaidStatus(invoice.status));
+    }),
+    [invoicesWithPayments, paymentsByInvoiceId]
   );
   const pendingInvoices = useMemo(
-    () => invoices
-      .filter((invoice) => !isPaidStatus(invoice.status))
+    () => invoicesWithPayments
+      .filter((invoice) => {
+        const summary = invoice.payment_summary || getInvoicePaymentSummary(invoice, paymentsByInvoiceId[invoice.id] || []);
+        return summary.balanceDue > 0;
+      })
       .sort((a, b) => `${b.due_date || b.date || b.created_at || ''}`.localeCompare(`${a.due_date || a.date || a.created_at || ''}`)),
-    [invoices]
+    [invoicesWithPayments, paymentsByInvoiceId]
   );
+
+  const receivableRows = useMemo(() => pendingInvoices.map((invoice) => {
+    const summary = invoice.payment_summary || getInvoicePaymentSummary(invoice, paymentsByInvoiceId[invoice.id] || []);
+    const statusMeta = getPaymentStatusMeta(summary.paymentStatus);
+    return {
+      id: invoice.id,
+      numero: invoice.invoice_number || `FAC-${String(invoice.id || '').slice(0, 6)}`,
+      cliente: invoice.client_name || 'Cliente sin nombre',
+      fecha: invoice.date || `${invoice.created_at || ''}`.slice(0, 10) || '—',
+      vence: invoice.due_date || '—',
+      total: summary.total,
+      abonado: summary.totalPaid,
+      saldo: summary.balanceDue,
+      estado: statusMeta.label,
+      status: summary.paymentStatus,
+      hasPayments: summary.hasPayments,
+    };
+  }), [pendingInvoices, paymentsByInvoiceId]);
+
+  const reportSummary = useMemo(() => invoicesWithPayments.reduce((acc, invoice) => {
+    const summary = invoice.payment_summary || getInvoicePaymentSummary(invoice, paymentsByInvoiceId[invoice.id] || []);
+    acc.totalCollected += summary.amountCollected || 0;
+    acc.balanceDue += summary.balanceDue || 0;
+    if (summary.paymentStatus === 'partial') acc.partial += 1;
+    if (summary.paymentStatus === 'paid') acc.paid += 1;
+    if (summary.balanceDue > 0) acc.pending += 1;
+    return acc;
+  }, { totalCollected: 0, balanceDue: 0, partial: 0, paid: 0, pending: 0 }), [invoicesWithPayments, paymentsByInvoiceId]);
 
   const markPaidMutation = useMutation({
     mutationFn: async (invoiceId) => {
@@ -224,8 +272,27 @@ export default function Reports() {
       <PageTour pageName="Reports" userEmail={ownerEmail} steps={REPORTS_TOUR_STEPS} />
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground">Centro de Reportes</h1>
-        <p className="text-sm text-muted-foreground mt-1">Análisis completo del negocio — solo facturas pagadas</p>
+        <p className="text-sm text-muted-foreground mt-1">Análisis completo del negocio, cobros y saldos pendientes</p>
       </motion.div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Total cobrado</p>
+          <p className="text-2xl font-bold text-primary mt-1">{formatMoney(reportSummary.totalCollected)}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Saldo por cobrar</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{formatMoney(reportSummary.balanceDue)}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Pago parcial</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{reportSummary.partial}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Pagadas</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{reportSummary.paid}</p>
+        </Card>
+      </div>
 
       {/* Date filter */}
       <Card className="p-4">
@@ -271,18 +338,24 @@ export default function Reports() {
                       {invoiceLabel} • {invoice.client_name || 'Cliente sin nombre'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {invoiceDate} • {formatMoney(invoice.total_final || 0)}
+                      {invoiceDate} • Saldo {formatMoney(invoice.payment_summary?.balanceDue || invoice.total_final || 0)}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    className="shrink-0 bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => markPaidMutation.mutate(invoice.id)}
-                    disabled={isMarking}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                    {isMarking ? 'Guardando...' : 'Marcar pagada'}
-                  </Button>
+                  {invoice.payment_summary?.hasPayments ? (
+                    <span className="shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                      Pago parcial
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="shrink-0 bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => markPaidMutation.mutate(invoice.id)}
+                      disabled={isMarking}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                      {isMarking ? 'Guardando...' : 'Marcar pagada'}
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -313,6 +386,43 @@ export default function Reports() {
           </button>
         ))}
       </div>
+
+      {activeTab === 'receivables' && (
+        <ReportSection
+          title="Cuentas por Cobrar"
+          count={receivableRows.length}
+          onExport={() => downloadCSV(receivableRows.map(r => ({
+            Factura: r.numero,
+            Cliente: r.cliente,
+            Fecha: r.fecha,
+            Vence: r.vence,
+            Total: r.total,
+            Abonado: r.abonado,
+            Saldo: r.saldo,
+            Estado: r.estado,
+          })), 'cuentas_por_cobrar')}
+        >
+          <Table headers={['Factura', 'Cliente', 'Fecha', 'Vence', 'Total', 'Abonado', 'Saldo', 'Estado']}>
+            {receivableRows.map((r) => {
+              const meta = getPaymentStatusMeta(r.status);
+              return (
+                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                  <td className="py-2.5 px-3 text-sm font-mono font-semibold">{r.numero}</td>
+                  <td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td>
+                  <td className="py-2.5 px-3 text-sm text-muted-foreground">{r.fecha}</td>
+                  <td className="py-2.5 px-3 text-sm text-muted-foreground">{r.vence}</td>
+                  <td className="py-2.5 px-3 text-sm">{formatMoney(r.total)}</td>
+                  <td className="py-2.5 px-3 text-sm text-green-600 font-semibold">{formatMoney(r.abonado)}</td>
+                  <td className="py-2.5 px-3 text-sm font-bold text-red-600">{formatMoney(r.saldo)}</td>
+                  <td className="py-2.5 px-3">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badgeClass}`}>{meta.label}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+        </ReportSection>
+      )}
 
       {/* Inventory */}
       {activeTab === 'inventory' && (

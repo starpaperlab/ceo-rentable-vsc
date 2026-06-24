@@ -5,10 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pencil, Trash2, Eye, ArrowRight, FileText, MessageCircle } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { getInvoicePaymentSummary, getPaymentStatusMeta } from '@/lib/invoicePayments';
 
 const INVOICE_STATUS = {
-  pending: { label: 'Pendiente', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  pending: { label: 'Pendiente', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  partial: { label: 'Pago parcial', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   paid: { label: 'Pagada', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  overdue: { label: 'Vencida', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  canceled: { label: 'Cancelada', cls: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400' },
 };
 
 const QUOTE_STATUS = {
@@ -20,7 +24,8 @@ const QUOTE_STATUS = {
 function buildWhatsAppLink(doc) {
   const phone = (doc.client_phone || '').replace(/\D/g, '');
   if (!phone) return null;
-  const statusLabel = doc.status === 'paid' ? 'pagada ✅' : doc.status === 'overdue' ? 'vencida ⚠️' : 'pendiente de pago ⏳';
+  const paymentStatus = doc.payment_summary?.paymentStatus || doc.payment_status || doc.status;
+  const statusLabel = paymentStatus === 'paid' ? 'pagada' : paymentStatus === 'partial' ? 'con pago parcial' : paymentStatus === 'overdue' ? 'vencida' : 'pendiente de pago';
   const number = doc.invoice_number || doc.quote_number || '';
   const total = doc.total_final ? `$${Number(doc.total_final).toLocaleString()}` : '';
   const msg = `Hola ${doc.client_name || 'cliente'}, te escribimos sobre tu documento ${number}${total ? ` por un monto de ${total}` : ''}. Estado: ${statusLabel}. ¿Podemos ayudarte con algo?`;
@@ -58,15 +63,26 @@ export default function DocumentList({ documents, type, onEdit, onDelete, onPrev
               </TableRow>
             ) : (
               documents.map(doc => {
-                const st = statusMap[doc.status] || statusMap.pending;
+                const paymentSummary = type === 'invoice'
+                  ? doc.payment_summary || getInvoicePaymentSummary(doc, [])
+                  : null;
+                const st = type === 'invoice'
+                  ? getPaymentStatusMeta(paymentSummary.paymentStatus)
+                  : statusMap[doc.status] || statusMap.pending;
+                const statusClass = st.cls || st.badgeClass;
                 return (
                   <TableRow key={doc.id} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-sm font-semibold text-foreground">{doc[numberField]}</TableCell>
                     <TableCell className="text-sm max-w-[120px] truncate">{doc.client_name || '-'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">{doc.date || '-'}</TableCell>
-                    <TableCell className="font-bold text-primary">{formatMoney(doc.total_final || 0)}</TableCell>
                     <TableCell>
-                      <Badge className={`${st.cls} border-0 text-xs`}>{st.label}</Badge>
+                      <p className="font-bold text-primary">{formatMoney(doc.total_final || 0)}</p>
+                      {type === 'invoice' && paymentSummary.balanceDue > 0 ? (
+                        <p className="text-[11px] text-muted-foreground">Saldo {formatMoney(paymentSummary.balanceDue)}</p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`${statusClass} border-0 text-xs`}>{st.label}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-0.5">

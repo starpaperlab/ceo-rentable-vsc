@@ -16,7 +16,8 @@ import OverdueDashboard from '@/components/billing/OverdueDashboard';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useAuth } from '@/lib/AuthContext';
 import { mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
-import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership';
+import { enrichInvoicesWithPayments, getInvoicePaymentErrorMessage, groupPaymentsByInvoice } from '@/lib/invoicePayments';
+import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Facturacion', description: 'Registra ventas con facturas y da seguimiento a cobros pendientes.' },
@@ -93,6 +94,12 @@ export default function Billing() {
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['invoices', ownerId, ownerEmail, adminMode],
     queryFn: () => fetchOwnedRows({ table: 'invoices', ownerId, ownerEmail, adminMode }),
+    enabled: adminMode || !!(ownerId || ownerEmail),
+  });
+
+  const { data: invoicePayments = [] } = useQuery({
+    queryKey: ['invoice-payments', ownerId, ownerEmail, adminMode],
+    queryFn: () => fetchOwnedRows({ table: 'invoice_payments', ownerId, ownerEmail, adminMode }),
     enabled: adminMode || !!(ownerId || ownerEmail),
   });
 
@@ -209,6 +216,79 @@ export default function Billing() {
     },
   });
 
+  const createInvoicePaymentMutation = useMutation({
+    mutationFn: async ({ invoice, payload }) => {
+      const paymentPayload = {
+        ...payload,
+        invoice_id: invoice.id,
+        user_id: invoice.user_id || ownerId || null,
+        created_by: normalizeEmail(invoice.created_by) || ownerEmail || null,
+        registered_by: ownerId || null,
+        registered_by_email: ownerEmail || null,
+      };
+      const { data, error } = await supabase
+        .from('invoice_payments')
+        .insert(paymentPayload)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Abono registrado');
+    },
+    onError: (error) => {
+      toast.error(getInvoicePaymentErrorMessage(error));
+    },
+  });
+
+  const updateInvoicePaymentMutation = useMutation({
+    mutationFn: async ({ payment, payload }) => {
+      await updateOwnedRowById({
+        table: 'invoice_payments',
+        id: payment.id,
+        payload: {
+          ...payload,
+          registered_by: ownerId || null,
+          registered_by_email: ownerEmail || null,
+        },
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Abono actualizado');
+    },
+    onError: (error) => {
+      toast.error(getInvoicePaymentErrorMessage(error));
+    },
+  });
+
+  const deleteInvoicePaymentMutation = useMutation({
+    mutationFn: async (payment) => {
+      await deleteOwnedRowById({
+        table: 'invoice_payments',
+        id: payment.id,
+        ownerId,
+        ownerEmail,
+        adminMode,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Abono eliminado');
+    },
+    onError: (error) => {
+      toast.error(getInvoicePaymentErrorMessage(error));
+    },
+  });
+
   const convertToInvoiceMutation = useMutation({
     mutationFn: async (quote) => {
       if (ownerId) {
@@ -243,9 +323,14 @@ export default function Billing() {
     },
   });
 
+  const paymentsByInvoiceId = useMemo(() => groupPaymentsByInvoice(invoicePayments), [invoicePayments]);
+  const invoicesWithPayments = useMemo(
+    () => enrichInvoicesWithPayments(invoices, paymentsByInvoiceId),
+    [invoices, paymentsByInvoiceId]
+  );
   const sortedInvoices = useMemo(
-    () => [...invoices].sort((a, b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')),
-    [invoices]
+    () => [...invoicesWithPayments].sort((a, b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')),
+    [invoicesWithPayments]
   );
   const sortedQuotes = useMemo(
     () => [...quotes].sort((a, b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')),
@@ -253,8 +338,10 @@ export default function Billing() {
   );
 
   const isLoading = loadingInvoices || loadingQuotes;
-  const totalBilledInvoices = invoices.filter((invoice) => invoice.status === 'paid').reduce((sum, invoice) => sum + (invoice.total_final || 0), 0);
-  const pendingInvoices = invoices.filter((invoice) => invoice.status === 'pending').length;
+  const totalBilledInvoices = invoicesWithPayments.reduce((sum, invoice) => sum + (invoice.payment_summary?.amountCollected || 0), 0);
+  const totalReceivableBalance = invoicesWithPayments.reduce((sum, invoice) => sum + (invoice.payment_summary?.balanceDue || 0), 0);
+  const pendingInvoices = invoicesWithPayments.filter((invoice) => (invoice.payment_summary?.balanceDue || 0) > 0).length;
+  const partialInvoices = invoicesWithPayments.filter((invoice) => invoice.payment_summary?.paymentStatus === 'partial').length;
   const pendingQuotes = quotes.filter((quote) => quote.status === 'pending').length;
 
   if (isLoading) {
@@ -306,11 +393,11 @@ export default function Billing() {
         </Button>
       </motion.div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Total cobrado</p>
           <p className="text-2xl font-bold text-primary mt-1">{formatMoney(totalBilledInvoices)}</p>
-          <p className="text-xs text-muted-foreground mt-1">Facturas pagadas</p>
+          <p className="text-xs text-muted-foreground mt-1">Abonos y facturas pagadas</p>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Facturas Pendientes</p>
@@ -318,9 +405,14 @@ export default function Billing() {
           <p className="text-xs text-muted-foreground mt-1">Pendientes por cobrar</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Cotizaciones Activas</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{pendingQuotes}</p>
-          <p className="text-xs text-muted-foreground mt-1">Pendientes de aprobacion</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Pago parcial</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{partialInvoices}</p>
+          <p className="text-xs text-muted-foreground mt-1">Facturas con abonos</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Saldo por cobrar</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{formatMoney(totalReceivableBalance)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{pendingQuotes} cotizaciones activas</p>
         </Card>
       </div>
 
@@ -376,6 +468,16 @@ export default function Billing() {
           document={previewDoc}
           type={previewDoc._type || (previewDoc.invoice_number ? 'invoice' : 'quote')}
           onClose={() => setPreviewDoc(null)}
+          payments={previewDoc._type === 'invoice' ? paymentsByInvoiceId[previewDoc.id] || [] : []}
+          canManagePayments={previewDoc._type === 'invoice' && Boolean(previewDoc.id)}
+          isSavingPayment={
+            createInvoicePaymentMutation.isPending ||
+            updateInvoicePaymentMutation.isPending ||
+            deleteInvoicePaymentMutation.isPending
+          }
+          onCreatePayment={(payload) => createInvoicePaymentMutation.mutateAsync({ invoice: previewDoc, payload })}
+          onUpdatePayment={(payment, payload) => updateInvoicePaymentMutation.mutateAsync({ payment, payload })}
+          onDeletePayment={(payment) => deleteInvoicePaymentMutation.mutate(payment)}
         />
       )}
     </div>

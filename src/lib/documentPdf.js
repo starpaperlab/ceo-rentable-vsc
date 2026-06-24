@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { resolveDocumentBranding } from '@/lib/documentBranding';
+import { getInvoicePaymentSummary, sortInvoicePayments } from '@/lib/invoicePayments';
 import {
   chunkCommercialAttachments,
   COMMERCIAL_ATTACHMENT_LAYOUTS,
@@ -398,7 +399,11 @@ function getAdditionalCharges(doc = {}) {
     .filter((charge) => charge.name && charge.amount > 0);
 }
 
-function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
+function getPdfPayments(payments = []) {
+  return sortInvoicePayments(payments).filter((payment) => Number(payment?.amount || 0) > 0);
+}
+
+function drawTotals(pdf, { doc, type, payments = [], taxAmount, totalFinal, symbol, brandRgb, y }) {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const boxWidth = 82;
   const x = pageWidth - PAGE.marginX - boxWidth;
@@ -407,11 +412,15 @@ function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
     doc.additional_charges_total ?? additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0)
   );
   const subtotalBeforeTax = Number(doc.subtotal_before_tax ?? Number(doc.subtotal || 0) + additionalChargesTotal);
+  const paymentSummary = type === 'invoice' ? getInvoicePaymentSummary(doc, getPdfPayments(payments)) : null;
+  const hasPayments = Boolean(paymentSummary?.hasPayments);
+  const totalToDisplay = hasPayments ? paymentSummary.balanceDue : totalFinal;
 
   const lineCount = 1
     + additionalCharges.length
     + (additionalChargesTotal > 0 ? 1 : 0)
-    + (doc.tax_enabled ? 1 : 0);
+    + (doc.tax_enabled ? 1 : 0)
+    + (hasPayments ? 1 : 0);
   const cardHeight = 10 + lineCount * 8 + 18;
   const startY = y;
 
@@ -452,14 +461,22 @@ function drawTotals(pdf, { doc, taxAmount, totalFinal, symbol, brandRgb, y }) {
     y += 8;
   }
 
+  if (hasPayments) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(34, 145, 80);
+    pdf.text('Abono recibido', x + 5, y + 5);
+    pdf.text(`-${toMoney(paymentSummary.totalPaid, symbol)}`, x + boxWidth - 5, y + 5, { align: 'right' });
+    y += 8;
+  }
+
   pdf.setFillColor(brandRgb.r, brandRgb.g, brandRgb.b);
   pdf.roundedRect(x + 4, y + 2, boxWidth - 8, 15, 3, 3, 'F');
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
+  pdf.setFontSize(hasPayments ? 8.5 : 10);
   pdf.setTextColor(255, 255, 255);
-  pdf.text('TOTAL', x + 9, y + 11);
+  pdf.text(hasPayments ? 'TOTAL RESTANTE' : 'TOTAL', x + 9, y + 11);
   pdf.setFontSize(13);
-  pdf.text(toMoney(totalFinal, symbol), x + boxWidth - 9, y + 11, { align: 'right' });
+  pdf.text(toMoney(totalToDisplay, symbol), x + boxWidth - 9, y + 11, { align: 'right' });
 
   return startY + cardHeight + 4;
 }
@@ -745,7 +762,7 @@ function drawGalleryAttachmentPage(pdf, {
   });
 }
 
-export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
+export async function generateBillingDocumentPdf({ doc, type, symbol = '$', payments = [] }) {
   const resolvedDoc = resolveDocumentBranding(doc);
   const pdf = new jsPDF('p', 'mm', 'a4');
   const meta = getDocMeta(resolvedDoc, type);
@@ -783,7 +800,8 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
   const footerHeight = noteLines * 5
     + (resolvedDoc.doc_show_signature ? 28 : 0)
     + (getSocialDetails(resolvedDoc).length > 0 ? 12 : 0);
-  const totalsHeight = 58 + additionalCharges.length * 8 + footerHeight;
+  const hasPdfPayments = type === 'invoice' && getPdfPayments(payments).length > 0;
+  const totalsHeight = 58 + additionalCharges.length * 8 + (hasPdfPayments ? 8 : 0) + footerHeight;
   if (y + totalsHeight > contentBottom()) {
     pdf.addPage();
     y = drawDocumentHeader(pdf, { doc: resolvedDoc, meta, brandColor, brandRgb, logoImage, isFirstPage: false });
@@ -791,7 +809,7 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$' }) {
     y += 8;
   }
 
-  y = drawTotals(pdf, { doc: resolvedDoc, taxAmount, totalFinal, symbol, brandRgb, y });
+  y = drawTotals(pdf, { doc: resolvedDoc, type, payments, taxAmount, totalFinal, symbol, brandRgb, y });
   drawNotes(pdf, { doc: resolvedDoc, type, y, brandRgb });
 
   for (let index = 0; index < attachmentPages.length; index += 1) {

@@ -7,6 +7,7 @@ import { useCurrency } from '@/components/shared/CurrencyContext';
 import { toast } from 'sonner';
 import { differenceInDays, parseISO } from 'date-fns';
 import { updateOwnedRowById } from '@/lib/supabaseOwnership';
+import { getInvoicePaymentSummary } from '@/lib/invoicePayments';
 
 function getDaysOverdue(invoice) {
   const ref = invoice.due_date || invoice.date;
@@ -26,14 +27,21 @@ export default function OverdueDashboard({ invoices, ownerId = null, ownerEmail 
   const [sending, setSending] = useState({})
 
   const overdueInvoices = invoices.filter(inv => {
-    if (inv.status === 'paid') return false;
+    const summary = inv.payment_summary || getInvoicePaymentSummary(inv, []);
+    if (summary.paymentStatus === 'paid' || summary.balanceDue <= 0) return false;
     const days = getDaysOverdue(inv);
     return days > 0;
   }).sort((a, b) => getDaysOverdue(b) - getDaysOverdue(a));
 
   const critical = overdueInvoices.filter(i => getDaysOverdue(i) > 30);
-  const totalOverdue = overdueInvoices.reduce((s, i) => s + (i.total_final || 0), 0);
-  const totalCritical = critical.reduce((s, i) => s + (i.total_final || 0), 0);
+  const totalOverdue = overdueInvoices.reduce((s, i) => {
+    const summary = i.payment_summary || getInvoicePaymentSummary(i, []);
+    return s + (summary.balanceDue || 0);
+  }, 0);
+  const totalCritical = critical.reduce((s, i) => {
+    const summary = i.payment_summary || getInvoicePaymentSummary(i, []);
+    return s + (summary.balanceDue || 0);
+  }, 0);
 
   const markOverdueMutation = useMutation({
     mutationFn: async (id) => {
@@ -148,6 +156,7 @@ export default function OverdueDashboard({ invoices, ownerId = null, ownerEmail 
           const days = getDaysOverdue(inv)
           const badge = getOverdueBadge(days)
           const isCritical = days > 30
+          const summary = inv.payment_summary || getInvoicePaymentSummary(inv, [])
 
           return (
             <Card key={inv.id} className={`p-4 ${isCritical ? 'border-red-300 dark:border-red-800' : 'border-amber-200 dark:border-amber-800'}`}>
@@ -171,7 +180,12 @@ export default function OverdueDashboard({ invoices, ownerId = null, ownerEmail 
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <p className="font-bold text-foreground">{formatMoney(inv.total_final || 0)}</p>
+                  <div className="text-right">
+                    <p className="font-bold text-foreground">{formatMoney(summary.balanceDue || 0)}</p>
+                    {summary.hasPayments ? (
+                      <p className="text-[11px] text-muted-foreground">Abonado {formatMoney(summary.totalPaid || 0)}</p>
+                    ) : null}
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
@@ -182,14 +196,16 @@ export default function OverdueDashboard({ invoices, ownerId = null, ownerEmail 
                     <Mail className="h-3 w-3 mr-1" />
                     {sending[inv.id] ? 'Enviando...' : 'Recordatorio'}
                   </Button>
-                  <Button
-                    size="sm"
-                    className="text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => markPaidMutation.mutate(inv.id)}
-                    disabled={markPaidMutation.isPending}
-                  >
-                    <CheckCircle className="h-3 w-3 mr-1" /> Pagada
-                  </Button>
+                  {!summary.hasPayments ? (
+                    <Button
+                      size="sm"
+                      className="text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => markPaidMutation.mutate(inv.id)}
+                      disabled={markPaidMutation.isPending}
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" /> Pagada
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </Card>

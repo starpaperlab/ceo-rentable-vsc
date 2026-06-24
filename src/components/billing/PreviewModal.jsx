@@ -4,6 +4,7 @@ import { X, Download } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { resolveDocumentBranding } from '@/lib/documentBranding';
 import { generateBillingDocumentPdf } from '@/lib/documentPdf';
+import InvoicePaymentsPanel from '@/components/billing/InvoicePaymentsPanel';
 import {
   chunkCommercialAttachments,
   getCommercialAttachmentLayoutLabel,
@@ -135,7 +136,17 @@ function AttachmentPreviewPage({
   );
 }
 
-export default function PreviewModal({ document: doc, type, onClose }) {
+export default function PreviewModal({
+  document: doc,
+  type,
+  onClose,
+  payments = [],
+  canManagePayments = false,
+  isSavingPayment = false,
+  onCreatePayment,
+  onUpdatePayment,
+  onDeletePayment,
+}) {
   const { symbol } = useCurrency();
   const previewRef = useRef(null);
   const resolvedDoc = resolveDocumentBranding(doc);
@@ -223,7 +234,7 @@ export default function PreviewModal({ document: doc, type, onClose }) {
   }, [visualAttachments]);
 
   const handleExportPDF = async () => {
-    await generateBillingDocumentPdf({ doc: resolvedDoc, type, symbol });
+    await generateBillingDocumentPdf({ doc: resolvedDoc, type, symbol, payments });
   };
 
   return (
@@ -241,6 +252,20 @@ export default function PreviewModal({ document: doc, type, onClose }) {
             </Button>
           </div>
         </div>
+
+        {type === 'invoice' ? (
+          <div className="mb-4">
+            <InvoicePaymentsPanel
+              invoice={resolvedDoc}
+              payments={payments}
+              canManage={canManagePayments}
+              isSaving={isSavingPayment}
+              onCreatePayment={onCreatePayment}
+              onUpdatePayment={onUpdatePayment}
+              onDeletePayment={onDeletePayment}
+            />
+          </div>
+        ) : null}
 
         <div ref={previewRef} style={{ fontFamily: `'${fontFamily}', Arial, sans-serif`, backgroundColor: '#ffffff', padding: '40px', borderRadius: '12px' }}>
           <link rel="stylesheet" href={fontUrl} />
