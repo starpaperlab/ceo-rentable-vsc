@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   areDraftsEquivalent,
   cleanupOldAutosaveDrafts,
@@ -27,6 +27,7 @@ export function useDraftRecovery({
     userId,
     recordId: recordId || 'new',
   }), [module, recordId, userId]);
+  const mountedAtRef = useRef(Date.now());
   const [state, setState] = useState(INITIAL_STATE);
 
   useEffect(() => {
@@ -39,6 +40,13 @@ export function useDraftRecovery({
 
     const draft = loadAutosaveDraft(scope);
     if (!draft?.payload) {
+      setState({ ...INITIAL_STATE, resolved: true });
+      return;
+    }
+
+    const isTransientQuickCreate = `${module || ''}`.includes('quick_create');
+    if (isTransientQuickCreate) {
+      clearAutosaveDraft(scope);
       setState({ ...INITIAL_STATE, resolved: true });
       return;
     }
@@ -60,6 +68,12 @@ export function useDraftRecovery({
     });
 
     if (!['local-only', 'local-newer'].includes(freshness)) {
+      setState({ ...INITIAL_STATE, resolved: true });
+      return;
+    }
+
+    const localSavedTime = new Date(draft.local_saved_at || '').getTime();
+    if (Number.isFinite(localSavedTime) && localSavedTime >= mountedAtRef.current) {
       setState({ ...INITIAL_STATE, resolved: true });
       return;
     }
@@ -100,4 +114,3 @@ export function useDraftRecovery({
     discardDraft,
   };
 }
-
