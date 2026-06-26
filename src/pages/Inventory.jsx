@@ -4,51 +4,54 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
 import PageTour from '@/components/shared/PageTour';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { useAuth } from '@/lib/AuthContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Plus, Package, ArrowUp, ArrowDown, RefreshCw, AlertTriangle, Monitor, Wrench } from 'lucide-react';
+import { Loader2, Plus, Package, ArrowUp, ArrowDown, RefreshCw, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import InventoryItemForm from '@/components/inventory/InventoryItemForm';
 import {
   deleteOwnedRowById,
-  fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
   updateOwnedRowById,
 } from '@/lib/supabaseOwnership';
-
-const TABS = [
-  { key: 'fisicos', label: 'Fisicos', icon: Package },
-  { key: 'digitales', label: 'Digitales', icon: Monitor },
-  { key: 'servicios', label: 'Servicios', icon: Wrench },
-];
+import { isPhysicalProductType } from '@/lib/productTypes';
 
 const TOUR_STEPS = [
-  { title: 'Centro de Productos', description: 'Controla inventario fisico y consulta digitales/servicios desde un solo lugar.' },
+  { title: 'Inventario Físico', description: 'Aquí controlas únicamente productos físicos que ya están en inventario.' },
   { title: 'Movimientos', description: 'Registra entradas, salidas o ajustes para mantener el stock actualizado.' },
   { title: 'Alertas', description: 'Detecta rapido productos con stock bajo y evita quiebres de inventario.' },
 ];
 
-function getOwnerPayload({ user, userProfile }) {
-  return {
-    ownerId: user?.id || userProfile?.id || null,
-    ownerEmail: (userProfile?.email || user?.email || '').toLowerCase(),
-  };
+function isInventoryActive(item) {
+  return item?.is_active !== false;
 }
 
 export default function Inventory() {
   const queryClient = useQueryClient();
   const { formatMoney } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const { ownerId, ownerEmail } = getOwnerPayload({ user, userProfile });
-  const adminMode = isAdmin?.() === true;
-  const [activeTab, setActiveTab] = useState('fisicos');
+  const {
+    activeBrandId,
+    adminMode,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
   const [editingItem, setEditingItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [movementItem, setMovementItem] = useState(null);
@@ -56,8 +59,8 @@ export default function Inventory() {
 
   const addOwnerToPayload = (payload) => ({
     ...payload,
-    user_id: ownerId,
-    created_by: ownerEmail || null,
+    user_id: writeOwnerId,
+    created_by: writeOwnerEmail || null,
   });
 
   const insertOwned = async (table, payload) => {
@@ -86,26 +89,48 @@ export default function Inventory() {
         if (retryError) throw retryError;
         return data;
       }
+      if (isMissingColumnError(error, `${table}.product_id`) || isMissingColumnError(error, 'product_id')) {
+        const next = { ...payload };
+        delete next.product_id;
+        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
+        if (retryError) throw retryError;
+        return data;
+      }
+      if (isMissingColumnError(error, `${table}.category`) || isMissingColumnError(error, 'category')) {
+        const next = { ...payload };
+        delete next.category;
+        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
+        if (retryError) throw retryError;
+        return data;
+      }
+      if (isMissingColumnError(error, `${table}.is_active`) || isMissingColumnError(error, 'is_active')) {
+        const next = { ...payload };
+        delete next.is_active;
+        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
+        if (retryError) throw retryError;
+        return data;
+      }
+      if (isMissingColumnError(error, `${table}.brand_profile_id`) || isMissingColumnError(error, 'brand_profile_id')) {
+        const next = { ...payload };
+        delete next.brand_profile_id;
+        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
+        if (retryError) throw retryError;
+        return data;
+      }
       throw error;
     }
   };
 
   const { data: items = [], isLoading: loadingItems } = useQuery({
-    queryKey: ['inventory-items', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'inventory_items', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['inventory-items', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'inventory_items' }),
+    enabled,
   });
 
   const { data: movements = [], isLoading: loadingMovements } = useQuery({
-    queryKey: ['inventory-movements', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'inventory_movements', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
-  });
-
-  const { data: products = [], isLoading: loadingProducts } = useQuery({
-    queryKey: ['products', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'products', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['inventory-movements', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'inventory_movements' }),
+    enabled,
   });
 
   const persistInventoryItem = async (payload, { targetItem = null } = {}) => {
@@ -123,8 +148,11 @@ export default function Inventory() {
 
     const safePayload = {
       ...payload,
+      is_active: payload?.is_active ?? true,
+      product_id: payload?.product_id || null,
       product_name: `${payload?.product_name || ''}`.trim(),
       sku: `${payload?.sku || ''}`.trim() || null,
+      category: `${payload?.category || ''}`.trim() || null,
       descripcion: `${payload?.descripcion || ''}`.trim() || null,
       sale_price: Number(payload?.sale_price || 0),
       costo_unitario: Number(payload?.costo_unitario || 0),
@@ -139,9 +167,9 @@ export default function Inventory() {
         table: 'inventory_items',
         id: targetItem.id,
         payload: safePayload,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
 
       return {
@@ -150,7 +178,11 @@ export default function Inventory() {
       };
     }
 
-    const saved = await insertOwned('inventory_items', addOwnerToPayload({ ...safePayload, product_type: 'fisico' }));
+    const saved = await insertOwned('inventory_items', addOwnerToPayload({
+      ...safePayload,
+      product_type: 'fisico',
+      brand_profile_id: activeBrandId || null,
+    }));
     return {
       payload: safePayload,
       remoteUpdatedAt: saved?.updated_at || now,
@@ -170,9 +202,9 @@ export default function Inventory() {
       await deleteOwnedRowById({
         table: 'inventory_items',
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -202,14 +234,15 @@ export default function Inventory() {
         table: 'inventory_items',
         id: item.id,
         payload: { current_stock: nextStock },
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
 
       await insertOwned('inventory_movements', addOwnerToPayload({
         inventory_item_id: item.id,
         product_name: item.product_name,
+        brand_profile_id: item.brand_profile_id || activeBrandId || null,
         type: movement.type,
         quantity: qty,
         reason: movement.reason || '',
@@ -229,23 +262,15 @@ export default function Inventory() {
   });
 
   const fisicos = useMemo(
-    () => items.filter((item) => !item.product_type || item.product_type === 'fisico'),
+    () => items.filter((item) => isPhysicalProductType(item.product_type) && isInventoryActive(item)),
     [items]
-  );
-  const digitales = useMemo(
-    () => products.filter((product) => product.product_type === 'digital' && product.status === 'active'),
-    [products]
-  );
-  const servicios = useMemo(
-    () => products.filter((product) => product.product_type === 'servicio' && product.status === 'active'),
-    [products]
   );
   const lowStock = useMemo(
     () => fisicos.filter((item) => (item.current_stock || 0) <= (item.min_stock_alert || 0)),
     [fisicos]
   );
 
-  const isLoading = loadingItems || loadingMovements || loadingProducts;
+  const isLoading = loadingItems || loadingMovements;
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
@@ -258,26 +283,11 @@ export default function Inventory() {
     <div className="p-4 lg:p-8 max-w-5xl mx-auto space-y-6">
       <PageTour pageName="Inventory" userEmail={ownerEmail} steps={TOUR_STEPS} />
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-foreground">Centro de Productos</h1>
-        <p className="text-sm text-muted-foreground mt-1">Controla inventario, productos digitales y servicios.</p>
+        <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
+        <p className="text-sm text-muted-foreground mt-1">Controla únicamente tus productos físicos con stock real.</p>
       </motion.div>
 
-      <div className="flex gap-1 bg-muted/50 p-1 rounded-xl w-fit">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === tab.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'fisicos' && (
-        <div className="space-y-4">
+      <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <Card className="p-4 text-center">
               <p className="text-2xl font-bold">{fisicos.length}</p>
@@ -354,14 +364,17 @@ export default function Inventory() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm">{item.product_name}</p>
                         {item.sku && <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.sku}</span>}
+                        {item.category && <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.category}</span>}
                         {(item.current_stock || 0) <= (item.min_stock_alert || 0) && (
                           <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">Stock bajo</Badge>
                         )}
                       </div>
                       <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                         <span>Stock: <strong className="text-foreground">{item.current_stock || 0}</strong> {item.unit || 'unidad'}</span>
+                        <span>Mínimo: <strong>{item.min_stock_alert || 0}</strong></span>
                         <span>Venta: <strong className="text-primary">{formatMoney(item.sale_price || 0)}</strong></span>
                         <span>Costo: <strong>{formatMoney(item.costo_unitario || 0)}</strong></span>
+                        <span>Valor: <strong>{formatMoney((item.current_stock || 0) * (item.costo_unitario || 0))}</strong></span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -415,40 +428,7 @@ export default function Inventory() {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {activeTab === 'digitales' && (
-        <div className="space-y-3">
-          {digitales.length === 0 ? (
-            <Card className="p-12 text-center"><p className="text-sm text-muted-foreground">No hay productos digitales activos.</p></Card>
-          ) : digitales.map((product) => (
-            <Card key={product.id} className="p-4">
-              <p className="font-semibold text-sm">{product.name}</p>
-              <div className="text-xs text-muted-foreground mt-1 flex gap-4">
-                <span>Precio: <strong className="text-primary">{formatMoney(product.sale_price || 0)}</strong></span>
-                <span>Margen: <strong>{(product.margin_pct || 0).toFixed(1)}%</strong></span>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'servicios' && (
-        <div className="space-y-3">
-          {servicios.length === 0 ? (
-            <Card className="p-12 text-center"><p className="text-sm text-muted-foreground">No hay servicios activos.</p></Card>
-          ) : servicios.map((service) => (
-            <Card key={service.id} className="p-4">
-              <p className="font-semibold text-sm">{service.name}</p>
-              <div className="text-xs text-muted-foreground mt-1 flex gap-4">
-                <span>Precio: <strong className="text-primary">{formatMoney(service.sale_price || 0)}</strong></span>
-                <span>Margen: <strong>{(service.margin_pct || 0).toFixed(1)}%</strong></span>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+      </div>
 
       {movementItem && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">

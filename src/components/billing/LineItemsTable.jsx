@@ -12,38 +12,70 @@ export default function LineItemsTable({ items, onChange, products = [], invento
   const [localCreatedProducts, setLocalCreatedProducts] = useState([]);
 
   const autocompleteItems = React.useMemo(() => {
+    const normalizeKey = (item) => {
+      const name = (item.product_name || item.name || '').trim().toLowerCase();
+      const sku = (item.sku || '').trim().toLowerCase();
+      return sku ? `${name}::${sku}` : name;
+    };
+
     const normalizedFromInventory = (inventoryItems || []).map((item) => ({
       id: item.id || `inv-${item.product_name}`,
+      inventory_item_id: item.id || null,
+      product_id: item.product_id || null,
       product_name: item.product_name || item.name || '',
       sale_price: item.sale_price,
       descripcion: item.descripcion || item.description || null,
       current_stock: item.current_stock ?? null,
       min_stock_alert: item.min_stock_alert ?? 5,
+      product_type: item.product_type || 'fisico',
+      sku: item.sku || null,
+      category: item.category || null,
     }));
 
     const normalizedFromProducts = (products || []).map((item) => ({
       id: item.id || `prod-${item.name}`,
+      inventory_item_id: null,
+      product_id: item.id || null,
       product_name: item.product_name || item.name || '',
       sale_price: item.sale_price,
       descripcion: item.descripcion || item.description || null,
       current_stock: item.current_stock ?? null,
       min_stock_alert: item.min_stock_alert ?? 5,
+      product_type: item.product_type || 'fisico',
+      sku: item.sku || null,
+      category: item.category || null,
     }));
 
     const normalizedLocal = (localCreatedProducts || []).map((item) => ({
       id: item.id || `local-${item.product_name}`,
+      inventory_item_id: item.inventory_item_id || null,
+      product_id: item.product_id || item.id || null,
       product_name: item.product_name || item.name || '',
       sale_price: item.sale_price,
       descripcion: item.descripcion || null,
       current_stock: item.current_stock ?? null,
       min_stock_alert: item.min_stock_alert ?? 5,
+      product_type: item.product_type || 'fisico',
+      sku: item.sku || null,
+      category: item.category || null,
     }));
 
     const map = new Map();
     [...normalizedFromInventory, ...normalizedFromProducts, ...normalizedLocal].forEach((item) => {
-      const key = (item.id || item.product_name || '').toString();
+      const key = normalizeKey(item);
       if (!key) return;
-      if (!map.has(key)) map.set(key, item);
+      if (!map.has(key)) {
+        map.set(key, item);
+        return;
+      }
+
+      const current = map.get(key);
+      map.set(key, {
+        ...current,
+        ...item,
+        current_stock: current?.current_stock ?? item.current_stock ?? null,
+        min_stock_alert: current?.min_stock_alert ?? item.min_stock_alert ?? 5,
+      });
     });
     return Array.from(map.values());
   }, [inventoryItems, products, localCreatedProducts]);
@@ -68,6 +100,11 @@ export default function LineItemsTable({ items, onChange, products = [], invento
     const updated = items.map((item, i) => {
       if (i !== index) return item;
       const newItem = { ...item, description: invItem.product_name || '' };
+      newItem.product_id = invItem.product_id || null;
+      newItem.inventory_item_id = invItem.inventory_item_id || null;
+      newItem.product_type = invItem.product_type || null;
+      newItem.sku = invItem.sku || null;
+      newItem.category = invItem.category || null;
       if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;
       if (invItem.sale_price != null) {
         newItem.unit_price = invItem.sale_price;
@@ -148,6 +185,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       {createModal && (
         <QuickCreateProductModal
           initialName={createModal.initialName}
+          products={products}
+          inventoryItems={inventoryItems}
           onClose={() => setCreateModal(null)}
           onCreated={(newItem) => {
             setLocalCreatedProducts((prev) => [newItem, ...prev]);
@@ -156,6 +195,11 @@ export default function LineItemsTable({ items, onChange, products = [], invento
               sale_price: newItem.sale_price,
               descripcion: newItem.descripcion || null,
               current_stock: newItem.current_stock ?? null,
+              product_id: newItem.product_id || newItem.id || null,
+              inventory_item_id: newItem.inventory_item_id || null,
+              product_type: newItem.product_type || 'fisico',
+              sku: newItem.sku || null,
+              category: newItem.category || null,
             });
             setCreateModal(null);
           }}

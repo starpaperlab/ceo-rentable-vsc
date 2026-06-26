@@ -10,8 +10,10 @@ import AutosaveStatus from '@/components/shared/AutosaveStatus';
 import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
 
 export const EMPTY_INVENTORY_ITEM_FORM = {
+  product_id: null,
   product_name: '',
   sku: '',
+  category: '',
   descripcion: '',
   sale_price: 0,
   costo_unitario: 0,
@@ -24,8 +26,10 @@ function buildInventoryItemFormState(item = null) {
   if (!item) return { ...EMPTY_INVENTORY_ITEM_FORM };
 
   return {
+    product_id: item.product_id || null,
     product_name: item.product_name || '',
     sku: item.sku || '',
+    category: item.category || '',
     descripcion: item.descripcion || '',
     sale_price: Number(item.sale_price || 0),
     costo_unitario: Number(item.costo_unitario || 0),
@@ -37,8 +41,10 @@ function buildInventoryItemFormState(item = null) {
 
 function serializeInventoryItemForm(raw = {}) {
   return {
+    product_id: raw.product_id || null,
     product_name: `${raw.product_name || ''}`.trim(),
     sku: `${raw.sku || ''}`.trim() || null,
+    category: `${raw.category || ''}`.trim() || null,
     descripcion: `${raw.descripcion || ''}`.trim() || null,
     sale_price: Number(raw.sale_price || 0),
     costo_unitario: Number(raw.costo_unitario || 0),
@@ -52,8 +58,10 @@ function restoreInventoryItemForm(raw, fallbackState) {
   return {
     ...fallbackState,
     ...raw,
+    product_id: raw?.product_id || null,
     product_name: raw?.product_name || '',
     sku: raw?.sku || '',
+    category: raw?.category || '',
     descripcion: raw?.descripcion || '',
     sale_price: Number(raw?.sale_price || 0),
     costo_unitario: Number(raw?.costo_unitario || 0),
@@ -67,6 +75,7 @@ function isMeaningfulInventoryDraft(payload) {
   return (
     Boolean(`${payload?.product_name || ''}`.trim()) ||
     Boolean(`${payload?.sku || ''}`.trim()) ||
+    Boolean(`${payload?.category || ''}`.trim()) ||
     Boolean(`${payload?.descripcion || ''}`.trim()) ||
     Number(payload?.sale_price || 0) > 0 ||
     Number(payload?.costo_unitario || 0) > 0 ||
@@ -179,6 +188,10 @@ export default function InventoryItemForm({
         <div>
           <Label className="text-xs">SKU</Label>
           <Input value={form.sku} onChange={(event) => update('sku', event.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label className="text-xs">Categoría</Label>
+          <Input value={form.category} onChange={(event) => update('category', event.target.value)} className="mt-1" />
         </div>
         <div>
           <Label className="text-xs">Precio venta</Label>

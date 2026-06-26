@@ -92,6 +92,16 @@ function applyEqFilters(query, filters = []) {
   }, query);
 }
 
+function applyBrandProfileScope(query, { brandProfileId, includeUnbranded = true } = {}) {
+  if (!brandProfileId) return query;
+
+  if (includeUnbranded) {
+    return query.or(`brand_profile_id.eq.${brandProfileId},brand_profile_id.is.null`);
+  }
+
+  return query.eq('brand_profile_id', brandProfileId);
+}
+
 function sortRows(rows = [], orderBy = 'created_at', ascending = false) {
   if (!orderBy) return rows;
 
@@ -139,6 +149,8 @@ export async function fetchOwnedRows({
   ascending = false,
   filters = [],
   allowLegacyEmailFallback = false,
+  brandProfileId = null,
+  includeUnbranded = true,
 }) {
   if (!table) throw new Error('Tabla requerida para fetchOwnedRows');
 
@@ -147,12 +159,25 @@ export async function fetchOwnedRows({
   }
 
   if (adminMode) {
-    const adminQuery = applyEqFilters(
-      supabase.from(table).select('*'),
-      filters
+    const adminQuery = applyBrandProfileScope(
+      applyEqFilters(
+        supabase.from(table).select('*'),
+        filters
+      ),
+      { brandProfileId, includeUnbranded }
     );
     const { data, error } = await adminQuery;
     if (isMissingTableError(error, table)) return [];
+    if (isMissingColumnError(error, `${table}.brand_profile_id`) || isMissingColumnError(error, 'brand_profile_id')) {
+      const fallbackQuery = applyEqFilters(
+        supabase.from(table).select('*'),
+        filters
+      );
+      const fallbackResult = await fallbackQuery;
+      if (isMissingTableError(fallbackResult.error, table)) return [];
+      if (fallbackResult.error) throw fallbackResult.error;
+      return sortRows(fallbackResult.data || [], orderBy, ascending);
+    }
     if (!error) {
       return sortRows(data || [], orderBy, ascending);
     }
@@ -165,13 +190,37 @@ export async function fetchOwnedRows({
 
   if (ownerId) {
     attempted += 1;
-    const queryById = applyEqFilters(
-      supabase.from(table).select('*').eq('user_id', ownerId),
-      filters
+    const queryById = applyBrandProfileScope(
+      applyEqFilters(
+        supabase.from(table).select('*').eq('user_id', ownerId),
+        filters
+      ),
+      { brandProfileId, includeUnbranded }
     );
     const { data, error } = await queryById;
     if (error) {
       if (isMissingTableError(error, table)) return [];
+      if (isMissingColumnError(error, `${table}.brand_profile_id`) || isMissingColumnError(error, 'brand_profile_id')) {
+        const fallbackQuery = applyEqFilters(
+          supabase.from(table).select('*').eq('user_id', ownerId),
+          filters
+        );
+        const fallbackResult = await fallbackQuery;
+        if (isMissingTableError(fallbackResult.error, table)) return [];
+        if (fallbackResult.error) {
+          if (!isMissingColumnError(fallbackResult.error, `${table}.user_id`) && !isMissingColumnError(fallbackResult.error, 'user_id')) {
+            throw fallbackResult.error;
+          }
+          missingOwnerColumnCount += 1;
+        } else {
+          ownerIdQuerySucceeded = true;
+          allRows.push(...(fallbackResult.data || []));
+          if (!allowLegacyEmailFallback || !ownerEmail || (fallbackResult.data || []).length > 0) {
+            return sortRows(mergeRowsById(allRows), orderBy, ascending);
+          }
+        }
+        return sortRows(mergeRowsById(allRows), orderBy, ascending);
+      }
       if (!isMissingColumnError(error, `${table}.user_id`) && !isMissingColumnError(error, 'user_id')) {
         throw error;
       }
@@ -187,13 +236,33 @@ export async function fetchOwnedRows({
 
   if (ownerEmail && (!ownerIdQuerySucceeded || allowLegacyEmailFallback)) {
     attempted += 1;
-    const queryByEmail = applyEqFilters(
-      supabase.from(table).select('*').eq('created_by', ownerEmail),
-      filters
+    const queryByEmail = applyBrandProfileScope(
+      applyEqFilters(
+        supabase.from(table).select('*').eq('created_by', ownerEmail),
+        filters
+      ),
+      { brandProfileId, includeUnbranded }
     );
     const { data, error } = await queryByEmail;
     if (error) {
       if (isMissingTableError(error, table)) return [];
+      if (isMissingColumnError(error, `${table}.brand_profile_id`) || isMissingColumnError(error, 'brand_profile_id')) {
+        const fallbackQuery = applyEqFilters(
+          supabase.from(table).select('*').eq('created_by', ownerEmail),
+          filters
+        );
+        const fallbackResult = await fallbackQuery;
+        if (isMissingTableError(fallbackResult.error, table)) return [];
+        if (fallbackResult.error) {
+          if (!isMissingColumnError(fallbackResult.error, `${table}.created_by`) && !isMissingColumnError(fallbackResult.error, 'created_by')) {
+            throw fallbackResult.error;
+          }
+          missingOwnerColumnCount += 1;
+        } else {
+          allRows.push(...(fallbackResult.data || []));
+        }
+        return sortRows(mergeRowsById(allRows), orderBy, ascending);
+      }
       if (!isMissingColumnError(error, `${table}.created_by`) && !isMissingColumnError(error, 'created_by')) {
         throw error;
       }
@@ -219,6 +288,45 @@ export async function fetchOwnedRows({
   // Si no hay columnas de ownership disponibles o fallan ambas estrategias,
   // devolvemos vacío para evitar mezclar datos entre usuarias.
   return [];
+}
+
+export function resolveWorkContextOwnership({
+  ownerId,
+  ownerEmail,
+  adminMode = false,
+  activeView,
+  activeUserId,
+  activeUser,
+}) {
+  if (!adminMode) {
+    return {
+      ownerId,
+      ownerEmail,
+      adminMode: false,
+    };
+  }
+
+  if (activeView === 'all_users') {
+    return {
+      ownerId,
+      ownerEmail,
+      adminMode: true,
+    };
+  }
+
+  if (activeView === 'specific_user' && activeUserId) {
+    return {
+      ownerId: activeUserId,
+      ownerEmail: `${activeUser?.email || ''}`.trim().toLowerCase(),
+      adminMode: false,
+    };
+  }
+
+  return {
+    ownerId,
+    ownerEmail,
+    adminMode: false,
+  };
 }
 
 export function withOwner(payload, { ownerId, ownerEmail }) {

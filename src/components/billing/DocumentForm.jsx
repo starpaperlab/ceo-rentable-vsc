@@ -86,6 +86,8 @@ const GOOGLE_FONTS = [
   { label: 'Open Sans (Neutral)', value: 'Open Sans' },
 ];
 
+const ENABLE_STOCK_DEDUCTION_ON_INVOICE_CREATE = false;
+
 function sanitizeLineItems(rawItems = []) {
   if (!Array.isArray(rawItems)) return [];
   return rawItems
@@ -203,6 +205,7 @@ function buildDocumentFormState({
   totalCount,
   ownerEmail,
   ownerName,
+  contextBrandProfileId = null,
 }) {
   const numberField = type === 'invoice' ? 'invoice_number' : 'quote_number';
   const resolvedBranding = resolveDocumentBranding(doc || {}, config || {});
@@ -220,7 +223,7 @@ function buildDocumentFormState({
     tax_pct: doc?.tax_pct ?? 18,
     notes: doc?.notes || '',
     status: doc?.status || 'pending',
-    brand_profile_id: doc?.brand_profile_id || config?.brand_profile_id || '',
+    brand_profile_id: doc?.brand_profile_id || contextBrandProfileId || config?.brand_profile_id || '',
     company_name: doc?.company_name || config?.business_name || (resolvedBranding.company_name === 'Mi Empresa' ? '' : resolvedBranding.company_name) || '',
     logo_url: resolvedBranding.logo_url || '',
     logo_size: resolvedBranding.logo_size || config?.logo_size || 'medium',
@@ -322,6 +325,7 @@ export default function DocumentForm({
   ownerEmail = '',
   ownerName = '',
   adminMode = false,
+  contextBrandProfileId = null,
 }) {
   const queryClient = useQueryClient();
   const logoInputRef = useRef(null);
@@ -351,7 +355,8 @@ export default function DocumentForm({
     totalCount,
     ownerEmail,
     ownerName,
-  }), [config, doc, ownerEmail, ownerName, totalCount, type]);
+    contextBrandProfileId,
+  }), [config, contextBrandProfileId, doc, ownerEmail, ownerName, totalCount, type]);
 
   const [form, setForm] = useState(initialFormState);
 
@@ -610,7 +615,15 @@ export default function DocumentForm({
     safeData.commercial_attachments_layout = sanitizeCommercialAttachmentLayout(
       data?.commercial_attachments_layout || data?.visual_attachments_layout
     );
-    const payload = adminMode ? { ...safeData } : { ...safeData, ...getOwnerPayload() };
+    const documentData = doc?.id
+      ? safeData
+      : {
+          ...safeData,
+          brand_profile_id: safeData.brand_profile_id || contextBrandProfileId || null,
+        };
+    const payload = doc?.id
+      ? (adminMode ? { ...documentData } : { ...documentData, ...getOwnerPayload() })
+      : { ...documentData, ...getOwnerPayload() };
 
     let saved;
     if (doc?.id) {
@@ -627,7 +640,7 @@ export default function DocumentForm({
       saved = await insertOwnedRow(entityTable, payload);
     }
 
-    if (type === 'invoice' && !doc?.id && !silentInventory) {
+    if (ENABLE_STOCK_DEDUCTION_ON_INVOICE_CREATE && type === 'invoice' && !doc?.id && !silentInventory) {
       const ownedInventoryItems = await fetchOwnedInventory();
 
       for (const lineItem of safeData.line_items || []) {

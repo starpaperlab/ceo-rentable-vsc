@@ -20,6 +20,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import AccessGuard from '@/components/shared/AccessGuard';
 import AdminRouteGuard from '@/components/shared/AdminRouteGuard';
 import MetaPixelRouteTracker from '@/components/tracking/MetaPixelRouteTracker';
+import { WorkContextProvider } from '@/contexts/WorkContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -145,8 +146,10 @@ function App() {
       <MetaPixelRouteTracker />
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
-          <AuthenticatedApp />
-          <Toaster />
+          <WorkContextProvider>
+            <AuthenticatedApp />
+            <Toaster />
+          </WorkContextProvider>
         </QueryClientProvider>
       </AuthProvider>
     </Router>

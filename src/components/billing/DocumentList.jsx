@@ -72,7 +72,12 @@ export default function DocumentList({ documents, type, onEdit, onDelete, onPrev
                 const statusClass = st.cls || st.badgeClass;
                 return (
                   <TableRow key={doc.id} className="hover:bg-muted/30">
-                    <TableCell className="font-mono text-sm font-semibold text-foreground">{doc[numberField]}</TableCell>
+                    <TableCell>
+                      <p className="font-mono text-sm font-semibold text-foreground">{doc[numberField]}</p>
+                      {type === 'invoice' && doc.order_id ? (
+                        <p className="text-[11px] text-muted-foreground">Generada desde pedido</p>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-sm max-w-[120px] truncate">{doc.client_name || '-'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">{doc.date || '-'}</TableCell>
                     <TableCell>

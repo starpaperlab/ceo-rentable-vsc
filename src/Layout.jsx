@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { CurrencyProvider } from '@/components/shared/CurrencyContext';
 import CurrencySelector from '@/components/shared/CurrencySelector';
 import ThemeToggle from '@/components/shared/ThemeToggle';
+import WorkContextSelector from '@/components/shared/WorkContextSelector';
 import {
   LayoutDashboard,
   Calculator,
@@ -22,7 +23,9 @@ import {
   Shield,
   Receipt,
   Boxes,
-  Calendar
+  Calendar,
+  ClipboardList,
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,8 +38,11 @@ const NAV_ITEMS = [
   { name: 'Clientes', page: 'Clients', icon: Users },
   { name: 'Agenda Inteligente', page: 'Agenda', icon: Calendar },
   { name: 'Control Mensual', page: 'MonthlyControl', icon: CalendarCheck },
+  { name: 'Pedidos', page: 'Orders', icon: ClipboardList },
   { name: 'Facturación', page: 'Billing', icon: Receipt },
+  { name: 'Cuentas por Cobrar', page: 'Receivables', icon: FileBarChart },
   { name: 'Inventario', page: 'Inventory', icon: Boxes },
+  { name: 'Importar', page: 'Imports', icon: Upload },
   { name: 'Reportes', page: 'Reports', icon: FileBarChart },
   { name: 'Aprende', page: 'Learn', icon: GraduationCap },
   { name: 'Configuración', page: 'AppSettings', icon: Settings },
@@ -249,6 +255,7 @@ export default function Layout({ children, currentPageName }) {
               </h2>
             </div>
             <div className="flex items-center gap-2">
+              <WorkContextSelector />
               <CurrencySelector />
               <ThemeToggle />
             </div>

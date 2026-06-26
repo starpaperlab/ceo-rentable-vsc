@@ -10,9 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Plus, Loader2 } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
-import { useAuth } from '@/lib/AuthContext';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
-import { deleteOwnedRowById, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import {
+  deleteOwnedRowById,
+  hasOwnerConstraintIssue,
+  isMissingColumnError,
+  updateOwnedRowById,
+} from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Gestión de Clientes 👥', description: 'Tu base de clientes es uno de tus activos más valiosos. Aquí registras cada cliente, cuánto te ha comprado y su categoría.' },
@@ -43,30 +48,39 @@ function sortByCreatedDesc(rows = []) {
 
 export default function Clients() {
   const { formatMoney } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const {
+    activeBrandId,
+    adminMode,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
-  const ownerId = user?.id || userProfile?.id || null;
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['clients', ownerId, ownerEmail, adminMode],
+    queryKey: ['clients', ...contextQueryKey],
     queryFn: async () => {
-      const rows = await fetchOwnedRows({
+      const rows = await fetchRows({
         table: 'clients',
-        ownerId,
-        ownerEmail,
-        adminMode,
         orderBy: 'created_at',
         ascending: false,
       });
       return sortByCreatedDesc(rows);
     },
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    enabled,
   });
 
   const persistClient = async (data, { targetClient = null } = {}) => {
@@ -78,9 +92,9 @@ export default function Clients() {
         table: 'clients',
         id: targetClient.id,
         payload: basePayload,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
 
       return {
@@ -99,8 +113,9 @@ export default function Clients() {
 
     const payload = {
       ...basePayload,
-      user_id: ownerId,
-      created_by: ownerEmail || null,
+      user_id: writeOwnerId,
+      created_by: writeOwnerEmail || null,
+      brand_profile_id: activeBrandId || null,
       created_at: now,
       created_date: now,
     };
@@ -133,6 +148,11 @@ export default function Clients() {
         delete next.created_at;
         return tryInsert(next);
       }
+      if (isMissingColumnError(error, 'clients.brand_profile_id') || isMissingColumnError(error, 'brand_profile_id')) {
+        const next = { ...candidate };
+        delete next.brand_profile_id;
+        return tryInsert(next);
+      }
       if (hasOwnerConstraintIssue(error, 'clients')) {
         const next = { ...candidate };
         delete next.user_id;
@@ -162,9 +182,9 @@ export default function Clients() {
       await deleteOwnedRowById({
         table: 'clients',
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {

@@ -14,7 +14,7 @@ import DocumentForm from '@/components/billing/DocumentForm';
 import PreviewModal from '@/components/billing/PreviewModal';
 import OverdueDashboard from '@/components/billing/OverdueDashboard';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { useAuth } from '@/lib/AuthContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
 import { enrichInvoicesWithPayments, getInvoicePaymentErrorMessage, groupPaymentsByInvoice } from '@/lib/invoicePayments';
 import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
@@ -36,10 +36,23 @@ function normalizeEmail(value = '') {
 export default function Billing() {
   const queryClient = useQueryClient();
   const { formatMoney } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const {
+    activeBrand,
+    activeBrandId,
+    adminMode,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
 
   const [activeTab, setActiveTab] = useState('overdue');
   const [editDoc, setEditDoc] = useState(null);
@@ -47,8 +60,9 @@ export default function Billing() {
 
   const withOwner = (payload) => ({
     ...payload,
-    user_id: ownerId,
-    created_by: ownerEmail || null,
+    user_id: payload?.user_id || writeOwnerId,
+    created_by: normalizeEmail(payload?.created_by) || writeOwnerEmail || null,
+    brand_profile_id: payload?.brand_profile_id || activeBrandId || null,
   });
 
   const safeInsert = async (table, payload) => {
@@ -92,9 +106,9 @@ export default function Billing() {
   };
 
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
-    queryKey: ['invoices', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'invoices', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['invoices', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoices' }),
+    enabled,
   });
 
   const { data: invoicePayments = [] } = useQuery({
@@ -104,27 +118,27 @@ export default function Billing() {
   });
 
   const { data: quotes = [], isLoading: loadingQuotes } = useQuery({
-    queryKey: ['quotes', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'quotes', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['quotes', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'quotes' }),
+    enabled,
   });
 
   const { data: clients = [] } = useQuery({
-    queryKey: ['clients', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'clients', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['clients', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'clients' }),
+    enabled,
   });
 
   const { data: products = [] } = useQuery({
-    queryKey: ['products', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'products', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['products', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'products' }),
+    enabled,
   });
 
   const { data: inventoryItems = [] } = useQuery({
-    queryKey: ['inventory-items', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'inventory_items', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['inventory-items', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'inventory_items' }),
+    enabled,
   });
 
   const { data: configs = [] } = useQuery({
@@ -175,6 +189,12 @@ export default function Billing() {
   }, [adminMode, brandProfiles]);
 
   const newDocumentConfig = useMemo(() => {
+    if (activeBrandId && activeBrand) {
+      return mapBrandProfileToBusinessConfig(activeBrand, {
+        ownerName: userProfile?.full_name || ownerEmail,
+        ownerEmail,
+      });
+    }
     if (adminMode && defaultAdminBrandProfile) {
       return mapBrandProfileToBusinessConfig(defaultAdminBrandProfile, {
         ownerName: userProfile?.full_name || ownerEmail,
@@ -182,16 +202,16 @@ export default function Billing() {
       });
     }
     return ownConfig;
-  }, [adminMode, defaultAdminBrandProfile, ownConfig, ownerEmail, userProfile?.full_name]);
+  }, [activeBrand, activeBrandId, adminMode, defaultAdminBrandProfile, ownConfig, ownerEmail, userProfile?.full_name]);
 
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (id) => {
       await deleteOwnedRowById({
         table: 'invoices',
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -205,9 +225,9 @@ export default function Billing() {
       await deleteOwnedRowById({
         table: 'quotes',
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -310,6 +330,9 @@ export default function Billing() {
         ...rest,
         invoice_number: `FAC-${String(invoices.length + 1).padStart(4, '0')}`,
         status: 'pending',
+        user_id: quote.user_id || writeOwnerId,
+        created_by: normalizeEmail(quote.created_by) || writeOwnerEmail || null,
+        brand_profile_id: quote.brand_profile_id || activeBrandId || null,
       });
       return safeInsert('invoices', payload);
     },
@@ -366,10 +389,11 @@ export default function Billing() {
           inventoryItems={inventoryItems}
           config={editDoc.doc ? getConfigForDocument(editDoc.doc) : newDocumentConfig}
           brandProfiles={adminMode ? brandProfiles : []}
-          ownerId={ownerId}
-          ownerEmail={ownerEmail}
+          ownerId={writeOwnerId}
+          ownerEmail={writeOwnerEmail}
           ownerName={userProfile?.full_name || ownerEmail}
-          adminMode={adminMode}
+          adminMode={scopedAdminMode}
+          contextBrandProfileId={editDoc.doc?.brand_profile_id || activeBrandId || null}
           totalCount={editDoc.type === 'invoice' ? invoices.length : quotes.length}
         />
       </div>
@@ -435,9 +459,9 @@ export default function Billing() {
         <TabsContent value="overdue" className="mt-4">
           <OverdueDashboard
             invoices={sortedInvoices}
-            ownerId={ownerId}
-            ownerEmail={ownerEmail}
-            adminMode={adminMode}
+            ownerId={scopedOwnerId}
+            ownerEmail={scopedOwnerEmail}
+            adminMode={scopedAdminMode}
           />
         </TabsContent>
 

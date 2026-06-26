@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Plus, Package } from 'lucide-react';
+import { getProductTypeLabel } from '@/lib/productTypes';
 
 export default function ProductAutocomplete({ value, onSelect, inventoryItems = [], onCreateNew }) {
   const [query, setQuery] = useState(value || '');
@@ -65,6 +66,11 @@ export default function ProductAutocomplete({ value, onSelect, inventoryItems = 
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                  {item.product_type && (
+                    <span>
+                      {getProductTypeLabel(item.product_type)}
+                    </span>
+                  )}
                   {item.sale_price != null && (
                     <span className="text-primary font-semibold">${item.sale_price}</span>
                   )}
