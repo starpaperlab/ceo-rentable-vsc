@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
-import { useAutosave } from '@/hooks/useAutosave';
-import { useDraftRecovery } from '@/hooks/useDraftRecovery';
+import { useDocumentDraftAutosave } from '@/hooks/useDocumentDraftAutosave';
+import { normalizeDocumentDraftPayload } from '@/lib/documentDraftStorage';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -261,50 +261,61 @@ function buildDocumentFormState({
 }
 
 function restoreDocumentFormState(raw, fallbackState) {
+  const draftPayload = normalizeDocumentDraftPayload(raw);
   return {
     ...fallbackState,
-    ...raw,
-    client_name: raw?.client_name || '',
-    client_email: raw?.client_email || '',
-    client_phone: raw?.client_phone || '',
-    client_id: raw?.client_id || '',
-    notes: raw?.notes || '',
-    brand_profile_id: raw?.brand_profile_id || '',
-    company_name: raw?.company_name || '',
-    logo_url: raw?.logo_url || '',
-    fiscal_name: raw?.fiscal_name || '',
-    fiscal_id: raw?.fiscal_id || '',
-    fiscal_address: raw?.fiscal_address || '',
-    contact_name: raw?.contact_name || '',
-    contact_title: raw?.contact_title || '',
-    contact_email: raw?.contact_email || '',
-    phone_primary: raw?.phone_primary || '',
-    phone_secondary: raw?.phone_secondary || '',
-    address: raw?.address || '',
-    city_country: raw?.city_country || '',
-    instagram_url: raw?.instagram_url || '',
-    facebook_url: raw?.facebook_url || '',
-    tiktok_url: raw?.tiktok_url || '',
-    linkedin_url: raw?.linkedin_url || '',
-    website_url: raw?.website_url || '',
-    whatsapp_url: raw?.whatsapp_url || '',
-    commercial_attachments_layout: sanitizeCommercialAttachmentLayout(raw?.commercial_attachments_layout),
-    line_items: raw?.line_items?.length > 0 ? raw.line_items : [...DEFAULT_ITEMS],
-    additional_charges: Array.isArray(raw?.additional_charges) ? raw.additional_charges : [],
-    visual_attachments: sanitizeVisualAttachments(raw?.visual_attachments || []),
+    ...draftPayload,
+    commercial_attachments_layout: sanitizeCommercialAttachmentLayout(draftPayload.commercial_attachments_layout),
+    visual_attachments: sanitizeVisualAttachments(draftPayload.visual_attachments || []),
   };
 }
 
+function serializeDocumentDraftPayload(raw = {}) {
+  const draftPayload = normalizeDocumentDraftPayload(raw);
+  return {
+    ...draftPayload,
+    visual_attachments: sanitizeVisualAttachments(draftPayload.visual_attachments || []),
+    commercial_attachments_layout: sanitizeCommercialAttachmentLayout(draftPayload.commercial_attachments_layout),
+  };
+}
+
+function hasAnyLineItemInput(rawItems = []) {
+  if (!Array.isArray(rawItems)) return false;
+  return rawItems.some((item) => (
+    Boolean(`${item?.description || ''}`.trim()) ||
+    Boolean(item?.product_id) ||
+    Number(item?.unit_price || 0) > 0 ||
+    Number(item?.quantity ?? 1) !== 1 ||
+    Number(item?.discount || 0) > 0
+  ));
+}
+
+function hasAnyAdditionalChargeInput(rawCharges = []) {
+  if (!Array.isArray(rawCharges)) return false;
+  return rawCharges.some((charge) => (
+    Boolean(`${charge?.name || charge?.concept || charge?.label || ''}`.trim()) ||
+    Number(charge?.amount || 0) > 0
+  ));
+}
+
 function isMeaningfulDocumentDraft(payload) {
+  const numberFieldValue = payload?.invoice_number || payload?.quote_number || '';
+
   return (
+    hasAnyLineItemInput(payload?.line_items || []) ||
+    hasAnyAdditionalChargeInput(payload?.additional_charges || []) ||
     sanitizeLineItems(payload?.line_items || []).length > 0 ||
     sanitizeAdditionalCharges(payload?.additional_charges || []).length > 0 ||
+    Boolean(`${numberFieldValue || ''}`.trim()) ||
+    Boolean(`${payload?.date || ''}`.trim()) ||
+    Boolean(`${payload?.due_date || ''}`.trim()) ||
+    Boolean(payload?.tax_enabled) ||
+    Number(payload?.tax_pct || 0) !== 18 ||
+    Boolean(`${payload?.status || ''}`.trim()) ||
     Boolean(`${payload?.client_name || ''}`.trim()) ||
     Boolean(`${payload?.client_email || ''}`.trim()) ||
     Boolean(`${payload?.client_phone || ''}`.trim()) ||
     Boolean(`${payload?.notes || ''}`.trim()) ||
-    Boolean(`${payload?.company_name || ''}`.trim()) ||
-    Boolean(`${payload?.logo_url || ''}`.trim()) ||
     sanitizeCommercialAttachmentLayout(payload?.commercial_attachments_layout) !== DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT ||
     sanitizeVisualAttachments(payload?.visual_attachments || []).length > 0
   );
@@ -326,11 +337,13 @@ export default function DocumentForm({
   ownerName = '',
   adminMode = false,
   contextBrandProfileId = null,
+  autoRecoverDraft = false,
 }) {
   const queryClient = useQueryClient();
   const logoInputRef = useRef(null);
   const attachmentInputRef = useRef(null);
   const draftStorageRef = useRef(doc?.id || `${type}-draft-${Date.now()}`);
+  const autoRecoveredDraftRef = useRef(false);
   const [showPreview, setShowPreview] = useState(false);
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const [attachmentPreviewUrls, setAttachmentPreviewUrls] = useState({});
@@ -343,7 +356,7 @@ export default function DocumentForm({
   const numberField = type === 'invoice' ? 'invoice_number' : 'quote_number';
   const entityTable = type === 'invoice' ? 'invoices' : 'quotes';
   const queryKey = type === 'invoice' ? 'invoices' : 'quotes';
-  const autosaveUserId = ownerId || ownerEmail || 'anon';
+  const autosaveUserId = ownerId || ownerEmail || null;
   const remoteRecordId = doc?.id || 'new';
   const adminBrandProfiles = useMemo(() => Array.isArray(brandProfiles) ? brandProfiles : [], [brandProfiles]);
   const canSelectAdminBrand = adminMode && !doc?.id && adminBrandProfiles.length > 0;
@@ -359,6 +372,7 @@ export default function DocumentForm({
   }), [config, contextBrandProfileId, doc, ownerEmail, ownerName, totalCount, type]);
 
   const [form, setForm] = useState(initialFormState);
+  const draftBrandProfileId = form.brand_profile_id || contextBrandProfileId || config?.brand_profile_id || 'no-brand';
 
   useEffect(() => {
     if (!hasUserEdited) {
@@ -376,40 +390,30 @@ export default function DocumentForm({
   const additionalChargesTotal = previewData.additional_charges_total || 0;
   const subtotalBeforeTax = previewData.subtotal_before_tax || 0;
 
-  const draftRecovery = useDraftRecovery({
-    module: entityTable,
-    userId: autosaveUserId,
-    recordId: remoteRecordId,
-    remoteUpdatedAt: doc?.updated_at || null,
-    baselineSnapshot: sanitizeDocumentPayload(initialFormState),
-    enabled: Boolean(autosaveUserId),
-    isMeaningfulDraft: isMeaningfulDocumentDraft,
-  });
-
-  const autosaveSerializer = useCallback((value) => sanitizeDocumentPayload({
+  const autosaveSerializer = useCallback((value) => serializeDocumentDraftPayload({
     ...value,
     logo_width: getLogoWidth({ logoSize: value.logo_size, logoWidth: value.logo_width }),
   }), []);
 
-  const autosave = useAutosave({
-    module: entityTable,
+  const baselineDraftSnapshot = useMemo(
+    () => serializeDocumentDraftPayload(initialFormState),
+    [initialFormState]
+  );
+
+  const draftAutosave = useDocumentDraftAutosave({
+    documentType: type,
     userId: autosaveUserId,
+    brandProfileId: draftBrandProfileId,
     recordId: remoteRecordId,
     data: form,
     serialize: autosaveSerializer,
-    remoteEnabled: Boolean(doc?.id),
+    normalizeDraft: serializeDocumentDraftPayload,
+    baselineSnapshot: baselineDraftSnapshot,
     remoteUpdatedAt: doc?.updated_at || null,
-    enabled: hasUserEdited && draftRecovery.resolved,
-    paused: !draftRecovery.resolved,
-    localDelay: 800,
-    remoteDelay: 7000,
-    remoteSave: async (payload) => {
-      const result = await persistDocument(payload, { silentInventory: true });
-      queryClient.invalidateQueries({ queryKey: [queryKey] });
-      return {
-        updated_at: result.remoteUpdatedAt,
-      };
-    },
+    enabled: Boolean(autosaveUserId),
+    autosaveEnabled: hasUserEdited,
+    delay: 1200,
+    isMeaningfulDraft: isMeaningfulDocumentDraft,
   });
 
   function markEdited() {
@@ -448,12 +452,18 @@ export default function DocumentForm({
   };
 
   const handleRecoverDraft = () => {
-    const recovered = draftRecovery.recoverDraft();
+    const recovered = draftAutosave.recoverDraft();
     if (!recovered) return;
 
     replaceForm(restoreDocumentFormState(recovered, initialFormState), { markAsEdited: true });
     toast.success('Borrador recuperado');
   };
+
+  useEffect(() => {
+    if (!autoRecoverDraft || autoRecoveredDraftRef.current || !draftAutosave.shouldPrompt) return;
+    autoRecoveredDraftRef.current = true;
+    handleRecoverDraft();
+  });
 
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -688,11 +698,8 @@ export default function DocumentForm({
 
   const saveMutation = useMutation({
     mutationFn: async (data) => persistDocument(data, { silentInventory: false }),
-    onSuccess: (result) => {
-      autosave.markRemoteSynced(result.payload, {
-        remoteUpdatedAt: result.remoteUpdatedAt,
-        clearDraftAfterSync: true,
-      });
+    onSuccess: () => {
+      draftAutosave.clearDraft();
       queryClient.invalidateQueries({ queryKey: [queryKey] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
@@ -706,15 +713,15 @@ export default function DocumentForm({
   });
 
   const handleSave = () => {
-    autosave.cancelPending();
-    autosave.flushLocalDraft();
+    draftAutosave.cancelPending();
+    draftAutosave.flushLocalDraft();
     saveMutation.mutate({
       ...form,
       logo_width: getLogoWidth({ logoSize: form.logo_size, logoWidth: form.logo_width }),
     });
   };
 
-  const autosaveStatus = saveMutation.isPending ? 'saving' : autosave.status;
+  const autosaveStatus = saveMutation.isPending ? 'saving' : draftAutosave.status;
   const attachmentOwnerRef = doc?.user_id || ownerId || doc?.created_by || ownerEmail || 'anon';
   const attachmentDocumentRef = doc?.id || draftStorageRef.current;
 
@@ -943,10 +950,12 @@ export default function DocumentForm({
   return (
     <>
       <DraftRecoveryDialog
-        open={draftRecovery.shouldPrompt}
-        savedAt={draftRecovery.draftSavedAt}
+        open={draftAutosave.shouldPrompt && !autoRecoverDraft}
+        title="Borrador disponible"
+        description={`Tienes una ${type === 'invoice' ? 'factura' : 'cotización'} en borrador. ¿Quieres recuperarla?`}
+        savedAt={draftAutosave.draftSavedAt}
         onRecover={handleRecoverDraft}
-        onDiscard={draftRecovery.discardDraft}
+        onDiscard={draftAutosave.discardDraft}
       />
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>

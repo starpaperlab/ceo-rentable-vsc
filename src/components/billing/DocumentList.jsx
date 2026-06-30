@@ -32,11 +32,22 @@ function buildWhatsAppLink(doc) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 
-export default function DocumentList({ documents, type, onEdit, onDelete, onPreview, onConvert }) {
+export default function DocumentList({
+  documents,
+  type,
+  draftDocuments = [],
+  onEdit,
+  onDelete,
+  onPreview,
+  onConvert,
+  onContinueDraft,
+  onDiscardDraft,
+}) {
   const { formatMoney } = useCurrency();
   const statusMap = type === 'invoice' ? INVOICE_STATUS : QUOTE_STATUS;
   const numberField = type === 'invoice' ? 'invoice_number' : 'quote_number';
   const emptyLabel = type === 'invoice' ? 'facturas' : 'cotizaciones';
+  const hasRows = documents.length > 0 || draftDocuments.length > 0;
 
   return (
     <Card className="overflow-hidden">
@@ -49,11 +60,11 @@ export default function DocumentList({ documents, type, onEdit, onDelete, onPrev
               <TableHead className="text-xs hidden sm:table-cell">Fecha</TableHead>
               <TableHead className="text-xs">Total</TableHead>
               <TableHead className="text-xs">Estado</TableHead>
-              <TableHead className="w-28"></TableHead>
+              <TableHead className="w-40"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {documents.length === 0 ? (
+            {!hasRows ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-16">
                   <FileText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
@@ -62,7 +73,46 @@ export default function DocumentList({ documents, type, onEdit, onDelete, onPrev
                 </TableCell>
               </TableRow>
             ) : (
-              documents.map(doc => {
+              <>
+                {draftDocuments.map((draft) => (
+                  <TableRow key={draft.id} className="bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30">
+                    <TableCell>
+                      <p className="font-mono text-sm font-semibold text-foreground">Borrador</p>
+                    </TableCell>
+                    <TableCell className="text-sm max-w-[120px] truncate">{draft.client_name || 'Sin cliente'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">{draft.date || '-'}</TableCell>
+                    <TableCell>
+                      <p className="font-bold text-primary">{formatMoney(draft.total_final || 0)}</p>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-amber-100 text-amber-800 border-0 text-xs dark:bg-amber-900/30 dark:text-amber-300">
+                        Borrador local
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => onContinueDraft?.(draft)}
+                        >
+                          Continuar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs text-destructive hover:text-destructive"
+                          onClick={() => onDiscardDraft?.(draft)}
+                        >
+                          Descartar
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {documents.map(doc => {
                 const paymentSummary = type === 'invoice'
                   ? doc.payment_summary || getInvoicePaymentSummary(doc, [])
                   : null;
@@ -116,7 +166,8 @@ export default function DocumentList({ documents, type, onEdit, onDelete, onPrev
                     </TableCell>
                   </TableRow>
                 );
-              })
+              })}
+              </>
             )}
           </TableBody>
         </Table>

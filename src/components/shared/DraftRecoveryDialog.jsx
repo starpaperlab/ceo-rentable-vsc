@@ -29,6 +29,8 @@ export default function DraftRecoveryDialog({
   savedAt,
   onRecover,
   onDiscard,
+  recoverLabel = 'Recuperar borrador',
+  discardLabel = 'Descartar borrador',
 }) {
   return (
     <Dialog open={open} onOpenChange={() => {}}>
@@ -46,10 +48,10 @@ export default function DraftRecoveryDialog({
 
         <DialogFooter className="gap-2 sm:justify-end">
           <Button variant="outline" onClick={onDiscard}>
-            Descartar
+            {discardLabel}
           </Button>
           <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={onRecover}>
-            Recuperar
+            {recoverLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
@@ -16,6 +16,11 @@ import OverdueDashboard from '@/components/billing/OverdueDashboard';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
+import {
+  clearDocumentDraft,
+  DOCUMENT_DRAFT_STORAGE_EVENT,
+  listDocumentDrafts,
+} from '@/lib/documentDraftStorage';
 import { enrichInvoicesWithPayments, getInvoicePaymentErrorMessage, groupPaymentsByInvoice } from '@/lib/invoicePayments';
 import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
@@ -31,6 +36,47 @@ function applyBusinessConfigToDocument(doc = {}, config = {}) {
 
 function normalizeEmail(value = '') {
   return `${value || ''}`.trim().toLowerCase();
+}
+
+function calculateDraftTotal(payload = {}) {
+  const lineItems = Array.isArray(payload.line_items) ? payload.line_items : [];
+  const subtotal = lineItems.reduce(
+    (sum, item) => sum + (Number(item?.unit_price || 0) * Number(item?.quantity || 0)),
+    0
+  );
+  const additionalCharges = Array.isArray(payload.additional_charges) ? payload.additional_charges : [];
+  const additionalChargesTotal = additionalCharges.reduce((sum, charge) => sum + Number(charge?.amount || 0), 0);
+  const taxableSubtotal = subtotal + additionalChargesTotal;
+  const taxAmount = payload.tax_enabled ? taxableSubtotal * (Number(payload.tax_pct || 0) / 100) : 0;
+  return taxableSubtotal + taxAmount;
+}
+
+function buildDraftListRow(draft) {
+  const payload = draft?.payload || {};
+  return {
+    id: `local-draft-${draft.document_type}-${draft.brand_profile_id}-${draft.record_id}`,
+    type: draft.document_type,
+    scope: draft.scope,
+    savedAt: draft.local_saved_at,
+    client_name: payload.client_name || '',
+    date: payload.date || '',
+    total_final: calculateDraftTotal(payload),
+  };
+}
+
+function formatDraftSavedAt(value) {
+  if (!value) return 'No disponible';
+
+  try {
+    return new Intl.DateTimeFormat('es-DO', {
+      day: '2-digit',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 export default function Billing() {
@@ -57,6 +103,7 @@ export default function Billing() {
   const [activeTab, setActiveTab] = useState('overdue');
   const [editDoc, setEditDoc] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [localDrafts, setLocalDrafts] = useState([]);
 
   const withOwner = (payload) => ({
     ...payload,
@@ -203,6 +250,72 @@ export default function Billing() {
     }
     return ownConfig;
   }, [activeBrand, activeBrandId, adminMode, defaultAdminBrandProfile, ownConfig, ownerEmail, userProfile?.full_name]);
+
+  const draftUserId = writeOwnerId || writeOwnerEmail || null;
+  const draftBrandProfileId = activeBrandId || newDocumentConfig?.brand_profile_id || 'no-brand';
+
+  const refreshLocalDrafts = useCallback(() => {
+    if (!draftUserId) {
+      setLocalDrafts([]);
+      return;
+    }
+
+    setLocalDrafts(listDocumentDrafts({
+      userId: draftUserId,
+      brandProfileId: draftBrandProfileId,
+      recordId: 'new',
+    }));
+  }, [draftBrandProfileId, draftUserId]);
+
+  useEffect(() => {
+    refreshLocalDrafts();
+  }, [refreshLocalDrafts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLocalDrafts();
+      }
+    };
+
+    window.addEventListener(DOCUMENT_DRAFT_STORAGE_EVENT, refreshLocalDrafts);
+    window.addEventListener('focus', refreshLocalDrafts);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener(DOCUMENT_DRAFT_STORAGE_EVENT, refreshLocalDrafts);
+      window.removeEventListener('focus', refreshLocalDrafts);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshLocalDrafts]);
+
+  const localDraftRows = useMemo(
+    () => localDrafts.map(buildDraftListRow),
+    [localDrafts]
+  );
+  const invoiceDraftRows = useMemo(
+    () => localDraftRows.filter((draft) => draft.type === 'invoice'),
+    [localDraftRows]
+  );
+  const quoteDraftRows = useMemo(
+    () => localDraftRows.filter((draft) => draft.type === 'quote'),
+    [localDraftRows]
+  );
+
+  const continueLocalDraft = (draft) => {
+    const draftType = draft.type === 'invoice' ? 'invoice' : 'quote';
+    setActiveTab(draftType === 'invoice' ? 'invoices' : 'quotes');
+    setEditDoc({ type: draftType, doc: null, autoRecoverDraft: true });
+  };
+
+  const discardLocalDraft = (draft) => {
+    if (!draft?.scope) return;
+    clearDocumentDraft(draft.scope);
+    refreshLocalDrafts();
+    toast.success('Borrador descartado');
+  };
 
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (id) => {
@@ -382,7 +495,10 @@ export default function Billing() {
           key={`${editDoc.type}-${editDoc.doc?.id || 'new'}-${editDoc.doc?.brand_profile_id || defaultAdminBrandProfile?.id || 'default'}`}
           type={editDoc.type}
           doc={editDoc.doc}
-          onSave={() => setEditDoc(null)}
+          onSave={() => {
+            setEditDoc(null);
+            refreshLocalDrafts();
+          }}
           onCancel={() => setEditDoc(null)}
           clients={clients}
           products={products}
@@ -395,6 +511,7 @@ export default function Billing() {
           adminMode={scopedAdminMode}
           contextBrandProfileId={editDoc.doc?.brand_profile_id || activeBrandId || null}
           totalCount={editDoc.type === 'invoice' ? invoices.length : quotes.length}
+          autoRecoverDraft={Boolean(editDoc.autoRecoverDraft)}
         />
       </div>
     );
@@ -440,6 +557,36 @@ export default function Billing() {
         </Card>
       </div>
 
+      {localDraftRows.length > 0 && (
+        <div className="space-y-3">
+          {localDraftRows.map((draft) => (
+            <Card key={draft.id} className="border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    Tienes una {draft.type === 'invoice' ? 'factura' : 'cotización'} en borrador sin guardar.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">
+                    Cliente: {draft.client_name || 'Sin cliente'} | Total: {formatMoney(draft.total_final || 0)}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-amber-900/80 dark:text-amber-100/80">
+                    Último guardado: {formatDraftSavedAt(draft.savedAt)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => continueLocalDraft(draft)}>
+                    Continuar borrador
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => discardLocalDraft(draft)}>
+                    Descartar borrador
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overdue" className="flex items-center gap-2">
@@ -469,9 +616,12 @@ export default function Billing() {
           <DocumentList
             documents={sortedInvoices}
             type="invoice"
+            draftDocuments={invoiceDraftRows}
             onEdit={(doc) => setEditDoc({ type: 'invoice', doc })}
             onDelete={(id) => deleteInvoiceMutation.mutate(id)}
             onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, getConfigForDocument(doc)), _type: 'invoice' })}
+            onContinueDraft={continueLocalDraft}
+            onDiscardDraft={discardLocalDraft}
           />
         </TabsContent>
 
@@ -479,10 +629,13 @@ export default function Billing() {
           <DocumentList
             documents={sortedQuotes}
             type="quote"
+            draftDocuments={quoteDraftRows}
             onEdit={(doc) => setEditDoc({ type: 'quote', doc })}
             onDelete={(id) => deleteQuoteMutation.mutate(id)}
             onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, getConfigForDocument(doc)), _type: 'quote' })}
             onConvert={(quote) => convertToInvoiceMutation.mutate(quote)}
+            onContinueDraft={continueLocalDraft}
+            onDiscardDraft={discardLocalDraft}
           />
         </TabsContent>
       </Tabs>
