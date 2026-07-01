@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Edit2, Plus, Trash2 } from 'lucide-react';
+import { Edit2, Plus, Receipt, Trash2 } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import {
   PAYMENT_METHODS,
@@ -81,6 +81,9 @@ export default function InvoicePaymentsPanel({
   onCreatePayment,
   onUpdatePayment,
   onDeletePayment,
+  onGenerateReceipt,
+  onViewReceipt,
+  generatingReceiptId = null,
 }) {
   const { formatMoney } = useCurrency();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -224,38 +227,73 @@ export default function InvoicePaymentsPanel({
                   <th className="py-2 pr-3">Referencia</th>
                   <th className="py-2 pr-3">Notas</th>
                   <th className="py-2 pr-3">Usuario</th>
+                  <th className="py-2 pr-3">Recibo</th>
                   {canManage ? <th className="py-2 w-20"></th> : null}
                 </tr>
               </thead>
               <tbody>
-                {sortedPayments.map((payment) => (
-                  <tr key={payment.id} className="border-b border-border last:border-0">
-                    <td className="py-3 pr-3 text-sm">{payment.payment_date || '-'}</td>
-                    <td className="py-3 pr-3 text-sm font-semibold text-green-600">{formatMoney(payment.amount || 0)}</td>
-                    <td className="py-3 pr-3 text-sm">{payment.payment_method || '-'}</td>
-                    <td className="py-3 pr-3 text-sm text-muted-foreground">{payment.reference_number || '-'}</td>
-                    <td className="py-3 pr-3 text-sm text-muted-foreground max-w-[180px] truncate">{payment.notes || '-'}</td>
-                    <td className="py-3 pr-3 text-sm text-muted-foreground">{getPaymentUserLabel(payment)}</td>
-                    {canManage ? (
-                      <td className="py-3">
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(payment)} title="Editar abono">
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
+                {sortedPayments.map((payment) => {
+                  const hasReceipt = payment.receipt_status === 'generated' && payment.receipt_number;
+                  const isGenerating = generatingReceiptId === payment.id;
+                  return (
+                    <tr key={payment.id} className="border-b border-border last:border-0">
+                      <td className="py-3 pr-3 text-sm">{payment.payment_date || '-'}</td>
+                      <td className="py-3 pr-3 text-sm font-semibold text-green-600">{formatMoney(payment.amount || 0)}</td>
+                      <td className="py-3 pr-3 text-sm">{payment.payment_method || '-'}</td>
+                      <td className="py-3 pr-3 text-sm text-muted-foreground">{payment.reference_number || '-'}</td>
+                      <td className="py-3 pr-3 text-sm text-muted-foreground max-w-[180px] truncate">{payment.notes || '-'}</td>
+                      <td className="py-3 pr-3 text-sm text-muted-foreground">{getPaymentUserLabel(payment)}</td>
+                      <td className="py-3 pr-3">
+                        {hasReceipt && onViewReceipt ? (
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-600 hover:text-red-700"
-                            onClick={() => onDeletePayment?.(payment)}
-                            title="Eliminar abono"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 px-2 text-xs"
+                            onClick={() => onViewReceipt?.(payment)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Receipt className="h-3.5 w-3.5" />
+                            {payment.receipt_number}
                           </Button>
-                        </div>
+                        ) : hasReceipt ? (
+                          <Badge className="border-0 bg-green-100 text-green-700 text-xs">
+                            Recibo {payment.receipt_number}
+                          </Badge>
+                        ) : onGenerateReceipt ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 px-2 text-xs"
+                            disabled={isGenerating}
+                            onClick={() => onGenerateReceipt(payment)}
+                          >
+                            <Receipt className="h-3.5 w-3.5" />
+                            {isGenerating ? 'Generando...' : 'Generar recibo'}
+                          </Button>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">Sin recibo</Badge>
+                        )}
                       </td>
-                    ) : null}
-                  </tr>
-                ))}
+                      {canManage ? (
+                        <td className="py-3">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(payment)} title="Editar abono">
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700"
+                              onClick={() => onDeletePayment?.(payment)}
+                              title="Eliminar abono"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

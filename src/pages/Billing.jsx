@@ -13,6 +13,7 @@ import DocumentList from '@/components/billing/DocumentList';
 import DocumentForm from '@/components/billing/DocumentForm';
 import PreviewModal from '@/components/billing/PreviewModal';
 import OverdueDashboard from '@/components/billing/OverdueDashboard';
+import ReceiptList, { ReceiptDetailDialog } from '@/components/billing/ReceiptList';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
@@ -64,6 +65,43 @@ function buildDraftListRow(draft) {
   };
 }
 
+function mapById(rows = []) {
+  return rows.reduce((map, row) => {
+    if (row?.id) map[row.id] = row;
+    return map;
+  }, {});
+}
+
+function getReceiptMetadata(payment = {}) {
+  return payment.receipt_metadata && typeof payment.receipt_metadata === 'object'
+    ? payment.receipt_metadata
+    : {};
+}
+
+function buildBrandLookup({ activeBrand, brandProfiles = [], defaultAdminBrandProfile = null }) {
+  return [activeBrand, defaultAdminBrandProfile, ...brandProfiles]
+    .filter((profile) => profile?.id)
+    .reduce((map, profile) => {
+      map[profile.id] = profile;
+      return map;
+    }, {});
+}
+
+function enrichReceiptPayment(payment, { invoicesById = {}, brandById = {} } = {}) {
+  const metadata = getReceiptMetadata(payment);
+  const invoice = invoicesById[payment.invoice_id] || null;
+  const brandProfileId = payment.brand_profile_id || metadata.brand_profile_id || invoice?.brand_profile_id || null;
+  const brand = brandProfileId ? brandById[brandProfileId] : null;
+  const snapshot = metadata.branding_snapshot || {};
+
+  return {
+    ...payment,
+    brand_profile_id: brandProfileId,
+    invoice,
+    brandLabel: brand?.name || snapshot.company_name || (brandProfileId ? 'Marca no cargada' : 'Histórico sin marca'),
+  };
+}
+
 function formatDraftSavedAt(value) {
   if (!value) return 'No disponible';
 
@@ -103,6 +141,7 @@ export default function Billing() {
   const [activeTab, setActiveTab] = useState('overdue');
   const [editDoc, setEditDoc] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState(null);
   const [localDrafts, setLocalDrafts] = useState([]);
 
   const withOwner = (payload) => ({
@@ -234,6 +273,12 @@ export default function Billing() {
     if (!adminMode || brandProfiles.length === 0) return null;
     return brandProfiles.find((profile) => profile.is_default) || brandProfiles[0] || null;
   }, [adminMode, brandProfiles]);
+
+  const invoicesById = useMemo(() => mapById(invoices), [invoices]);
+  const brandById = useMemo(
+    () => buildBrandLookup({ activeBrand, brandProfiles, defaultAdminBrandProfile }),
+    [activeBrand, brandProfiles, defaultAdminBrandProfile]
+  );
 
   const newDocumentConfig = useMemo(() => {
     if (activeBrandId && activeBrand) {
@@ -422,6 +467,25 @@ export default function Billing() {
     },
   });
 
+  const generateReceiptMutation = useMutation({
+    mutationFn: async (payment) => {
+      const { data, error } = await supabase.rpc('generate_invoice_payment_receipt', {
+        payment_id: payment.id,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (receipt) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
+      const enrichedReceipt = enrichReceiptPayment(receipt, { invoicesById, brandById });
+      setReceiptPreview(enrichedReceipt);
+      toast.success(`Recibo ${receipt.receipt_number || ''} generado`.trim());
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No se pudo generar el recibo.');
+    },
+  });
+
   const convertToInvoiceMutation = useMutation({
     mutationFn: async (quote) => {
       if (ownerId) {
@@ -460,6 +524,13 @@ export default function Billing() {
   });
 
   const paymentsByInvoiceId = useMemo(() => groupPaymentsByInvoice(invoicePayments), [invoicePayments]);
+  const receiptRows = useMemo(() => {
+    return invoicePayments
+      .filter((payment) => payment.receipt_status === 'generated' && payment.receipt_number)
+      .map((payment) => enrichReceiptPayment(payment, { invoicesById, brandById }))
+      .filter((receipt) => !activeBrandId || !receipt.brand_profile_id || receipt.brand_profile_id === activeBrandId)
+      .sort((a, b) => `${b.receipt_issued_at || b.created_at || b.payment_date || ''}`.localeCompare(`${a.receipt_issued_at || a.created_at || a.payment_date || ''}`));
+  }, [activeBrandId, brandById, invoicePayments, invoicesById]);
   const invoicesWithPayments = useMemo(
     () => enrichInvoicesWithPayments(invoices, paymentsByInvoiceId),
     [invoices, paymentsByInvoiceId]
@@ -479,6 +550,11 @@ export default function Billing() {
   const pendingInvoices = invoicesWithPayments.filter((invoice) => (invoice.payment_summary?.balanceDue || 0) > 0).length;
   const partialInvoices = invoicesWithPayments.filter((invoice) => invoice.payment_summary?.paymentStatus === 'partial').length;
   const pendingQuotes = quotes.filter((quote) => quote.status === 'pending').length;
+  const activeNewDocumentType = activeTab === 'quotes' ? 'quote' : 'invoice';
+
+  const handleViewReceipt = (payment) => {
+    setReceiptPreview(enrichReceiptPayment(payment, { invoicesById, brandById }));
+  };
 
   if (isLoading) {
     return (
@@ -527,10 +603,10 @@ export default function Billing() {
         </div>
         <Button
           className="bg-primary hover:bg-primary/90 text-primary-foreground"
-          onClick={() => setEditDoc({ type: activeTab === 'invoices' ? 'invoice' : 'quote', doc: null })}
+          onClick={() => setEditDoc({ type: activeNewDocumentType, doc: null })}
         >
           <Plus className="h-4 w-4 mr-2" />
-          {activeTab === 'invoices' ? 'Nueva Factura' : 'Nueva Cotizacion'}
+          {activeNewDocumentType === 'invoice' ? 'Nueva Factura' : 'Nueva Cotizacion'}
         </Button>
       </motion.div>
 
@@ -601,6 +677,10 @@ export default function Billing() {
             <FileText className="h-4 w-4" />
             Cotizaciones
           </TabsTrigger>
+          <TabsTrigger value="receipts" className="flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            Recibos
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overdue" className="mt-4">
@@ -638,6 +718,13 @@ export default function Billing() {
             onDiscardDraft={discardLocalDraft}
           />
         </TabsContent>
+
+        <TabsContent value="receipts" className="mt-4">
+          <ReceiptList
+            receipts={receiptRows}
+            onViewReceipt={handleViewReceipt}
+          />
+        </TabsContent>
       </Tabs>
 
       {previewDoc && (
@@ -655,8 +742,13 @@ export default function Billing() {
           onCreatePayment={(payload) => createInvoicePaymentMutation.mutateAsync({ invoice: previewDoc, payload })}
           onUpdatePayment={(payment, payload) => updateInvoicePaymentMutation.mutateAsync({ payment, payload })}
           onDeletePayment={(payment) => deleteInvoicePaymentMutation.mutate(payment)}
+          onGenerateReceipt={(payment) => generateReceiptMutation.mutate(payment)}
+          onViewReceipt={handleViewReceipt}
+          generatingReceiptId={generateReceiptMutation.isPending ? generateReceiptMutation.variables?.id || null : null}
         />
       )}
+
+      <ReceiptDetailDialog receipt={receiptPreview} onClose={() => setReceiptPreview(null)} />
     </div>
   );
 }

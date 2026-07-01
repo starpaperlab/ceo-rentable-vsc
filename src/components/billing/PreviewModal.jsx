@@ -146,6 +146,9 @@ export default function PreviewModal({
   onCreatePayment,
   onUpdatePayment,
   onDeletePayment,
+  onGenerateReceipt,
+  onViewReceipt,
+  generatingReceiptId = null,
 }) {
   const { symbol } = useCurrency();
   const previewRef = useRef(null);
@@ -263,6 +266,9 @@ export default function PreviewModal({
               onCreatePayment={onCreatePayment}
               onUpdatePayment={onUpdatePayment}
               onDeletePayment={onDeletePayment}
+              onGenerateReceipt={onGenerateReceipt}
+              onViewReceipt={onViewReceipt}
+              generatingReceiptId={generatingReceiptId}
             />
           </div>
         ) : null}
