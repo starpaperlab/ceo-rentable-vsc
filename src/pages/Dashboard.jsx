@@ -275,18 +275,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1180px] mx-auto space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <div className="p-3 sm:p-4 lg:p-6 max-w-[1180px] mx-auto space-y-3 sm:space-y-5">
+      <div className="flex items-start justify-between gap-2 sm:gap-3 flex-wrap">
         <div>
-          <p className="text-xs text-muted-foreground">Buenas tardes, {userName} 👋</p>
-          <h1 className="text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Visión 360°</h1>
+          <p className="text-[11px] sm:text-xs text-muted-foreground">Buenas tardes, {userName} 👋</p>
+          <h1 className="text-[26px] sm:text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Visión 360°</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="h-9 text-xs gap-1.5" onClick={downloadDashboardReport}>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <Button
+            variant="outline"
+            className="h-8 w-8 px-0 text-xs gap-1.5 sm:h-9 sm:w-auto sm:px-3"
+            onClick={downloadDashboardReport}
+            title="Descargar reporte"
+            aria-label="Descargar reporte"
+          >
             <Download className="h-3.5 w-3.5" />
-            Descargar Reporte
+            <span className="hidden sm:inline">Descargar Reporte</span>
           </Button>
-          <span className={`px-2.5 h-8 inline-flex items-center rounded-full text-xs font-semibold border ${
+          <span className={`px-2 h-7 sm:px-2.5 sm:h-8 inline-flex items-center rounded-full text-[11px] sm:text-xs font-semibold border ${
             ceoMetrics.status === 'Saludable'
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
               : ceoMetrics.status === 'Inestable'
@@ -298,7 +304,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-3">
         <KpiCard
           label="INGRESOS"
           value={formatMoney(stats.ingresos)}
@@ -331,26 +337,26 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-3">
-        <div className="rounded-2xl border border-[#F0D074] bg-gradient-to-br from-[#FFF6D9] via-[#FFF4CC] to-[#FFF2C2] p-5 space-y-4">
+        <div className="rounded-xl sm:rounded-2xl border border-[#F0D074] bg-gradient-to-br from-[#FFF6D9] via-[#FFF4CC] to-[#FFF2C2] p-3 sm:p-5 space-y-2.5 sm:space-y-4">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-[10px] font-extrabold tracking-[0.14em] text-[#8D6A14]">CEO SCORE™</p>
-              <p className="text-xs text-[#7A6B4E]">Salud Financiera Global</p>
+              <p className="text-[11px] sm:text-xs text-[#7A6B4E]">Salud Financiera Global</p>
             </div>
-            <span className="text-[11px] font-semibold px-2 py-1 rounded-full border border-[#F2CB6B] text-[#B57400] bg-[#FFF9E6]">
+            <span className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 sm:py-1 rounded-full border border-[#F2CB6B] text-[#B57400] bg-[#FFF9E6]">
               {ceoMetrics.status}
             </span>
           </div>
 
           <div className="flex items-end gap-2">
-            <span className="text-5xl leading-none font-black text-[#D97A1D]">{ceoMetrics.score}</span>
-            <span className="text-xs text-[#6B6251] pb-1.5">de 100 pts</span>
+            <span className="text-4xl sm:text-5xl leading-none font-black text-[#D97A1D]">{ceoMetrics.score}</span>
+            <span className="text-[11px] sm:text-xs text-[#6B6251] pb-1 sm:pb-1.5">de 100 pts</span>
           </div>
 
-          <div className="h-2.5 rounded-full bg-white/70 overflow-hidden">
+          <div className="h-2 sm:h-2.5 rounded-full bg-white/70 overflow-hidden">
             <div className="h-full bg-[#F39A2D]" style={{ width: `${ceoMetrics.score}%` }} />
           </div>
-          <div className="text-[10px] text-[#7A6B4E] grid grid-cols-3">
+          <div className="text-[9px] sm:text-[10px] text-[#7A6B4E] grid grid-cols-3">
             <span>0 · Crítico</span>
             <span className="text-center">41 · Inestable</span>
             <span className="text-right">71 · Saludable</span>
@@ -361,16 +367,16 @@ export default function Dashboard() {
           <MetricBar label="Control de Gastos" value={ceoMetrics.costControlScore} tone="warning" />
         </div>
 
-        <Card className="p-5">
+        <Card className="p-3 sm:p-5">
           <div className="flex items-start justify-between">
-            <h3 className="text-[24px] leading-tight font-bold tracking-tight text-foreground">Diagnóstico Estratégico</h3>
-            <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-muted text-muted-foreground">
+            <h3 className="text-base sm:text-[24px] leading-tight font-bold tracking-tight text-foreground">Diagnóstico Estratégico</h3>
+            <span className="text-[10px] font-semibold px-2 py-0.5 sm:py-1 rounded-full bg-muted text-muted-foreground">
               {fugaProducts > 0 ? '1 insight' : '0 insights'}
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5" />
+          <div className="mt-2 sm:mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
+            <div className="flex gap-2 sm:gap-3">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm font-bold text-amber-700">
                   {fugaProducts} producto(s) en Zona de Fuga
@@ -387,43 +393,43 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="p-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
+        <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">PUNTO DE EQUILIBRIO</p>
-          <p className="text-[32px] leading-none font-extrabold mt-2 text-foreground">{formatMoney(breakEven)}</p>
-          <div className="mt-3 h-1.5 rounded-full bg-[#EED4DF]">
+          <p className="text-lg sm:text-[32px] leading-none font-extrabold mt-1.5 sm:mt-2 text-foreground">{formatMoney(breakEven)}</p>
+          <div className="mt-2 sm:mt-3 h-1.5 rounded-full bg-[#EED4DF]">
             <div className="h-full rounded-full bg-[#D45387]" style={{ width: '100%' }} />
           </div>
-          <p className="mt-2 text-xs font-semibold text-emerald-600">✓ Superaste el equilibrio</p>
+          <p className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs font-semibold text-emerald-600">✓ Superaste el equilibrio</p>
         </Card>
 
-        <Card className="p-4">
+        <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR PRODUCTO</p>
-          <p className="text-[24px] leading-tight font-bold mt-2 text-foreground">{bestProduct?.name || 'Sin datos'}</p>
-          <p className="text-xs font-semibold text-[#D45387] mt-2">{Number(bestProduct?.margin_pct || 0).toFixed(1)}% margen</p>
+          <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{bestProduct?.name || 'Sin datos'}</p>
+          <p className="text-[11px] sm:text-xs font-semibold text-[#D45387] mt-1.5 sm:mt-2">{Number(bestProduct?.margin_pct || 0).toFixed(1)}% margen</p>
         </Card>
 
-        <Card className="p-4">
+        <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR CLIENTE</p>
-          <p className="text-[24px] leading-tight font-bold mt-2 text-foreground">{topClient?.client || 'Sin datos'}</p>
-          <p className="text-xs font-semibold text-[#D45387] mt-2">{formatMoney(topClient?.amount || 0)}</p>
+          <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{topClient?.client || 'Sin datos'}</p>
+          <p className="text-[11px] sm:text-xs font-semibold text-[#D45387] mt-1.5 sm:mt-2">{formatMoney(topClient?.amount || 0)}</p>
         </Card>
       </div>
 
-      <Card className="p-4">
+      <Card className="p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-lg font-bold text-foreground">Hoy en tu negocio</p>
+          <p className="text-base sm:text-lg font-bold text-foreground">Hoy en tu negocio</p>
           <span className="text-xs font-semibold text-muted-foreground">
             {todayChecklist.doneCount} de {todayChecklist.totalCount} tareas
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-[#EED4DF] mt-3">
+        <div className="h-1.5 rounded-full bg-[#EED4DF] mt-2 sm:mt-3">
           <div
             className="h-full rounded-full bg-[#D45387]"
             style={{ width: `${(todayChecklist.doneCount / todayChecklist.totalCount) * 100}%` }}
           />
         </div>
-        <div className="mt-3 space-y-2">
+        <div className="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2">
           {todayChecklist.items.map((item) => (
             <div key={item.label} className="flex items-center gap-2 text-xs">
               <CheckCircle2 className={`h-4 w-4 ${item.done ? 'text-emerald-500' : 'text-muted-foreground'}`} />
@@ -436,9 +442,9 @@ export default function Dashboard() {
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-3">
-        <Card className="p-4">
-          <h3 className="text-base font-bold text-foreground mb-3">Proyección de Ingresos vs Gastos</h3>
-          <div className="h-[290px]">
+        <Card className="p-3 sm:p-4">
+          <h3 className="text-sm sm:text-base font-bold text-foreground mb-2 sm:mb-3">Proyección de Ingresos vs Gastos</h3>
+          <div className="h-[210px] sm:h-[290px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 10, right: 12, left: 2, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="4 4" stroke="hsl(var(--border))" />
@@ -465,9 +471,9 @@ export default function Dashboard() {
         </Card>
 
         <div className="grid grid-cols-1 gap-3">
-          <Card className="p-4">
-            <h3 className="text-base font-bold text-foreground mb-3">Top Productos</h3>
-            <div className="space-y-2">
+          <Card className="p-3 sm:p-4">
+            <h3 className="text-sm sm:text-base font-bold text-foreground mb-2 sm:mb-3">Top Productos</h3>
+            <div className="space-y-1.5 sm:space-y-2">
               {topProducts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sin productos suficientes para ranking.</p>
               ) : (
@@ -486,9 +492,9 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card className="p-4">
-            <h3 className="text-base font-bold text-foreground mb-3">Top Clientes</h3>
-            <div className="space-y-2">
+          <Card className="p-3 sm:p-4">
+            <h3 className="text-sm sm:text-base font-bold text-foreground mb-2 sm:mb-3">Top Clientes</h3>
+            <div className="space-y-1.5 sm:space-y-2">
               {topClients.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Aún no hay clientes con compras pagadas.</p>
               ) : (
@@ -516,14 +522,14 @@ function KpiCard({ label, value, subtitle, growth, icon, positive = true }) {
   const isUp = growth >= 0;
 
   return (
-    <Card className="p-4 border border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-      <div className="flex items-start justify-between">
-        <p className="text-[10px] tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
-        {icon}
+    <Card className="p-2.5 sm:p-4 border border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <div className="flex items-start justify-between gap-1">
+        <p className="text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
+        <span className="hidden min-[390px]:inline-flex sm:inline-flex">{icon}</span>
       </div>
-      <p className={`mt-1 text-[30px] leading-none font-extrabold ${positive ? 'text-foreground' : 'text-red-600'}`}>{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-      <p className={`mt-1 text-xs font-bold ${isUp ? 'text-emerald-600' : 'text-red-600'}`}>
+      <p className={`mt-1 text-base sm:text-[30px] leading-tight sm:leading-none font-extrabold truncate ${positive ? 'text-foreground' : 'text-red-600'}`}>{value}</p>
+      <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs leading-tight text-muted-foreground">{subtitle}</p>
+      <p className={`mt-0.5 sm:mt-1 text-[10px] sm:text-xs font-bold ${isUp ? 'text-emerald-600' : 'text-red-600'}`}>
         {isUp ? '↗' : '↘'} {Math.abs(growth || 0).toFixed(0)}%
       </p>
     </Card>
@@ -535,7 +541,7 @@ function MetricBar({ label, value, tone }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12em] text-[#725A2D]">
+      <div className="flex items-center justify-between text-[9px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] sm:tracking-[0.12em] text-[#725A2D]">
         <span>{label}</span>
         <span>{value}</span>
       </div>
