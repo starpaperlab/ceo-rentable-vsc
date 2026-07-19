@@ -175,10 +175,10 @@ const BUSINESS_TYPE_LABELS = {
 };
 
 const MONTHLY_SALES_LABELS = {
-  under_30k: 'Menos de RD$30,000 al mes',
-  '30k_120k': 'Entre RD$30,000 y RD$120,000 al mes',
-  '120k_300k': 'Entre RD$120,000 y RD$300,000 al mes',
-  over_300k: 'Más de RD$300,000 al mes',
+  under_30k: 'Menos de US$1,000 al mes',
+  '30k_120k': 'Entre US$1,000 y US$3,000 al mes',
+  '120k_300k': 'Entre US$3,000 y US$7,500 al mes',
+  over_300k: 'Más de US$7,500 al mes',
 };
 
 const CLIENT_VOLUME_LABELS = {
