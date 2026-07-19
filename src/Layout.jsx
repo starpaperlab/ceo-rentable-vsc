@@ -9,6 +9,7 @@ import WorkContextSelector from '@/components/shared/WorkContextSelector';
 import {
   LayoutDashboard,
   Calculator,
+  Layers,
   Package,
   TrendingUp,
   Users,
@@ -33,6 +34,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard },
   { name: 'Rentabilidad', page: 'Profitability', icon: Calculator },
+  { name: 'Biblioteca de Costos', page: 'biblioteca-costos', icon: Layers },
   { name: 'Productos', page: 'Products', icon: Package },
   { name: 'Proyección', page: 'Projection', icon: TrendingUp },
   { name: 'Clientes', page: 'Clients', icon: Users },

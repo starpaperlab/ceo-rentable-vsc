@@ -13,6 +13,7 @@ import Learn from './pages/Learn';
 import Diagnostico from './pages/Diagnostico';
 import Agenda from './pages/Agenda';
 import Paywall from './pages/Paywall';
+import CostLibrary from './pages/CostLibrary';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from '@/pages/Login';
 import PageNotFound from './lib/PageNotFound';
@@ -128,6 +129,7 @@ const AuthenticatedApp = () => {
           />
           <Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><Learn /></GuardedLayoutWrapper>} />
           <Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><Agenda /></GuardedLayoutWrapper>} />
+          <Route path="/biblioteca-costos" element={<GuardedLayoutWrapper currentPageName="biblioteca-costos"><CostLibrary /></GuardedLayoutWrapper>} />
         </>
       ) : (
         <Route path="*" element={<Login />} />

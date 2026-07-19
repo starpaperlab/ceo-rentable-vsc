@@ -12,7 +12,7 @@ export default function BuyButton({
   checkout = false,
 }) {
   const handleClick = () => {
-    if (plan) {
+    if (plan && checkout) {
       trackInitiateCheckout(plan);
     }
 

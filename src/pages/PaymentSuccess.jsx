@@ -68,11 +68,15 @@ export default function PaymentSuccess() {
           setPlanCode(normalizedCapturePlan);
         }
 
-        if (!hasTrackedPurchaseRef.current) {
+        if (!hasTrackedPurchaseRef.current && `${capture.status || ''}`.toLowerCase() === 'completed') {
           hasTrackedPurchaseRef.current = true;
           trackPurchase(
             resolvedPlanCode,
-            capture.captureId || orderId || null
+            capture.captureId || orderId || null,
+            {
+              value: capture.amount,
+              currency: capture.currency,
+            }
           );
         }
 

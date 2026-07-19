@@ -10,10 +10,10 @@ import { ENV_CONFIG } from '@/config/env'
 import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle, Lock } from 'lucide-react'
 
 const SALES_OPTIONS = [
-  { label: 'Menos de RD$30,000', value: 'under_30k', score: 5 },
-  { label: 'RD$30,000 a RD$120,000', value: '30k_120k', score: 12 },
-  { label: 'RD$120,000 a RD$300,000', value: '120k_300k', score: 20 },
-  { label: 'Más de RD$300,000', value: 'over_300k', score: 25 },
+  { label: 'Menos de US$1,000', value: 'under_30k', score: 5 },
+  { label: 'US$1,000 a US$3,000', value: '30k_120k', score: 12 },
+  { label: 'US$3,000 a US$7,500', value: '120k_300k', score: 20 },
+  { label: 'Más de US$7,500', value: 'over_300k', score: 25 },
 ]
 
 const SALES_SCORES = SALES_OPTIONS.reduce((acc, opt) => {
@@ -148,7 +148,7 @@ function ScoreArc({ score }) {
           <p className="text-3xl font-black" style={{ color }}>
             {score}
           </p>
-          <p className="text-xs text-gray-400 font-medium">de 100</p>
+          <p className="text-xs text-slate-500 font-medium">de 100</p>
         </div>
       </div>
       <span className="mt-2 text-sm font-semibold px-3 py-1 rounded-full" style={{ color, backgroundColor: `${color}18` }}>
@@ -160,9 +160,9 @@ function ScoreArc({ score }) {
 
 function DiagnosisBlock({ diagnosis }) {
   return (
-    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl mb-4">
-      <h3 className="text-sm font-bold text-pink-300 mb-2">💡 Diagnóstico</h3>
-      <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{diagnosis}</p>
+    <div className="p-4 bg-pink-50 border border-pink-100 rounded-2xl mb-4">
+      <h3 className="text-sm font-bold text-[#D45387] mb-2">💡 Diagnóstico</h3>
+      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{diagnosis}</p>
     </div>
   )
 }
@@ -170,22 +170,22 @@ function DiagnosisBlock({ diagnosis }) {
 function PremiumBlocks({ analysis }) {
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-        <h3 className="text-sm font-bold text-emerald-300 mb-2">💰 Rentabilidad</h3>
-        <p className="text-sm text-white/80 leading-relaxed">{analysis.profitability}</p>
+      <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+        <h3 className="text-sm font-bold text-emerald-700 mb-2">💰 Rentabilidad</h3>
+        <p className="text-sm text-slate-700 leading-relaxed">{analysis.profitability}</p>
       </div>
-      <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-        <h3 className="text-sm font-bold text-blue-300 mb-2">💵 Flujo de caja</h3>
-        <p className="text-sm text-white/80 leading-relaxed">{analysis.cashflow}</p>
+      <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+        <h3 className="text-sm font-bold text-blue-700 mb-2">💵 Flujo de caja</h3>
+        <p className="text-sm text-slate-700 leading-relaxed">{analysis.cashflow}</p>
       </div>
       {analysis.recommendations && analysis.recommendations.length > 0 && (
-        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
-          <h3 className="text-sm font-bold text-amber-300 mb-3">📋 Plan de acción</h3>
+        <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+          <h3 className="text-sm font-bold text-amber-700 mb-3">📋 Plan de acción</h3>
           <div className="space-y-2">
             {analysis.recommendations.slice(0, 3).map((rec, i) => (
               <div key={i} className="flex items-start gap-2 text-xs">
-                <span className="text-amber-400 font-bold">{i + 1}.</span>
-                <p className="text-white/80">{rec}</p>
+                <span className="text-amber-600 font-bold">{i + 1}.</span>
+                <p className="text-slate-700">{rec}</p>
               </div>
             ))}
           </div>
@@ -308,7 +308,7 @@ export default function Diagnostico() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a0a12] via-[#2d1020] to-[#1a0a12] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#FFF8FB] via-white to-[#F7FBFF] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -317,7 +317,7 @@ export default function Diagnostico() {
             alt="CEO Rentable OS"
             className="w-10 h-10 mx-auto object-contain mb-2"
           />
-          <p className="text-xs text-pink-300/60 font-semibold uppercase tracking-widest">CEO Rentable OS™</p>
+          <p className="text-xs text-[#D45387] font-semibold uppercase tracking-widest">CEO Rentable OS™</p>
         </div>
 
         <AnimatePresence mode="wait">
@@ -328,21 +328,21 @@ export default function Diagnostico() {
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl"
+              className="bg-white border border-[#E7E1D9] rounded-3xl p-8 shadow-xl shadow-slate-200/70"
             >
               {qIndex === 0 && (
                 <div className="text-center mb-6">
-                  <div className="inline-flex items-center gap-2 bg-pink-500/10 border border-pink-500/20 text-pink-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
+                  <div className="inline-flex items-center gap-2 bg-pink-50 border border-pink-100 text-[#D45387] text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
                     <Zap className="h-3 w-3" /> Diagnóstico gratuito · 3 minutos
                   </div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-950 leading-tight">
                     Descubre si tu negocio
                     <br />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D45387] to-[#7C3AED]">
                       realmente está ganando dinero
                     </span>
                   </h1>
-                  <p className="text-white/50 text-sm mt-3">Responde 8 preguntas y obtén tu CEO Score™ gratis.</p>
+                  <p className="text-slate-500 text-sm mt-3">Responde 8 preguntas y obtén tu CEO Score™ gratis.</p>
                 </div>
               )}
 
@@ -352,17 +352,17 @@ export default function Diagnostico() {
                   <div
                     key={i}
                     className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-                      i <= qIndex ? 'bg-pink-500' : 'bg-white/10'
+                      i <= qIndex ? 'bg-[#D45387]' : 'bg-slate-200'
                     }`}
                   />
                 ))}
               </div>
-              <p className="text-xs text-pink-300/60 font-semibold uppercase tracking-widest mb-3">
+              <p className="text-xs text-[#D45387] font-semibold uppercase tracking-widest mb-3">
                 Pregunta {qIndex + 1} de {QUESTIONS.length}
               </p>
-              <h2 className="text-xl sm:text-2xl font-black text-white mb-2">{QUESTIONS[qIndex].text}</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-950 mb-2">{QUESTIONS[qIndex].text}</h2>
               {QUESTIONS[qIndex].subtext && (
-                <p className="text-white/40 text-sm mb-6">{QUESTIONS[qIndex].subtext}</p>
+                <p className="text-slate-500 text-sm mb-6">{QUESTIONS[qIndex].subtext}</p>
               )}
               <div className="space-y-3 mt-4">
                 {QUESTIONS[qIndex].type === 'choice' ? (
@@ -370,7 +370,7 @@ export default function Diagnostico() {
                     <button
                       key={opt.value}
                       onClick={() => handleAnswer(opt.value)}
-                      className="w-full text-left px-5 py-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-pink-500/50 text-white font-medium transition-all duration-200 text-sm"
+                      className="w-full text-left px-5 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-pink-50 hover:border-pink-200 text-slate-800 font-medium transition-all duration-200 text-sm shadow-sm"
                     >
                       {opt.label}
                     </button>
@@ -379,13 +379,13 @@ export default function Diagnostico() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => handleAnswer(true)}
-                      className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-bold transition-all text-base"
+                      className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold transition-all text-base"
                     >
                       <CheckCircle className="h-5 w-5" /> Sí
                     </button>
                     <button
                       onClick={() => handleAnswer(false)}
-                      className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold transition-all text-base"
+                      className="flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold transition-all text-base"
                     >
                       <XCircle className="h-5 w-5" /> No
                     </button>
@@ -402,9 +402,9 @@ export default function Diagnostico() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[85vh]"
+              className="bg-white border border-[#E7E1D9] rounded-3xl p-8 shadow-xl shadow-slate-200/70 overflow-y-auto max-h-[85vh]"
             >
-              <p className="text-xs text-pink-300/60 font-semibold uppercase tracking-widest text-center mb-6">
+              <p className="text-xs text-[#D45387] font-semibold uppercase tracking-widest text-center mb-6">
                 Tu CEO Score™
               </p>
               <div className="flex justify-center mb-6">
@@ -412,9 +412,9 @@ export default function Diagnostico() {
               </div>
 
               {loadingAnalysis && (
-                <div className="flex items-center justify-center gap-2 p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl mb-6">
-                  <Loader className="h-5 w-5 text-blue-400 animate-spin" />
-                  <p className="text-sm text-blue-300">Generando tu diagnóstico con IA...</p>
+                <div className="flex items-center justify-center gap-2 p-4 bg-blue-50 border border-blue-100 rounded-2xl mb-6">
+                  <Loader className="h-5 w-5 text-blue-600 animate-spin" />
+                  <p className="text-sm text-blue-700">Generando tu diagnóstico con IA...</p>
                 </div>
               )}
 
@@ -427,13 +427,13 @@ export default function Diagnostico() {
                       <PremiumBlocks analysis={analysis} />
                     </div>
 
-                    <div className="absolute inset-0 -m-2 flex items-center justify-center rounded-2xl bg-gradient-to-b from-[#1a0a12]/30 via-[#1a0a12]/85 to-[#1a0a12] p-4">
+                    <div className="absolute inset-0 -m-2 flex items-center justify-center rounded-2xl bg-gradient-to-b from-white/40 via-white/90 to-white p-4">
                       <div className="w-full max-w-sm text-center">
-                        <Lock className="h-6 w-6 text-pink-300 mx-auto mb-3" />
-                        <h3 className="text-base sm:text-lg font-black text-white mb-2 leading-snug">
+                        <Lock className="h-6 w-6 text-[#D45387] mx-auto mb-3" />
+                        <h3 className="text-base sm:text-lg font-black text-slate-950 mb-2 leading-snug">
                           Tu diagnóstico completo está listo.
                         </h3>
-                        <p className="text-white/60 text-xs sm:text-sm mb-5 leading-relaxed">
+                        <p className="text-slate-500 text-xs sm:text-sm mb-5 leading-relaxed">
                           Descubre cuánto dinero podrías estar perdiendo y qué hacer para corregirlo.
                         </p>
                         <div className="space-y-3">
@@ -441,7 +441,7 @@ export default function Diagnostico() {
                             placeholder="Tu nombre"
                             value={lead.name}
                             onChange={(e) => setLead((p) => ({ ...p, name: e.target.value }))}
-                            className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
+                            className="bg-white border-slate-200 text-slate-950 placeholder:text-slate-400 h-12 rounded-xl"
                             onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
                           />
                           <Input
@@ -449,17 +449,17 @@ export default function Diagnostico() {
                             type="email"
                             value={lead.email}
                             onChange={(e) => setLead((p) => ({ ...p, email: e.target.value }))}
-                            className="bg-white/10 border-white/20 text-white placeholder:text-white/30 h-12 rounded-xl"
+                            className="bg-white border-slate-200 text-slate-950 placeholder:text-slate-400 h-12 rounded-xl"
                             onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
                           />
                           <Button
-                            className="w-full h-12 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
+                            className="w-full h-12 text-base font-bold bg-[#D45387] hover:bg-[#C24578] text-white border-0 rounded-xl"
                             onClick={handleCapture}
                             disabled={!lead.name.trim() || !lead.email.trim() || saving}
                           >
                             {saving ? 'Un momento...' : 'Desbloquear mi diagnóstico'} <ArrowRight className="h-4 w-4 ml-1" />
                           </Button>
-                          <p className="text-center text-xs text-white/25">Sin spam. Solo resultados.</p>
+                          <p className="text-center text-xs text-slate-400">Sin spam. Solo resultados.</p>
                         </div>
                       </div>
                     </div>
@@ -476,9 +476,9 @@ export default function Diagnostico() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[85vh]"
+              className="bg-white border border-[#E7E1D9] rounded-3xl p-8 shadow-xl shadow-slate-200/70 overflow-y-auto max-h-[85vh]"
             >
-              <p className="text-xs text-pink-300/60 font-semibold uppercase tracking-widest text-center mb-6">
+              <p className="text-xs text-[#D45387] font-semibold uppercase tracking-widest text-center mb-6">
                 Tu CEO Score™
               </p>
               <div className="flex justify-center mb-6">
@@ -494,18 +494,18 @@ export default function Diagnostico() {
 
               <Button
                 variant="outline"
-                className="w-full h-12 text-sm font-semibold border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 rounded-xl mt-6"
+                className="w-full h-12 text-sm font-semibold border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl mt-6"
                 onClick={handleWhatsApp}
               >
                 <MessageCircle className="h-4 w-4 mr-2" /> Enviar mi resultado por WhatsApp
               </Button>
 
-              <div className="mt-8 pt-6 border-t border-white/10 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center mx-auto mb-5">
+              <div className="mt-8 pt-6 border-t border-slate-200 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#D45387] to-[#7C3AED] flex items-center justify-center mx-auto mb-5">
                   <TrendingUp className="h-7 w-7 text-white" />
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-white mb-3">Ahora mira tu negocio completo</h2>
-                <p className="text-white/50 text-sm leading-relaxed mb-8">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-950 mb-3">Ahora mira tu negocio completo</h2>
+                <p className="text-slate-500 text-sm leading-relaxed mb-8">
                   Este diagnóstico es solo una vista rápida.
                   <br />
                   Dentro del sistema puedes ver exactamente cuánto ganas,
@@ -516,13 +516,13 @@ export default function Diagnostico() {
                 <div className="space-y-3">
                   <Button
                     onClick={handleFounderCTA}
-                    className="w-full h-14 text-base font-bold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 border-0 rounded-xl"
+                    className="w-full h-14 text-base font-bold bg-[#D45387] hover:bg-[#C24578] text-white border-0 rounded-xl"
                   >
                     Conviértete en Founder ahora <ArrowRight className="h-5 w-5 ml-1" />
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full h-12 text-sm font-semibold border-white/20 bg-transparent text-white hover:bg-white/10 rounded-xl"
+                    className="w-full h-12 text-sm font-semibold border-slate-200 bg-white text-slate-800 hover:bg-slate-50 rounded-xl"
                     onClick={() => navigate('/paywall')}
                   >
                     Ver planes y precios
@@ -537,7 +537,7 @@ export default function Diagnostico() {
                   ].map(([icon, label]) => (
                     <div key={label}>
                       <p className="text-xl mb-1">{icon}</p>
-                      <p className="text-[11px] text-white/40 font-medium">{label}</p>
+                      <p className="text-[11px] text-slate-500 font-medium">{label}</p>
                     </div>
                   ))}
                 </div>

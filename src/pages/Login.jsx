@@ -275,8 +275,6 @@ export default function Login() {
           emailRedirectTo: getEmailConfirmationRedirectUrl(),
         });
 
-        trackCompleteRegistration(checkoutPlan);
-
         if (result.needsEmailConfirmation) {
           setInfo(
             checkoutPlan
@@ -291,6 +289,7 @@ export default function Login() {
           return;
         }
 
+        trackCompleteRegistration(checkoutPlan);
         navigate(getPostAuthRedirect(result.profile, result.redirectTo), { replace: true });
         return;
       }

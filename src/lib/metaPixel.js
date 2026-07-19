@@ -180,6 +180,16 @@ function buildPlanPayload(plan, extra = {}) {
   };
 }
 
+function normalizeEventValue(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeEventCurrency(currency, fallback) {
+  const normalized = `${currency || ''}`.trim().toUpperCase();
+  return normalized || fallback;
+}
+
 export function initializeMetaPixel() {
   const pixelId = getMetaPixelId();
   if (!isBrowser() || !pixelId) {
@@ -311,7 +321,7 @@ export function trackCompleteRegistration(plan = null) {
   return trackStandardEvent('CompleteRegistration', buildPlanPayload(plan));
 }
 
-export function trackPurchase(plan, transactionId = null) {
+export function trackPurchase(plan, transactionId = null, extraPayload = {}) {
   const planConfig = getPlanEventConfig(plan);
   if (!planConfig || !getMetaPixelId()) {
     return false;
@@ -324,9 +334,16 @@ export function trackPurchase(plan, transactionId = null) {
 
   initializeMetaPixel();
 
+  const payload = buildPlanPayload(planConfig.slug, {
+    ...extraPayload,
+    value: normalizeEventValue(extraPayload?.value, planConfig.value),
+    currency: normalizeEventCurrency(extraPayload?.currency, planConfig.currency),
+    ...(transactionId ? { transaction_id: transactionId } : {}),
+  });
+
   const tracked = trackStandardEvent(
     'Purchase',
-    buildPlanPayload(planConfig.slug, transactionId ? { transaction_id: transactionId } : {})
+    payload
   );
 
   if (tracked && transactionId) {
