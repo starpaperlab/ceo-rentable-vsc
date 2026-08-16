@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_FROM_EMAIL = 'hola@ceorentable.com';
 const DEFAULT_FROM_NAME = 'CEO Rentable OS';
+const RESEND_PUBLIC_ERROR_MESSAGE = 'No fue posible enviar el email en este momento.';
 
 let supabaseAnonClient = null;
 let supabaseServiceClient = null;
@@ -122,10 +123,6 @@ function normalizeRecipients(to) {
   return one ? [one] : [];
 }
 
-function toErrorMessage(payload = {}) {
-  return payload?.error?.message || payload?.message || 'No se pudo enviar el email';
-}
-
 function extractEmail(raw = '') {
   const value = `${raw || ''}`.trim();
   if (!value) return '';
@@ -213,14 +210,23 @@ async function getUserRoleViaRls({ env = process.env, fetchImpl = fetch, token, 
   return { role: role || null };
 }
 
-async function authenticateEmailRequest(payload = {}, { env = process.env, headers = {}, fetchImpl = fetch } = {}) {
+async function authenticateEmailRequest(
+  payload = {},
+  {
+    env = process.env,
+    headers = {},
+    fetchImpl = fetch,
+    anonClient = null,
+    serviceClient = null,
+  } = {}
+) {
   const token = getBearerToken(payload, headers);
   if (!token) {
     return { ok: false, status: 401, error: 'Debes iniciar sesión para enviar correos.' };
   }
 
-  const anonClient = getSupabaseAnonClient(env);
-  if (!anonClient) {
+  const authClient = anonClient || getSupabaseAnonClient(env);
+  if (!authClient) {
     return {
       ok: false,
       status: 500,
@@ -228,7 +234,7 @@ async function authenticateEmailRequest(payload = {}, { env = process.env, heade
     };
   }
 
-  const { data: authData, error: authError } = await anonClient.auth.getUser(token);
+  const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData?.user?.id) {
     const reason = authError?.message ? ` ${authError.message}` : '';
     return {
@@ -239,14 +245,9 @@ async function authenticateEmailRequest(payload = {}, { env = process.env, heade
   }
 
   const user = authData.user;
-  const requestedScope = `${payload.scope || 'user'}`.toLowerCase();
-  if (requestedScope !== 'admin') {
-    return { ok: true, userId: user.id, role: 'user' };
-  }
-
-  const serviceClient = getSupabaseServiceClient(env);
-  if (serviceClient) {
-    const { data: profile, error: profileError } = await serviceClient
+  const adminClient = serviceClient || getSupabaseServiceClient(env);
+  if (adminClient) {
+    const { data: profile, error: profileError } = await adminClient
       .from('users')
       .select('role')
       .eq('id', user.id)
@@ -255,8 +256,18 @@ async function authenticateEmailRequest(payload = {}, { env = process.env, heade
     if (!profileError && `${profile?.role || ''}`.toLowerCase() === 'admin') {
       return { ok: true, userId: user.id, role: 'admin' };
     }
+
+    return {
+      ok: false,
+      status: 403,
+      error: 'Solo administradoras verificadas pueden enviar correos.',
+    };
   }
 
+  // Fail closed while still allowing deployments that intentionally omit the
+  // service-role client: this lookup reads the authoritative public.users.role
+  // through the caller's own RLS session. Client-provided scope and JWT user
+  // metadata never participate in authorization.
   const roleFromRls = await getUserRoleViaRls({
     env,
     fetchImpl,
@@ -264,12 +275,6 @@ async function authenticateEmailRequest(payload = {}, { env = process.env, heade
     userId: user.id,
   });
   if (roleFromRls.role === 'admin') {
-    return { ok: true, userId: user.id, role: 'admin' };
-  }
-
-  const roleFromJwt =
-    `${user?.app_metadata?.role || user?.user_metadata?.role || ''}`.trim().toLowerCase();
-  if (roleFromJwt === 'admin') {
     return { ok: true, userId: user.id, role: 'admin' };
   }
 
@@ -326,21 +331,34 @@ export async function sendEmailWithResend(payload = {}, { env = process.env, fet
     };
   }
 
-  const response = await fetchImpl(RESEND_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: check.recipients,
-      subject: check.subject,
-      html: check.html || undefined,
-      text: check.text || undefined,
-      reply_to: replyTo || undefined,
-    }),
-  });
+  let response;
+  try {
+    response = await fetchImpl(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: check.recipients,
+        subject: check.subject,
+        html: check.html || undefined,
+        text: check.text || undefined,
+        reply_to: replyTo || undefined,
+      }),
+    });
+  } catch (_) {
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        success: false,
+        code: 'RESEND_ERROR',
+        error: RESEND_PUBLIC_ERROR_MESSAGE,
+      },
+    };
+  }
 
   const payloadResend = await response.json().catch(() => ({}));
 
@@ -351,8 +369,7 @@ export async function sendEmailWithResend(payload = {}, { env = process.env, fet
       body: {
         success: false,
         code: 'RESEND_ERROR',
-        error: toErrorMessage(payloadResend),
-        provider: payloadResend,
+        error: RESEND_PUBLIC_ERROR_MESSAGE,
       },
     };
   }

@@ -8,6 +8,15 @@ function normalizeEmail(value = '') {
   return `${value || ''}`.trim().toLowerCase();
 }
 
+class InvitationActivationError extends Error {
+  constructor(message, { status = 400, code = 'INVITATION_ACTIVATION_FAILED' } = {}) {
+    super(message);
+    this.name = 'InvitationActivationError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function getSupabaseServiceClient(env = process.env) {
   if (supabaseServiceClient) return supabaseServiceClient;
 
@@ -22,31 +31,7 @@ function getSupabaseServiceClient(env = process.env) {
   return supabaseServiceClient;
 }
 
-async function resolveOrCreateAuthUser({ supabase, email, password, fullName }) {
-  const nowIso = new Date().toISOString();
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('id')
-    .ilike('email', email)
-    .maybeSingle();
-
-  if (profile?.id) {
-    const { error: updateAuthError } = await supabase.auth.admin.updateUserById(profile.id, {
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName || undefined,
-      },
-    });
-
-    if (updateAuthError) {
-      throw new Error(updateAuthError.message || 'No se pudo actualizar la cuenta existente.');
-    }
-
-    return profile.id;
-  }
-
+async function createInvitedAuthUser({ supabase, email, password, fullName }) {
   const { data: createdAuth, error: createAuthError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -59,33 +44,65 @@ async function resolveOrCreateAuthUser({ supabase, email, password, fullName }) 
   });
 
   if (createAuthError || !createdAuth?.user?.id) {
-    throw new Error(createAuthError?.message || 'No se pudo crear la cuenta.');
+    throw new InvitationActivationError(
+      'No se pudo crear la cuenta invitada. Si ya tienes una cuenta, inicia sesión o recupera tu contraseña.',
+      { status: 409, code: 'INVITATION_ACCOUNT_EXISTS_OR_UNAVAILABLE' }
+    );
   }
 
-  const userId = createdAuth.user.id;
-
-  const { error: ensureUserError } = await supabase.from('users').upsert(
-    {
-      id: userId,
-      email,
-      full_name: fullName || null,
-      role: 'user',
-      plan: 'free',
-      has_access: true,
-      onboarding_completed: false,
-      updated_at: nowIso,
-    },
-    { onConflict: 'id' }
-  );
-
-  if (ensureUserError) {
-    throw new Error(ensureUserError.message || 'No se pudo inicializar el perfil.');
-  }
-
-  return userId;
+  return createdAuth.user.id;
 }
 
-export async function handleActivateInvitationPayload(payload = {}, { env = process.env } = {}) {
+async function claimInvitation(supabase, { token, email, acceptedUserId = null }) {
+  const { data, error } = await supabase.rpc('claim_user_invitation', {
+    p_token: token,
+    p_email: email,
+    p_accepted_user_id: acceptedUserId,
+  });
+
+  if (error) {
+    throw new InvitationActivationError('No se pudo validar la invitación.', {
+      status: 500,
+      code: 'INVITATION_CLAIM_FAILED',
+    });
+  }
+
+  if (!data?.id) {
+    throw new InvitationActivationError('La invitación expiró, fue revocada o ya fue utilizada.', {
+      status: 410,
+      code: 'INVITATION_NOT_AVAILABLE',
+    });
+  }
+
+  return data;
+}
+
+async function releaseInvitationClaim(supabase, invitationId) {
+  if (!invitationId) return false;
+  const { data, error } = await supabase.rpc('release_user_invitation_claim', {
+    p_invitation_id: invitationId,
+  });
+  return !error && data === true;
+}
+
+async function finalizeInvitation(supabase, invitationId, userId) {
+  const { data, error } = await supabase.rpc('finalize_user_invitation', {
+    p_invitation_id: invitationId,
+    p_accepted_user_id: userId,
+  });
+
+  if (error || data !== true) {
+    throw new InvitationActivationError('La cuenta fue creada, pero la invitación no pudo finalizarse.', {
+      status: 500,
+      code: 'INVITATION_FINALIZE_FAILED',
+    });
+  }
+}
+
+export async function handleActivateInvitationPayload(
+  payload = {},
+  { env = process.env, serviceClient = null } = {}
+) {
   try {
     const token = `${payload.token || ''}`.trim();
     const email = normalizeEmail(payload.email);
@@ -125,7 +142,7 @@ export async function handleActivateInvitationPayload(payload = {}, { env = proc
       };
     }
 
-    const supabase = getSupabaseServiceClient(env);
+    const supabase = serviceClient || getSupabaseServiceClient(env);
     if (!supabase) {
       return {
         status: 500,
@@ -137,95 +154,48 @@ export async function handleActivateInvitationPayload(payload = {}, { env = proc
       };
     }
 
-    const { data: invitation, error: invitationError } = await supabase
-      .from('user_invitations')
-      .select('*')
-      .eq('invitation_token', token)
-      .ilike('email', email)
-      .maybeSingle();
-
-    if (invitationError) {
-      return {
-        status: 500,
-        body: {
-          success: false,
-          code: 'INVITATION_LOOKUP_FAILED',
-          error: invitationError.message || 'No se pudo validar la invitacion.',
-        },
-      };
-    }
-
-    if (!invitation) {
-      return {
-        status: 404,
-        body: {
-          success: false,
-          code: 'INVITATION_NOT_FOUND',
-          error: 'La invitacion no existe o ya no esta disponible.',
-        },
-      };
-    }
-
-    if (
-      invitation.expires_at &&
-      Number.isFinite(new Date(invitation.expires_at).getTime()) &&
-      new Date(invitation.expires_at).getTime() <= Date.now()
-    ) {
-      return {
-        status: 410,
-        body: {
-          success: false,
-          code: 'INVITATION_EXPIRED',
-          error: 'La invitacion expiro. Solicita una nueva invitacion.',
-        },
-      };
-    }
-
-    if (`${invitation.status || ''}`.toLowerCase() === 'revoked') {
-      return {
-        status: 403,
-        body: {
-          success: false,
-          code: 'INVITATION_REVOKED',
-          error: 'Esta invitacion fue cancelada por administracion.',
-        },
-      };
-    }
-
+    const invitation = await claimInvitation(supabase, { token, email });
     const nowIso = new Date().toISOString();
-    const role = `${invitation.role || 'user'}`.toLowerCase() === 'admin' ? 'admin' : 'user';
-    const plan = `${invitation.plan || ''}`.trim() || (role === 'admin' ? 'admin' : 'free');
-    const hasAccess = invitation.has_access !== false;
+    const role = 'user';
+    const allowedPlans = new Set(['free', 'founder', 'founder_lifetime', 'monthly', 'subscription']);
+    const requestedPlan = `${invitation.plan || ''}`.trim().toLowerCase();
+    const plan = allowedPlans.has(requestedPlan) ? requestedPlan : 'free';
+    const hasAccess = invitation.has_access === true;
     const finalName = fullName || `${invitation.full_name || ''}`.trim() || null;
+    let userId = null;
 
-    const userId =
-      invitation.accepted_user_id ||
-      (await resolveOrCreateAuthUser({
+    try {
+      const { data: existingProfile, error: existingProfileError } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('email', email)
+        .maybeSingle();
+
+      if (existingProfileError) {
+        throw new InvitationActivationError('No se pudo comprobar la cuenta invitada.', {
+          status: 500,
+          code: 'INVITATION_ACCOUNT_CHECK_FAILED',
+        });
+      }
+
+      if (existingProfile?.id) {
+        throw new InvitationActivationError(
+          'Esta cuenta ya existe. Inicia sesión o utiliza la recuperación de contraseña.',
+          { status: 409, code: 'INVITATION_EXISTING_ACCOUNT' }
+        );
+      }
+
+      userId = await createInvitedAuthUser({
         supabase,
         email,
         password,
         fullName: finalName,
-      }));
-
-    if (invitation.accepted_user_id) {
-      const { error: updateAuthError } = await supabase.auth.admin.updateUserById(invitation.accepted_user_id, {
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: finalName || undefined,
-        },
       });
-
-      if (updateAuthError) {
-        return {
-          status: 500,
-          body: {
-            success: false,
-            code: 'AUTH_UPDATE_FAILED',
-            error: updateAuthError.message || 'No se pudo actualizar la contrasena.',
-          },
-        };
+    } catch (accountError) {
+      if (!userId) {
+        await releaseInvitationClaim(supabase, invitation.id);
       }
+      throw accountError;
     }
 
     const { error: profileError } = await supabase.from('users').upsert(
@@ -236,6 +206,8 @@ export async function handleActivateInvitationPayload(payload = {}, { env = proc
         role,
         plan,
         has_access: hasAccess,
+        access_source: invitation.access_source || 'manual_lifetime',
+        is_lifetime: invitation.is_lifetime === true,
         onboarding_completed: false,
         updated_at: nowIso,
       },
@@ -243,38 +215,13 @@ export async function handleActivateInvitationPayload(payload = {}, { env = proc
     );
 
     if (profileError) {
-      return {
+      throw new InvitationActivationError('No se pudo inicializar el perfil invitado.', {
         status: 500,
-        body: {
-          success: false,
-          code: 'USER_PROFILE_UPDATE_FAILED',
-          error: profileError.message || 'No se pudo habilitar el acceso de la cuenta.',
-        },
-      };
+        code: 'USER_PROFILE_UPDATE_FAILED',
+      });
     }
 
-    const { error: updateInvitationError } = await supabase
-      .from('user_invitations')
-      .update({
-        full_name: finalName,
-        status: 'accepted',
-        accepted_user_id: userId,
-        accepted_at: nowIso,
-        has_access: hasAccess,
-        updated_at: nowIso,
-      })
-      .eq('id', invitation.id);
-
-    if (updateInvitationError) {
-      return {
-        status: 500,
-        body: {
-          success: false,
-          code: 'INVITATION_UPDATE_FAILED',
-          error: updateInvitationError.message || 'No se pudo finalizar la invitacion.',
-        },
-      };
-    }
+    await finalizeInvitation(supabase, invitation.id, userId);
 
     await supabase
       .from('audit_logs')
@@ -308,13 +255,12 @@ export async function handleActivateInvitationPayload(payload = {}, { env = proc
     };
   } catch (error) {
     return {
-      status: 500,
+      status: error?.status || 500,
       body: {
         success: false,
-        code: 'INVITATION_ACTIVATION_INTERNAL_ERROR',
+        code: error?.code || 'INVITATION_ACTIVATION_INTERNAL_ERROR',
         error: error?.message || 'Error interno activando la invitacion.',
       },
     };
   }
 }
-
