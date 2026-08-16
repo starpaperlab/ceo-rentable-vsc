@@ -37,6 +37,92 @@ function createAuthClients(databaseRole) {
   return { anonClient, serviceClient };
 }
 
+test('missing or invalid JWTs use a controlled public authentication contract', async () => {
+  const { handleSendEmailPayload } = await loadServerModuleWithoutInstalledSupabase(emailModuleUrl);
+  const cases = [
+    {
+      name: 'missing',
+      token: '',
+      getUser: async () => {
+        throw new Error('AUTH_GET_USER_SHOULD_NOT_RUN');
+      },
+    },
+    {
+      name: 'malformed',
+      token: 'abc',
+      getUser: async () => ({
+        data: { user: null },
+        error: new Error(
+          'invalid JWT: unable to parse or verify signature, token is malformed: token contains an invalid number of segments'
+        ),
+      }),
+    },
+    {
+      name: 'invalid',
+      token: 'invalid-token',
+      getUser: async () => ({
+        data: { user: null },
+        error: new Error('JWT_SIGNATURE_CANARY_SHOULD_NOT_LEAK'),
+      }),
+    },
+    {
+      name: 'expired',
+      token: 'expired-token',
+      getUser: async () => ({
+        data: { user: null },
+        error: new Error('JWT_EXPIRED_CANARY_SHOULD_NOT_LEAK'),
+      }),
+    },
+    {
+      name: 'auth provider exception',
+      token: 'provider-error-token',
+      getUser: async () => {
+        throw new Error('AUTH_INTERNAL_CANARY_SHOULD_NOT_LEAK');
+      },
+    },
+  ];
+
+  for (const testCase of cases) {
+    let resendCalls = 0;
+    const result = await handleSendEmailPayload(
+      {
+        accessToken: testCase.token,
+        scope: 'admin',
+        user_metadata: { role: 'admin' },
+        app_metadata: { role: 'admin' },
+        to: 'recipient@example.com',
+        subject: 'Unauthorized',
+        text: 'Unauthorized',
+      },
+      {
+        anonClient: { auth: { getUser: testCase.getUser } },
+        env: { RESEND_API_KEY: 'test-only-key' },
+        fetchImpl: async () => {
+          resendCalls += 1;
+          return { ok: true, json: async () => ({ id: 'message-a' }) };
+        },
+      }
+    );
+
+    const serializedBody = JSON.stringify(result.body);
+    assert.equal(result.status, 401, testCase.name);
+    assert.equal(result.body.code, 'EMAIL_SEND_UNAUTHORIZED', testCase.name);
+    assert.equal(
+      result.body.error,
+      testCase.name === 'missing'
+        ? 'Debes iniciar sesión para enviar correos.'
+        : 'Sesión inválida o expirada.',
+      testCase.name
+    );
+    assert.equal(resendCalls, 0, testCase.name);
+    assert.doesNotMatch(
+      serializedBody,
+      /invalid JWT|signature|malformed|segments|JWT_SIGNATURE_CANARY|JWT_EXPIRED_CANARY|AUTH_INTERNAL_CANARY|AUTH_GET_USER_SHOULD_NOT_RUN/i,
+      testCase.name
+    );
+  }
+});
+
 test('normal database user cannot use send-email despite scope or JWT metadata', async () => {
   const { handleSendEmailPayload } = await loadServerModuleWithoutInstalledSupabase(emailModuleUrl);
   const { anonClient, serviceClient } = createAuthClients('user');

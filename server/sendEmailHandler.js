@@ -5,6 +5,8 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_FROM_EMAIL = 'hola@ceorentable.com';
 const DEFAULT_FROM_NAME = 'CEO Rentable OS';
 const RESEND_PUBLIC_ERROR_MESSAGE = 'No fue posible enviar el email en este momento.';
+const AUTH_PUBLIC_ERROR_MESSAGE = 'Sesión inválida o expirada.';
+const AUTHORIZATION_PUBLIC_ERROR_MESSAGE = 'Solo administradoras pueden enviar este tipo de correo.';
 
 let supabaseAnonClient = null;
 let supabaseServiceClient = null;
@@ -234,13 +236,22 @@ async function authenticateEmailRequest(
     };
   }
 
-  const { data: authData, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !authData?.user?.id) {
-    const reason = authError?.message ? ` ${authError.message}` : '';
+  let authData = null;
+  try {
+    const authResult = await authClient.auth.getUser(token);
+    authData = authResult?.data || null;
+    if (authResult?.error || !authData?.user?.id) {
+      return {
+        ok: false,
+        status: 401,
+        error: AUTH_PUBLIC_ERROR_MESSAGE,
+      };
+    }
+  } catch (_) {
     return {
       ok: false,
       status: 401,
-      error: `Sesión inválida o expirada.${reason}`,
+      error: AUTH_PUBLIC_ERROR_MESSAGE,
     };
   }
 
@@ -278,11 +289,10 @@ async function authenticateEmailRequest(
     return { ok: true, userId: user.id, role: 'admin' };
   }
 
-  const detail = roleFromRls.error ? ` (${roleFromRls.error})` : '';
   return {
     ok: false,
     status: 403,
-    error: `Solo administradoras pueden enviar este tipo de correo.${detail}`,
+    error: AUTHORIZATION_PUBLIC_ERROR_MESSAGE,
   };
 }
 
