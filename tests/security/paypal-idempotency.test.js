@@ -25,8 +25,8 @@ function createServiceClient() {
     user_id: 'user-1',
     paypal_order_id: 'ORDER-1',
     plan_code: 'monthly',
-    amount: 17,
-    currency: 'USD',
+    amount: 1497,
+    currency: 'DOP',
     status: 'created',
   };
 
@@ -117,7 +117,7 @@ test('repeating the same completed PayPal capture does not create a second trans
             {
               id: 'CAPTURE-1',
               status: 'COMPLETED',
-              amount: { value: '17.00', currency_code: 'USD' },
+              amount: { value: '1497.00', currency_code: 'DOP' },
             },
           ],
         },
