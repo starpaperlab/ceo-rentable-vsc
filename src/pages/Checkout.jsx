@@ -1,14 +1,21 @@
 import React from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
-import { getCheckoutPlan } from '@/lib/checkoutPlans';
+import { Check, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { CHECKOUT_PLANS, getCheckoutPlan, isRecurringCheckoutPlan } from '@/lib/checkoutPlans';
 
 const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#D45387] focus:ring-2 focus:ring-[#D45387]/15';
 
 export default function Checkout() {
-  const [searchParams] = useSearchParams();
-  const requestedPlan = searchParams.get('plan') || 'monthly';
-  const plan = getCheckoutPlan(requestedPlan) || getCheckoutPlan('monthly');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPlan = searchParams.get('plan');
+  const selectedPlanCode = isRecurringCheckoutPlan(requestedPlan) ? requestedPlan : 'annual';
+  const plan = getCheckoutPlan(selectedPlanCode) || getCheckoutPlan('annual');
+
+  const selectPlan = (planCode) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('plan', planCode);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   return (
     <main className="min-h-screen bg-[#F7F3EE] px-4 py-8 sm:px-6 lg:py-12">
@@ -52,8 +59,56 @@ export default function Checkout() {
 
           <aside className="border-t border-gray-200 bg-gray-50 p-6 sm:p-9 lg:border-l lg:border-t-0 lg:p-10">
             <div className="lg:sticky lg:top-8">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div><p className="text-sm text-gray-500">Tu plan</p><h2 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h2></div>
+              <div className="mb-5">
+                <p className="text-sm font-medium text-gray-500">Tu plan</p>
+                <h2 className="mt-1 text-xl font-black text-gray-900">Elige cómo continuar después de tu prueba</h2>
+              </div>
+
+              <div className="mb-6 grid grid-cols-2 gap-3" role="radiogroup" aria-label="Frecuencia de facturación">
+                {Object.values(CHECKOUT_PLANS).map((option) => {
+                  const isSelected = option.code === plan.code;
+                  const isAnnual = option.code === 'annual';
+
+                  return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => selectPlan(option.code)}
+                      className={`relative min-h-[126px] rounded-2xl border-2 p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 ${
+                        isSelected
+                          ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      {isAnnual && (
+                        <span className="absolute -top-3 right-3 rounded-full bg-[#D45387] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
+                          Mejor valor
+                        </span>
+                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-black text-gray-900">{option.name}</p>
+                          <p className="mt-2 text-lg font-black text-gray-900">{option.renewalLabel}</p>
+                        </div>
+                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-gray-300 bg-white text-transparent'}`}>
+                          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-4 text-gray-500">
+                        {isAnnual ? 'Equivale a US$17.50/mes' : 'Facturación cada mes'}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Plan seleccionado</p>
+                  <h3 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h3>
+                </div>
                 {plan.badge && <span className="rounded-full bg-[#D45387]/10 px-3 py-1 text-xs font-bold text-[#D45387]">{plan.badge}</span>}
               </div>
 
@@ -67,7 +122,7 @@ export default function Checkout() {
 
               <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div>
-                <div className="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center"><p className="font-bold text-[#003087]">PayPal</p><p className="mt-1 text-xs text-gray-500">El botón seguro de suscripción aparecerá aquí cuando conectemos los Billing Plan IDs de Sandbox.</p></div>
+                <div className="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center"><p className="font-bold text-[#003087]">PayPal</p><p className="mt-1 text-xs text-gray-500">La suscripción usará el Billing Plan de PayPal correspondiente a <strong>{plan.name}</strong> cuando conectemos los IDs de Sandbox.</p></div>
               </div>
 
               <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con PayPal. CEO Rentable no almacena los datos de tu tarjeta.</p></div>
