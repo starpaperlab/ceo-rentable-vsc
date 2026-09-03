@@ -13,6 +13,7 @@ import Learn from './pages/Learn';
 import Diagnostico from './pages/Diagnostico';
 import Agenda from './pages/Agenda';
 import Paywall from './pages/Paywall';
+import Checkout from './pages/Checkout';
 import CostLibrary from './pages/CostLibrary';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from '@/pages/Login';
@@ -27,51 +28,18 @@ const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
-const LayoutWrapper = ({ children, currentPageName }) => Layout ?
-  <Layout currentPageName={currentPageName}>{children}</Layout>
-  : <>{children}</>;
-
-const GuardedLayoutWrapper = ({ children, currentPageName }) => (
-  <AccessGuard>
-    <LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper>
-  </AccessGuard>
-);
-
-const GuardedAdminLayoutWrapper = ({ children, currentPageName = 'AdminPanel' }) => (
-  <AccessGuard>
-    <AdminRouteGuard>
-      <LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper>
-    </AdminRouteGuard>
-  </AccessGuard>
-);
-
+const LayoutWrapper = ({ children, currentPageName }) => Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
+const GuardedLayoutWrapper = ({ children, currentPageName }) => <AccessGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AccessGuard>;
+const GuardedAdminLayoutWrapper = ({ children, currentPageName = 'AdminPanel' }) => <AccessGuard><AdminRouteGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AdminRouteGuard></AccessGuard>;
 const ADMIN_PAGES = new Set(['AdminPanel']);
-
-const GuardedPageElement = ({ path, Page }) => (
-  <GuardedLayoutWrapper currentPageName={path}>
-    {ADMIN_PAGES.has(path) ? (
-      <AdminRouteGuard>
-        <Page />
-      </AdminRouteGuard>
-    ) : (
-      <Page />
-    )}
-  </GuardedLayoutWrapper>
-);
+const GuardedPageElement = ({ path, Page }) => <GuardedLayoutWrapper currentPageName={path}>{ADMIN_PAGES.has(path) ? <AdminRouteGuard><Page /></AdminRouteGuard> : <Page />}</GuardedLayoutWrapper>;
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, user } = useAuth();
-
-  // Show loading spinner while checking auth
   if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
+    return <div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>;
   }
 
-  // Render the main app
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -80,82 +48,33 @@ const AuthenticatedApp = () => {
       <Route path="/acceso" element={<Acceso />} />
       <Route path="/activar-acceso" element={<ActivateAccess />} />
       <Route path="/paywall" element={<Paywall />} />
+      <Route path="/checkout" element={<Checkout />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
       <Route path="/payment-cancel" element={<PaymentCancel />} />
       <Route path="/manual-payment" element={<ManualPaymentConfirmation />} />
 
-      {user ? (
-        <>
-          <Route path="/" element={
-            <GuardedLayoutWrapper currentPageName={mainPageKey}>
-              <MainPage />
-            </GuardedLayoutWrapper>
-          } />
-          {Object.entries(Pages).flatMap(([path, Page]) => {
-            const element = <GuardedPageElement path={path} Page={Page} />;
-            const canonicalPath = `/${path}`;
-            const lowerPath = `/${path.toLowerCase()}`;
-
-            if (canonicalPath === lowerPath) {
-              return (
-                <Route
-                  key={path}
-                  path={canonicalPath}
-                  element={element}
-                />
-              );
-            }
-
-            return [
-              <Route key={path} path={canonicalPath} element={element} />,
-              <Route key={`${path}-lower`} path={lowerPath} element={element} />,
-            ];
-          })}
-          <Route
-            path="/admin/emails"
-            element={
-              <GuardedAdminLayoutWrapper currentPageName="AdminPanel">
-                <EmailLogs />
-              </GuardedAdminLayoutWrapper>
-            }
-          />
-          <Route
-            path="/admin/email-templates"
-            element={
-              <GuardedAdminLayoutWrapper currentPageName="AdminPanel">
-                <EmailTemplates />
-              </GuardedAdminLayoutWrapper>
-            }
-          />
-          <Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><Learn /></GuardedLayoutWrapper>} />
-          <Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><Agenda /></GuardedLayoutWrapper>} />
-          <Route path="/biblioteca-costos" element={<GuardedLayoutWrapper currentPageName="biblioteca-costos"><CostLibrary /></GuardedLayoutWrapper>} />
-        </>
-      ) : (
-        <Route path="*" element={<Login />} />
-      )}
-
+      {user ? <>
+        <Route path="/" element={<GuardedLayoutWrapper currentPageName={mainPageKey}><MainPage /></GuardedLayoutWrapper>} />
+        {Object.entries(Pages).flatMap(([path, Page]) => {
+          const element = <GuardedPageElement path={path} Page={Page} />;
+          const canonicalPath = `/${path}`;
+          const lowerPath = `/${path.toLowerCase()}`;
+          if (canonicalPath === lowerPath) return <Route key={path} path={canonicalPath} element={element} />;
+          return [<Route key={path} path={canonicalPath} element={element} />, <Route key={`${path}-lower`} path={lowerPath} element={element} />];
+        })}
+        <Route path="/admin/emails" element={<GuardedAdminLayoutWrapper currentPageName="AdminPanel"><EmailLogs /></GuardedAdminLayoutWrapper>} />
+        <Route path="/admin/email-templates" element={<GuardedAdminLayoutWrapper currentPageName="AdminPanel"><EmailTemplates /></GuardedAdminLayoutWrapper>} />
+        <Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><Learn /></GuardedLayoutWrapper>} />
+        <Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><Agenda /></GuardedLayoutWrapper>} />
+        <Route path="/biblioteca-costos" element={<GuardedLayoutWrapper currentPageName="biblioteca-costos"><CostLibrary /></GuardedLayoutWrapper>} />
+      </> : <Route path="*" element={<Login />} />}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
 };
 
-
 function App() {
-
-  return (
-    <Router>
-      <MetaPixelRouteTracker />
-      <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <WorkContextProvider>
-            <AuthenticatedApp />
-            <Toaster />
-          </WorkContextProvider>
-        </QueryClientProvider>
-      </AuthProvider>
-    </Router>
-  )
+  return <Router><MetaPixelRouteTracker /><AuthProvider><QueryClientProvider client={queryClientInstance}><WorkContextProvider><AuthenticatedApp /><Toaster /></WorkContextProvider></QueryClientProvider></AuthProvider></Router>;
 }
 
 export default App
