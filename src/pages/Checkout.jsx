@@ -20,6 +20,46 @@ const INITIAL_FORM = {
   confirmPassword: '',
 };
 
+function PlanSelector({ plan, onSelect, disabled = false, compact = false }) {
+  return (
+    <div className={`grid grid-cols-2 ${compact ? 'gap-2.5' : 'gap-3'}`} role="radiogroup" aria-label="Frecuencia de facturación">
+      {Object.values(CHECKOUT_PLANS).map((option) => {
+        const isSelected = option.code === plan.code;
+        const isAnnual = option.code === 'annual';
+        return (
+          <button
+            key={option.code}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            onClick={() => onSelect(option.code)}
+            disabled={disabled}
+            className={`relative rounded-2xl border-2 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 disabled:opacity-60 ${compact ? 'min-h-[108px] p-3.5' : 'min-h-[126px] p-4'} ${isSelected ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+          >
+            {isAnnual && (
+              <span className={`absolute right-2.5 rounded-full bg-[#D45387] font-black uppercase tracking-wide text-white shadow-sm ${compact ? '-top-2.5 px-2 py-0.5 text-[9px]' : '-top-3 px-2.5 py-1 text-[10px]'}`}>
+                Mejor valor
+              </span>
+            )}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-black text-gray-900">{option.name}</p>
+                <p className={`${compact ? 'mt-1.5 text-base' : 'mt-2 text-lg'} font-black text-gray-900`}>{option.renewalLabel}</p>
+              </div>
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-gray-300 bg-white text-transparent'}`}>
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              </span>
+            </div>
+            <p className={`${compact ? 'mt-1.5' : 'mt-2'} text-xs leading-4 text-gray-500`}>
+              {isAnnual ? 'Equivale a US$17.50/mes' : 'Facturación cada mes'}
+            </p>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -147,45 +187,58 @@ export default function Checkout() {
   };
 
   const paymentDisabled = isLoadingAuth || !accountReady || !termsAccepted || subscriptionConfirmed || verifyingPayment;
+  const planSelectionDisabled = verifyingPayment || subscriptionConfirmed;
 
   return (
-    <main className="min-h-screen bg-[#F7F3EE] px-4 py-8 sm:px-6 lg:py-12">
+    <main className="min-h-screen bg-[#F7F3EE] px-3.5 py-5 sm:px-6 sm:py-8 lg:py-12">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex items-center justify-center gap-3 lg:justify-start">
-          <img src="/brand/isotipo.png" alt="CEO Rentable OS" className="h-11 w-11" />
-          <div><p className="text-lg font-black text-gray-900">CEO Rentable OS</p><p className="text-xs text-gray-500">Checkout seguro</p></div>
+        <header className="mb-5 flex items-center justify-center gap-2.5 sm:mb-8 lg:justify-start">
+          <img src="/brand/isotipo.png" alt="CEO Rentable OS" className="h-10 w-10 sm:h-11 sm:w-11" />
+          <div><p className="text-base font-black text-gray-900 sm:text-lg">CEO Rentable OS</p><p className="text-[11px] text-gray-500 sm:text-xs">Checkout seguro</p></div>
         </header>
 
-        <div className="grid overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl lg:grid-cols-[1.15fr_0.85fr]">
-          <section className="p-6 sm:p-9 lg:p-12">
-            <div className="mb-8">
-              <p className="mb-2 text-sm font-bold uppercase tracking-wide text-[#D45387]">Crea tu cuenta</p>
-              <h1 className="text-3xl font-black text-gray-900">Empieza tus 7 días gratis</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-600">Completa tus datos y elige cómo continuar después de tu prueba. Hoy pagas US$0.</p>
+        <div className="grid overflow-hidden rounded-[26px] border border-gray-200 bg-white shadow-xl sm:rounded-3xl lg:grid-cols-[1.15fr_0.85fr]">
+          <section className="p-5 sm:p-9 lg:p-12">
+            <div className="mb-5 sm:mb-8">
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[#D45387] sm:mb-2 sm:text-sm">Crea tu cuenta</p>
+              <h1 className="text-[28px] font-black leading-[1.05] text-gray-900 sm:text-3xl">Empieza tus 7 días gratis</h1>
+              <p className="mt-2 text-sm leading-5 text-gray-600 sm:leading-6">Completa tus datos y elige cómo continuar después de tu prueba. Hoy pagas US$0.</p>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-[#F0D4DF] bg-[#FFF8FB] p-3.5 lg:hidden">
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#D45387]">Tu plan</p>
+                  <p className="mt-0.5 text-sm font-black text-gray-900">Elige mensual o anual</p>
+                </div>
+                <p className="shrink-0 text-[11px] font-semibold text-gray-500">7 días gratis</p>
+              </div>
+              <PlanSelector plan={plan} onSelect={selectPlan} disabled={planSelectionDisabled} compact />
+              <p className="mt-3 text-center text-[11px] leading-4 text-gray-500">Puedes cambiar de opción antes de vincular PayPal.</p>
             </div>
 
             {user && (
-              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs leading-5 text-emerald-800 sm:mb-5 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm">
                 Sesión iniciada como <strong>{user.email}</strong>. Solo falta aceptar las condiciones y vincular PayPal.
               </div>
             )}
 
-            <form className="space-y-5" onSubmit={handleCreateAccount}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">Nombre<input value={form.firstName} onChange={(event) => updateField('firstName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="given-name" placeholder="Tu nombre" /></label>
-                <label className="text-sm font-semibold text-gray-700">Apellido<input value={form.lastName} onChange={(event) => updateField('lastName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="family-name" placeholder="Tu apellido" /></label>
+            <form className="space-y-4 sm:space-y-5" onSubmit={handleCreateAccount}>
+              <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+                <label className="text-sm font-semibold text-gray-700">Nombre<input value={form.firstName} onChange={(event) => updateField('firstName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="given-name" placeholder="Tu nombre" /></label>
+                <label className="text-sm font-semibold text-gray-700">Apellido<input value={form.lastName} onChange={(event) => updateField('lastName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="family-name" placeholder="Tu apellido" /></label>
               </div>
-              <label className="block text-sm font-semibold text-gray-700">Correo electrónico<input value={form.email} onChange={(event) => updateField('email', event.target.value)} disabled={Boolean(user)} type="email" className={`${fieldClass} mt-2`} autoComplete="email" placeholder="nombre@empresa.com" /></label>
-              <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input value={form.businessName} onChange={(event) => updateField('businessName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="organization" placeholder="Ej. Dulce Studio" /></label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">WhatsApp<input value={form.phone} onChange={(event) => updateField('phone', event.target.value)} disabled={Boolean(user)} type="tel" className={`${fieldClass} mt-2`} autoComplete="tel" placeholder="+1 809 000 0000" /></label>
-                <label className="text-sm font-semibold text-gray-700">País<select value={form.country} onChange={(event) => updateField('country', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`}><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label>
+              <label className="block text-sm font-semibold text-gray-700">Correo electrónico<input value={form.email} onChange={(event) => updateField('email', event.target.value)} disabled={Boolean(user)} type="email" className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="email" placeholder="nombre@empresa.com" /></label>
+              <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input value={form.businessName} onChange={(event) => updateField('businessName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="organization" placeholder="Ej. Dulce Studio" /></label>
+              <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+                <label className="text-sm font-semibold text-gray-700">WhatsApp<input value={form.phone} onChange={(event) => updateField('phone', event.target.value)} disabled={Boolean(user)} type="tel" className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="tel" placeholder="+1 809 000 0000" /></label>
+                <label className="text-sm font-semibold text-gray-700">País<select value={form.country} onChange={(event) => updateField('country', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`}><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label>
               </div>
 
               {!user && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm font-semibold text-gray-700">Contraseña<input value={form.password} onChange={(event) => updateField('password', event.target.value)} type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Mínimo 8 caracteres" /></label>
-                  <label className="text-sm font-semibold text-gray-700">Confirmar contraseña<input value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Repite tu contraseña" /></label>
+                <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+                  <label className="text-sm font-semibold text-gray-700">Contraseña<input value={form.password} onChange={(event) => updateField('password', event.target.value)} type="password" className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="new-password" placeholder="Mínimo 8 caracteres" /></label>
+                  <label className="text-sm font-semibold text-gray-700">Confirmar contraseña<input value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} type="password" className={`${fieldClass} mt-1.5 sm:mt-2`} autoComplete="new-password" placeholder="Repite tu contraseña" /></label>
                 </div>
               )}
 
@@ -211,32 +264,24 @@ export default function Checkout() {
             </form>
           </section>
 
-          <aside className="border-t border-gray-200 bg-gray-50 p-6 sm:p-9 lg:border-l lg:border-t-0 lg:p-10">
+          <aside className="border-t border-gray-200 bg-gray-50 p-5 sm:p-9 lg:border-l lg:border-t-0 lg:p-10">
             <div className="lg:sticky lg:top-8">
-              <div className="mb-5"><p className="text-sm font-medium text-gray-500">Tu plan</p><h2 className="mt-1 text-xl font-black text-gray-900">Elige cómo continuar después de tu prueba</h2></div>
-              <div className="mb-6 grid grid-cols-2 gap-3" role="radiogroup" aria-label="Frecuencia de facturación">
-                {Object.values(CHECKOUT_PLANS).map((option) => {
-                  const isSelected = option.code === plan.code;
-                  const isAnnual = option.code === 'annual';
-                  return <button key={option.code} type="button" role="radio" aria-checked={isSelected} onClick={() => selectPlan(option.code)} disabled={verifyingPayment || subscriptionConfirmed} className={`relative min-h-[126px] rounded-2xl border-2 p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 disabled:opacity-60 ${isSelected ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                    {isAnnual && <span className="absolute -top-3 right-3 rounded-full bg-[#D45387] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">Mejor valor</span>}
-                    <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-black text-gray-900">{option.name}</p><p className="mt-2 text-lg font-black text-gray-900">{option.renewalLabel}</p></div><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-gray-300 bg-white text-transparent'}`}><Check className="h-3.5 w-3.5" strokeWidth={3} /></span></div>
-                    <p className="mt-2 text-xs leading-4 text-gray-500">{isAnnual ? 'Equivale a US$17.50/mes' : 'Facturación cada mes'}</p>
-                  </button>;
-                })}
+              <div className="mb-5 hidden lg:block"><p className="text-sm font-medium text-gray-500">Tu plan</p><h2 className="mt-1 text-xl font-black text-gray-900">Elige cómo continuar después de tu prueba</h2></div>
+              <div className="mb-6 hidden lg:block">
+                <PlanSelector plan={plan} onSelect={selectPlan} disabled={planSelectionDisabled} />
               </div>
 
-              <div className="mb-4"><p className="text-sm text-gray-500">Plan seleccionado</p><h3 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h3></div>
-              <div className="rounded-2xl border border-gray-200 bg-white p-5">
-                <div className="flex items-center justify-between border-b border-gray-100 pb-4"><span className="font-semibold text-gray-700">Prueba gratis</span><strong className="text-gray-900">7 días</strong></div>
-                <div className="flex items-center justify-between py-4"><span className="font-semibold text-gray-700">Hoy pagas</span><strong className="text-2xl text-gray-900">US$0</strong></div>
-                <div className="border-t border-gray-100 pt-4"><p className="text-sm text-gray-500">Después de la prueba</p><p className="mt-1 text-2xl font-black text-gray-900">{plan.renewalLabel}</p><p className="mt-1 text-xs text-gray-500">Renovación automática. Cancela antes de finalizar la prueba para evitar el primer cobro.</p></div>
+              <div className="mb-3 sm:mb-4"><p className="text-xs text-gray-500 sm:text-sm">Plan seleccionado</p><h3 className="text-xl font-black text-gray-900 sm:text-2xl">CEO Rentable {plan.name}</h3></div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3.5 sm:pb-4"><span className="font-semibold text-gray-700">Prueba gratis</span><strong className="text-gray-900">7 días</strong></div>
+                <div className="flex items-center justify-between py-3.5 sm:py-4"><span className="font-semibold text-gray-700">Hoy pagas</span><strong className="text-2xl text-gray-900">US$0</strong></div>
+                <div className="border-t border-gray-100 pt-3.5 sm:pt-4"><p className="text-sm text-gray-500">Después de la prueba</p><p className="mt-1 text-2xl font-black text-gray-900">{plan.renewalLabel}</p><p className="mt-1 text-xs leading-4 text-gray-500">Renovación automática. Cancela antes de finalizar la prueba para evitar el primer cobro.</p></div>
               </div>
 
-              {plan.code === 'annual' && <div className="mt-4 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5 shrink-0" /><span><strong>Ahorras US$42 al año.</strong> Equivale a 2 meses gratis frente al plan mensual.</span></div>}
+              {plan.code === 'annual' && <div className="mt-4 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800 sm:p-4"><CheckCircle2 className="h-5 w-5 shrink-0" /><span><strong>Ahorras US$42 al año.</strong> Equivale a 2 meses gratis frente al plan mensual.</span></div>}
 
-              <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
-                <div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div>
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 sm:mt-6 sm:p-5">
+                <div className="mb-3.5 flex items-center gap-2 sm:mb-4"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div>
                 {subscriptionConfirmed ? (
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-sm text-emerald-800">
                     <CheckCircle2 className="mx-auto mb-2 h-6 w-6" />
@@ -253,8 +298,8 @@ export default function Checkout() {
                 )}
               </div>
 
-              <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con PayPal. CEO Rentable no almacena los datos de tu tarjeta.</p></div>
-              <p className="mt-6 text-center text-xs text-gray-400">¿Ya tienes cuenta? <Link to={`/login?plan=${plan.code}`} className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
+              <div className="mt-4 flex items-start gap-3 text-xs leading-5 text-gray-500 sm:mt-5"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con PayPal. CEO Rentable no almacena los datos de tu tarjeta.</p></div>
+              <p className="mt-5 text-center text-xs text-gray-400 sm:mt-6">¿Ya tienes cuenta? <Link to={`/login?plan=${plan.code}`} className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
             </div>
           </aside>
         </div>
