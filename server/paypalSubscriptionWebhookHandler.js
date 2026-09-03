@@ -75,7 +75,12 @@ async function verifySignature(event, { env = process.env, headers = {} } = {}) 
 }
 
 function mapLifecycleStatus(eventType, resource = {}) {
-  if (eventType === 'BILLING.SUBSCRIPTION.ACTIVATED') return 'active';
+  if (eventType === 'BILLING.SUBSCRIPTION.ACTIVATED') {
+    const nextBilling = resource?.billing_info?.next_billing_time
+      ? new Date(resource.billing_info.next_billing_time).getTime()
+      : 0;
+    return nextBilling > Date.now() ? 'trialing' : 'active';
+  }
   if (eventType === 'BILLING.SUBSCRIPTION.CANCELLED') return 'cancelled';
   if (eventType === 'BILLING.SUBSCRIPTION.SUSPENDED') return 'suspended';
   if (eventType === 'BILLING.SUBSCRIPTION.EXPIRED') return 'expired';
@@ -86,7 +91,10 @@ function mapLifecycleStatus(eventType, resource = {}) {
 
 function shouldHaveAccess(status, current = {}) {
   if (status === 'active' || status === 'trialing') return true;
-  if (status === 'payment_failed') return Boolean(current.user_id);
+  if (status === 'payment_failed') {
+    const nextBilling = current.next_billing_time ? new Date(current.next_billing_time).getTime() : 0;
+    return nextBilling > Date.now();
+  }
   if (status === 'cancelled') {
     const nextBilling = current.next_billing_time ? new Date(current.next_billing_time).getTime() : 0;
     return nextBilling > Date.now();
@@ -128,8 +136,6 @@ export async function handlePayPalSubscriptionWebhookPayload(payload = {}, optio
     return { status: 500, body: { success: false, code: 'SUBSCRIPTION_LOOKUP_FAILED' } };
   }
 
-  // CREATED can arrive before the browser has verified and persisted the subscription.
-  // A later onApprove verification or lifecycle webhook will reconcile it safely.
   if (!current?.user_id) {
     return { status: 200, body: { success: true, status: 'unmatched_subscription_ignored', eventType } };
   }
@@ -156,12 +162,13 @@ export async function handlePayPalSubscriptionWebhookPayload(payload = {}, optio
 
   const { error: appSubscriptionError } = await service.from('subscriptions').upsert({
     user_id: current.user_id,
-    plan: current.plan_code,
+    plan: 'subscription',
     plan_code: current.plan_code,
     status,
     is_lifetime: false,
     access_source: 'paypal',
     payment_provider: 'paypal',
+    provider_subscription_id: subscriptionId,
     metadata: {
       paypal_subscription_id: subscriptionId,
       paypal_plan_id: current.paypal_plan_id,
@@ -179,10 +186,12 @@ export async function handlePayPalSubscriptionWebhookPayload(payload = {}, optio
     .from('users')
     .update({
       has_access: keepAccess,
-      plan: current.plan_code,
+      access_status: keepAccess ? 'active' : 'inactive',
+      plan: keepAccess ? 'subscription' : current.plan_code,
       is_lifetime: false,
       payment_provider: 'paypal',
       access_source: 'paypal',
+      provider_customer_id: subscriptionId,
       updated_at: now,
     })
     .eq('id', current.user_id);
