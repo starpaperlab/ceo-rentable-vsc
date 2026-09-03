@@ -33,7 +33,7 @@ export default function Checkout() {
             <div className="mb-8">
               <p className="mb-2 text-sm font-bold uppercase tracking-wide text-[#D45387]">Crea tu cuenta</p>
               <h1 className="text-3xl font-black text-gray-900">Empieza tus 7 días gratis</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-600">Completa tus datos. No realizaremos ningún cobro hoy.</p>
+              <p className="mt-2 text-sm leading-6 text-gray-600">Completa tus datos y elige cómo continuar después de tu prueba. Hoy pagas US$0.</p>
             </div>
 
             <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
@@ -104,12 +104,9 @@ export default function Checkout() {
                 })}
               </div>
 
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Plan seleccionado</p>
-                  <h3 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h3>
-                </div>
-                {plan.badge && <span className="rounded-full bg-[#D45387]/10 px-3 py-1 text-xs font-bold text-[#D45387]">{plan.badge}</span>}
+              <div className="mb-4">
+                <p className="text-sm text-gray-500">Plan seleccionado</p>
+                <h3 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h3>
               </div>
 
               <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -122,7 +119,7 @@ export default function Checkout() {
 
               <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div>
-                <div className="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center"><p className="font-bold text-[#003087]">PayPal</p><p className="mt-1 text-xs text-gray-500">La suscripción usará el Billing Plan de PayPal correspondiente a <strong>{plan.name}</strong> cuando conectemos los IDs de Sandbox.</p></div>
+                <div className="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center"><p className="font-bold text-[#003087]">PayPal</p><p className="mt-1 text-xs text-gray-500">Tu método de pago quedará asociado de forma segura a tu suscripción.</p></div>
               </div>
 
               <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con PayPal. CEO Rentable no almacena los datos de tu tarjeta.</p></div>
