@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 const CONTACT_EMAIL = 'contacto@espinalguerra.com';
 const CONTACT_PHONE = '+1 809-251-7070';
@@ -54,6 +54,8 @@ const documents = {
   },
 };
 
+const navLinkClass = 'inline-flex min-h-[40px] items-center rounded-lg px-2 py-1 font-semibold text-[#D45387] underline decoration-[#D45387]/25 underline-offset-4 transition hover:bg-[#D45387]/5 hover:decoration-[#D45387] focus:outline-none focus:ring-2 focus:ring-[#D45387]/30';
+
 export default function Legal() {
   const { pathname } = useLocation();
   const document = documents[pathname] || documents['/privacidad'];
@@ -62,10 +64,10 @@ export default function Legal() {
     <main className="min-h-screen bg-[#F7F3EE] px-4 py-8 sm:px-6 lg:py-12">
       <article className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl">
         <header className="border-b border-gray-100 px-6 py-8 sm:px-10">
-          <Link to="/checkout" className="flex items-center gap-3">
+          <a href="/checkout" className="flex items-center gap-3">
             <img src="/brand/isotipo.png" alt="CEO Rentable OS" className="h-10 w-10" />
             <div><p className="font-black text-gray-900">CEO Rentable OS</p><p className="text-xs text-gray-500">Información legal</p></div>
-          </Link>
+          </a>
           <h1 className="mt-8 text-3xl font-black text-gray-900 sm:text-4xl">{document.title}</h1>
           <p className="mt-3 max-w-3xl leading-7 text-gray-600">{document.intro}</p>
           <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-400">Última actualización: 2 de septiembre de 2026</p>
@@ -82,15 +84,15 @@ export default function Legal() {
           <div className="rounded-2xl bg-gray-50 p-5 text-sm leading-6 text-gray-600">
             <strong className="text-gray-900">Espinal Guerra</strong><br />
             CEO Rentable OS<br />
-            <a className="font-semibold text-[#D45387]" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><br />
-            <a className="font-semibold text-[#D45387]" href="tel:+18092517070">{CONTACT_PHONE}</a>
+            <a className="font-semibold text-[#D45387] underline underline-offset-2" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><br />
+            <a className="font-semibold text-[#D45387] underline underline-offset-2" href="tel:+18092517070">{CONTACT_PHONE}</a>
           </div>
 
-          <nav className="flex flex-wrap gap-x-5 gap-y-2 border-t border-gray-100 pt-6 text-sm font-semibold text-[#D45387]">
-            <Link to="/terminos">Términos de Servicio</Link>
-            <Link to="/privacidad">Política de Privacidad</Link>
-            <Link to="/cookies">Política de Cookies</Link>
-            <Link to="/checkout">Volver al checkout</Link>
+          <nav aria-label="Documentos legales" className="grid grid-cols-1 gap-1 border-t border-gray-100 pt-6 text-sm sm:grid-cols-2">
+            <a href="/terminos" className={navLinkClass}>Términos de Servicio</a>
+            <a href="/privacidad" className={navLinkClass}>Política de Privacidad</a>
+            <a href="/cookies" className={navLinkClass}>Política de Cookies</a>
+            <a href="/checkout" className={navLinkClass}>Volver al checkout</a>
           </nav>
         </div>
       </article>
