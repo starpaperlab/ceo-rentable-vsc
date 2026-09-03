@@ -1,22 +1,152 @@
-import React from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { CHECKOUT_PLANS, getCheckoutPlan, isRecurringCheckoutPlan } from '@/lib/checkoutPlans';
+import { useAuth } from '@/lib/AuthContext';
+import { verifyPayPalSubscription } from '@/lib/paypalService';
+import PayPalSubscriptionButton from '@/components/payments/PayPalSubscriptionButton';
 
-const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#D45387] focus:ring-2 focus:ring-[#D45387]/15';
+const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#D45387] focus:ring-2 focus:ring-[#D45387]/15 disabled:bg-gray-50 disabled:text-gray-500';
 const legalLinkClass = 'font-semibold text-[#D45387] underline decoration-[#D45387]/30 underline-offset-2 hover:decoration-[#D45387]';
 
+const INITIAL_FORM = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  businessName: '',
+  phone: '',
+  country: 'DO',
+  password: '',
+  confirmPassword: '',
+};
+
 export default function Checkout() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user, userProfile, register, refreshUserProfile, isLoadingAuth } = useAuth();
   const requestedPlan = searchParams.get('plan');
   const selectedPlanCode = isRecurringCheckoutPlan(requestedPlan) ? requestedPlan : 'annual';
   const plan = getCheckoutPlan(selectedPlanCode) || getCheckoutPlan('annual');
+
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [marketingAccepted, setMarketingAccepted] = useState(false);
+  const [accountReady, setAccountReady] = useState(Boolean(user));
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [subscriptionConfirmed, setSubscriptionConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fullName = `${userProfile?.full_name || user.user_metadata?.full_name || ''}`.trim();
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    setForm((current) => ({
+      ...current,
+      firstName: current.firstName || parts[0] || '',
+      lastName: current.lastName || parts.slice(1).join(' '),
+      email: current.email || user.email || '',
+      businessName: current.businessName || userProfile?.business_name || user.user_metadata?.business_name || '',
+      phone: current.phone || userProfile?.phone || user.user_metadata?.phone || '',
+    }));
+    setAccountReady(true);
+  }, [user, userProfile]);
+
+  const fullName = useMemo(
+    () => `${form.firstName} ${form.lastName}`.replace(/\s+/g, ' ').trim(),
+    [form.firstName, form.lastName]
+  );
 
   const selectPlan = (planCode) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('plan', planCode);
     setSearchParams(nextParams, { replace: true });
+    setError('');
+    setMessage('');
   };
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const validateRegistration = () => {
+    if (!form.firstName.trim() || !form.lastName.trim()) throw new Error('Escribe tu nombre y apellido.');
+    if (!form.email.trim()) throw new Error('Escribe tu correo electrónico.');
+    if (!form.businessName.trim()) throw new Error('Escribe el nombre de tu empresa o marca.');
+    if (form.password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.');
+    if (form.password !== form.confirmPassword) throw new Error('Las contraseñas no coinciden.');
+    if (!termsAccepted) throw new Error('Debes aceptar los Términos y la Política de Privacidad.');
+  };
+
+  const handleCreateAccount = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (user) {
+      if (!termsAccepted) {
+        setError('Debes aceptar los Términos y la Política de Privacidad.');
+        return;
+      }
+      setAccountReady(true);
+      setMessage('Tu cuenta está lista. Ya puedes vincular PayPal de forma segura.');
+      return;
+    }
+
+    try {
+      validateRegistration();
+      setCreatingAccount(true);
+      const result = await register({
+        email: form.email,
+        password: form.password,
+        fullName,
+        businessName: form.businessName,
+        phone: form.phone,
+        emailRedirectTo: `${window.location.origin}/checkout?plan=${plan.code}`,
+      });
+
+      if (result.needsEmailConfirmation) {
+        setAccountReady(false);
+        setMessage('Tu cuenta fue creada. Confirma tu correo y vuelve a este checkout para continuar con PayPal.');
+        return;
+      }
+
+      setAccountReady(true);
+      setMessage('Cuenta creada. Ahora vincula PayPal para iniciar tus 7 días gratis.');
+    } catch (registrationError) {
+      setError(registrationError?.message || 'No pudimos crear tu cuenta.');
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
+  const handleSubscriptionApproved = async ({ subscriptionId, planCode }) => {
+    setError('');
+    setMessage('Confirmando tu suscripción con PayPal…');
+    setVerifyingPayment(true);
+
+    try {
+      const result = await verifyPayPalSubscription(subscriptionId, planCode);
+      if (!result.success) throw new Error(result.error || 'No pudimos confirmar la suscripción.');
+
+      setSubscriptionConfirmed(true);
+      setMessage(
+        result.status === 'trialing'
+          ? '¡Listo! Tu prueba de 7 días está activa y hoy pagaste US$0.'
+          : '¡Listo! PayPal confirmó tu suscripción.'
+      );
+      await refreshUserProfile?.();
+    } catch (verificationError) {
+      setError(verificationError?.message || 'PayPal recibió la solicitud, pero no pudimos confirmar el acceso todavía.');
+      setMessage('');
+    } finally {
+      setVerifyingPayment(false);
+    }
+  };
+
+  const paymentDisabled = isLoadingAuth || !accountReady || !termsAccepted || subscriptionConfirmed || verifyingPayment;
 
   return (
     <main className="min-h-screen bg-[#F7F3EE] px-4 py-8 sm:px-6 lg:py-12">
@@ -34,28 +164,50 @@ export default function Checkout() {
               <p className="mt-2 text-sm leading-6 text-gray-600">Completa tus datos y elige cómo continuar después de tu prueba. Hoy pagas US$0.</p>
             </div>
 
-            <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">Nombre<input className={`${fieldClass} mt-2`} autoComplete="given-name" placeholder="Tu nombre" /></label>
-                <label className="text-sm font-semibold text-gray-700">Apellido<input className={`${fieldClass} mt-2`} autoComplete="family-name" placeholder="Tu apellido" /></label>
+            {user && (
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Sesión iniciada como <strong>{user.email}</strong>. Solo falta aceptar las condiciones y vincular PayPal.
               </div>
-              <label className="block text-sm font-semibold text-gray-700">Correo electrónico<input type="email" className={`${fieldClass} mt-2`} autoComplete="email" placeholder="nombre@empresa.com" /></label>
-              <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input className={`${fieldClass} mt-2`} autoComplete="organization" placeholder="Ej. Dulce Studio" /></label>
+            )}
+
+            <form className="space-y-5" onSubmit={handleCreateAccount}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">WhatsApp<input type="tel" className={`${fieldClass} mt-2`} autoComplete="tel" placeholder="+1 809 000 0000" /></label>
-                <label className="text-sm font-semibold text-gray-700">País<select className={`${fieldClass} mt-2`} defaultValue="DO"><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label>
+                <label className="text-sm font-semibold text-gray-700">Nombre<input value={form.firstName} onChange={(event) => updateField('firstName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="given-name" placeholder="Tu nombre" /></label>
+                <label className="text-sm font-semibold text-gray-700">Apellido<input value={form.lastName} onChange={(event) => updateField('lastName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="family-name" placeholder="Tu apellido" /></label>
               </div>
+              <label className="block text-sm font-semibold text-gray-700">Correo electrónico<input value={form.email} onChange={(event) => updateField('email', event.target.value)} disabled={Boolean(user)} type="email" className={`${fieldClass} mt-2`} autoComplete="email" placeholder="nombre@empresa.com" /></label>
+              <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input value={form.businessName} onChange={(event) => updateField('businessName', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`} autoComplete="organization" placeholder="Ej. Dulce Studio" /></label>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-gray-700">Contraseña<input type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Mínimo 8 caracteres" /></label>
-                <label className="text-sm font-semibold text-gray-700">Confirmar contraseña<input type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Repite tu contraseña" /></label>
+                <label className="text-sm font-semibold text-gray-700">WhatsApp<input value={form.phone} onChange={(event) => updateField('phone', event.target.value)} disabled={Boolean(user)} type="tel" className={`${fieldClass} mt-2`} autoComplete="tel" placeholder="+1 809 000 0000" /></label>
+                <label className="text-sm font-semibold text-gray-700">País<select value={form.country} onChange={(event) => updateField('country', event.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-2`}><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label>
               </div>
 
+              {!user && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-semibold text-gray-700">Contraseña<input value={form.password} onChange={(event) => updateField('password', event.target.value)} type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Mínimo 8 caracteres" /></label>
+                  <label className="text-sm font-semibold text-gray-700">Confirmar contraseña<input value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} type="password" className={`${fieldClass} mt-2`} autoComplete="new-password" placeholder="Repite tu contraseña" /></label>
+                </div>
+              )}
+
               <label className="flex items-start gap-3 text-sm leading-5 text-gray-600">
-                <input type="checkbox" required className="mt-1 h-4 w-4 accent-[#D45387]" />
+                <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required className="mt-1 h-4 w-4 accent-[#D45387]" />
                 <span>Acepto los <a href="/terminos" target="_blank" rel="noreferrer" className={legalLinkClass}>Términos de Servicio</a> y la <a href="/privacidad" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Privacidad</a> de CEO Rentable.</span>
               </label>
-              <label className="flex items-start gap-3 text-sm leading-5 text-gray-600"><input type="checkbox" className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Quiero recibir novedades y consejos de CEO Rentable. <strong className="font-medium">Opcional.</strong></span></label>
+              <label className="flex items-start gap-3 text-sm leading-5 text-gray-600"><input type="checkbox" checked={marketingAccepted} onChange={(event) => setMarketingAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Quiero recibir novedades y consejos de CEO Rentable. <strong className="font-medium">Opcional.</strong></span></label>
               <p className="pl-7 text-xs leading-5 text-gray-500">Consulta también nuestra <a href="/cookies" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Cookies</a>.</p>
+
+              {!accountReady && (
+                <button type="submit" disabled={creatingAccount} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60">
+                  {creatingAccount ? 'Creando cuenta…' : 'Crear cuenta y continuar'}
+                </button>
+              )}
+
+              {user && accountReady && !termsAccepted && (
+                <button type="submit" className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white">Aceptar y continuar</button>
+              )}
+
+              {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-5 text-emerald-800">{message}</div>}
+              {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">{error}</div>}
             </form>
           </section>
 
@@ -66,23 +218,43 @@ export default function Checkout() {
                 {Object.values(CHECKOUT_PLANS).map((option) => {
                   const isSelected = option.code === plan.code;
                   const isAnnual = option.code === 'annual';
-                  return <button key={option.code} type="button" role="radio" aria-checked={isSelected} onClick={() => selectPlan(option.code)} className={`relative min-h-[126px] rounded-2xl border-2 p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 ${isSelected ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                  return <button key={option.code} type="button" role="radio" aria-checked={isSelected} onClick={() => selectPlan(option.code)} disabled={verifyingPayment || subscriptionConfirmed} className={`relative min-h-[126px] rounded-2xl border-2 p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 disabled:opacity-60 ${isSelected ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
                     {isAnnual && <span className="absolute -top-3 right-3 rounded-full bg-[#D45387] px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">Mejor valor</span>}
                     <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-black text-gray-900">{option.name}</p><p className="mt-2 text-lg font-black text-gray-900">{option.renewalLabel}</p></div><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-gray-300 bg-white text-transparent'}`}><Check className="h-3.5 w-3.5" strokeWidth={3} /></span></div>
                     <p className="mt-2 text-xs leading-4 text-gray-500">{isAnnual ? 'Equivale a US$17.50/mes' : 'Facturación cada mes'}</p>
                   </button>;
                 })}
               </div>
+
               <div className="mb-4"><p className="text-sm text-gray-500">Plan seleccionado</p><h3 className="text-2xl font-black text-gray-900">CEO Rentable {plan.name}</h3></div>
               <div className="rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-4"><span className="font-semibold text-gray-700">Prueba gratis</span><strong className="text-gray-900">7 días</strong></div>
                 <div className="flex items-center justify-between py-4"><span className="font-semibold text-gray-700">Hoy pagas</span><strong className="text-2xl text-gray-900">US$0</strong></div>
                 <div className="border-t border-gray-100 pt-4"><p className="text-sm text-gray-500">Después de la prueba</p><p className="mt-1 text-2xl font-black text-gray-900">{plan.renewalLabel}</p><p className="mt-1 text-xs text-gray-500">Renovación automática. Cancela antes de finalizar la prueba para evitar el primer cobro.</p></div>
               </div>
+
               {plan.code === 'annual' && <div className="mt-4 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5 shrink-0" /><span><strong>Ahorras US$42 al año.</strong> Equivale a 2 meses gratis frente al plan mensual.</span></div>}
-              <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5"><div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div><div className="rounded-xl border-2 border-dashed border-gray-200 px-4 py-6 text-center"><p className="font-bold text-[#003087]">PayPal</p><p className="mt-1 text-xs text-gray-500">Tu método de pago quedará asociado de forma segura a tu suscripción.</p></div></div>
+
+              <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
+                <div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold text-gray-900">Método de pago</h3></div>
+                {subscriptionConfirmed ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-sm text-emerald-800">
+                    <CheckCircle2 className="mx-auto mb-2 h-6 w-6" />
+                    PayPal confirmó tu suscripción.
+                    <button type="button" onClick={() => navigate('/')} className="mt-3 block w-full rounded-lg bg-emerald-700 px-4 py-2.5 font-bold text-white">Entrar a CEO Rentable</button>
+                  </div>
+                ) : (
+                  <PayPalSubscriptionButton
+                    plan={plan}
+                    disabled={paymentDisabled}
+                    onApproved={handleSubscriptionApproved}
+                    onError={() => setError('No pudimos abrir PayPal. Inténtalo nuevamente.')}
+                  />
+                )}
+              </div>
+
               <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con PayPal. CEO Rentable no almacena los datos de tu tarjeta.</p></div>
-              <p className="mt-6 text-center text-xs text-gray-400">¿Ya tienes cuenta? <Link to="/login" className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
+              <p className="mt-6 text-center text-xs text-gray-400">¿Ya tienes cuenta? <Link to={`/login?plan=${plan.code}`} className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
             </div>
           </aside>
         </div>
