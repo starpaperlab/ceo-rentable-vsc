@@ -73,17 +73,17 @@ function planBody(productId, name, description, intervalUnit, price) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+  if (!['GET', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST');
     return json(res, 405, { success: false, code: 'METHOD_NOT_ALLOWED' });
   }
 
-  // This bootstrap route is intentionally sandbox-only and requires a separate one-time guard.
   if (`${process.env.PAYPAL_ENVIRONMENT || 'sandbox'}`.toLowerCase() !== 'sandbox') {
     return json(res, 403, { success: false, code: 'SANDBOX_ONLY' });
   }
+
   const guard = `${process.env.PAYPAL_SETUP_TOKEN || ''}`.trim();
-  const supplied = `${req.headers?.['x-paypal-setup-token'] || ''}`.trim();
+  const supplied = `${req.headers?.['x-paypal-setup-token'] || req.query?.token || ''}`.trim();
   if (!guard || supplied !== guard) {
     return json(res, 403, { success: false, code: 'SETUP_NOT_AUTHORIZED' });
   }
