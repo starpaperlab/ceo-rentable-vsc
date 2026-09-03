@@ -14,6 +14,7 @@ import Diagnostico from './pages/Diagnostico';
 import Agenda from './pages/Agenda';
 import Paywall from './pages/Paywall';
 import Checkout from './pages/Checkout';
+import Legal from './pages/Legal';
 import CostLibrary from './pages/CostLibrary';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from '@/pages/Login';
@@ -49,6 +50,9 @@ const AuthenticatedApp = () => {
       <Route path="/activar-acceso" element={<ActivateAccess />} />
       <Route path="/paywall" element={<Paywall />} />
       <Route path="/checkout" element={<Checkout />} />
+      <Route path="/terminos" element={<Legal />} />
+      <Route path="/privacidad" element={<Legal />} />
+      <Route path="/cookies" element={<Legal />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
       <Route path="/payment-cancel" element={<PaymentCancel />} />
       <Route path="/manual-payment" element={<ManualPaymentConfirmation />} />
