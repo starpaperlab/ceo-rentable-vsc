@@ -1,4 +1,4 @@
-export const CHECKOUT_TRIAL_DAYS = 7;
+export const CHECKOUT_TRIAL_DAYS = 21;
 
 const PAYPAL_BILLING_PLAN_IDS = {
   monthly: import.meta.env.VITE_PAYPAL_BILLING_PLAN_MONTHLY_ID || '',
@@ -9,10 +9,10 @@ export const CHECKOUT_PLANS = {
   monthly: {
     code: 'monthly',
     name: 'Mensual',
-    amount: '21.00',
+    amount: '17.99',
     currency: 'USD',
     billingLabel: '/mes',
-    renewalLabel: 'US$21/mes',
+    renewalLabel: 'US$17.99/mes',
     trialDays: CHECKOUT_TRIAL_DAYS,
     badge: null,
     paypalBillingPlanId: PAYPAL_BILLING_PLAN_IDS.monthly,
@@ -20,13 +20,13 @@ export const CHECKOUT_PLANS = {
   annual: {
     code: 'annual',
     name: 'Anual',
-    amount: '210.00',
+    amount: '179.00',
     currency: 'USD',
     billingLabel: '/año',
-    renewalLabel: 'US$210/año',
+    renewalLabel: 'US$179/año',
     trialDays: CHECKOUT_TRIAL_DAYS,
-    badge: '2 meses gratis',
-    savingsAmount: '42.00',
+    badge: 'Mejor valor',
+    savingsAmount: '36.88',
     paypalBillingPlanId: PAYPAL_BILLING_PLAN_IDS.annual,
   },
 };
