@@ -19,8 +19,8 @@ const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
 const PAYPAL_ENVIRONMENT = import.meta.env.VITE_PAYPAL_ENVIRONMENT || 'sandbox';
 const PAYPAL_CURRENCY = import.meta.env.VITE_PAYPAL_CURRENCY || 'USD';
 const PAYPAL_PLAN_FOUNDER_LIFETIME_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_FOUNDER_LIFETIME_AMOUNT || '4997.00';
-const PAYPAL_PLAN_MONTHLY_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_MONTHLY_AMOUNT || '21.00';
-const PAYPAL_PLAN_ANNUAL_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_ANNUAL_AMOUNT || '210.00';
+const PAYPAL_PLAN_MONTHLY_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_MONTHLY_AMOUNT || '17.99';
+const PAYPAL_PLAN_ANNUAL_AMOUNT = import.meta.env.VITE_PAYPAL_PLAN_ANNUAL_AMOUNT || '179.00';
 const PAYPAL_MONTHLY_PLAN_ID = import.meta.env.VITE_PAYPAL_BILLING_PLAN_MONTHLY_ID || import.meta.env.VITE_PAYPAL_MONTHLY_PLAN_ID || '';
 const PAYPAL_ANNUAL_PLAN_ID = import.meta.env.VITE_PAYPAL_BILLING_PLAN_ANNUAL_ID || import.meta.env.VITE_PAYPAL_ANNUAL_PLAN_ID || '';
 
@@ -57,7 +57,7 @@ export const ENV_CONFIG = {
     environment: PAYPAL_ENVIRONMENT,
     enabled: !!PAYPAL_CLIENT_ID,
     currency: PAYPAL_CURRENCY,
-    trialDays: 7,
+    trialDays: 21,
     plans: {
       founder_lifetime: {
         code: 'founder_lifetime',
