@@ -11,15 +11,13 @@ import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
 import { getCheckoutPlan } from '@/lib/checkoutPlans';
 import { trackPurchase } from '@/lib/metaPixel';
 
-const AUTH_SESSION_ERROR =
-  'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
+const AUTH_SESSION_ERROR = 'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
   const { refreshUserProfile } = useAuth();
-  const [status, setStatus] = useState('loading'); // loading | success | pending | error
+  const [status, setStatus] = useState('loading');
   const [user, setUser] = useState(null);
-  const [provider, setProvider] = useState('paypal');
   const [planCode, setPlanCode] = useState(null);
   const [message, setMessage] = useState('Confirmando tu acceso...');
   const [isSubscriptionFlow, setIsSubscriptionFlow] = useState(false);
@@ -28,7 +26,7 @@ export default function PaymentSuccess() {
   const hasTrackedPurchaseRef = useRef(false);
 
   const checkoutPlan = planCode ? getCheckoutPlan(planCode) : null;
-  const planLabel = checkoutPlan?.name || (planCode === 'founder_lifetime' ? 'Founder Lifetime' : 'suscripción');
+  const planLabel = checkoutPlan?.name || (planCode === 'founder_lifetime' ? 'Founder Lifetime' : 'seleccionado');
 
   useEffect(() => {
     const verifyAccess = async () => {
@@ -42,7 +40,6 @@ export default function PaymentSuccess() {
       const nextPlanCode = normalizeCheckoutPlan(params.get('plan'));
       const requestedTrialDays = Number(params.get('trial_days'));
 
-      setProvider(nextProvider || 'paypal');
       setIsSubscriptionFlow(Boolean(subscriptionId));
       if (nextPlanCode) setPlanCode(nextPlanCode);
       if (Number.isFinite(requestedTrialDays) && requestedTrialDays > 0) setTrialDays(requestedTrialDays);
@@ -66,10 +63,7 @@ export default function PaymentSuccess() {
 
         if (!hasTrackedPurchaseRef.current && `${capture.status || ''}`.toLowerCase() === 'completed') {
           hasTrackedPurchaseRef.current = true;
-          trackPurchase(resolvedPlanCode, capture.captureId || orderId || null, {
-            value: capture.amount,
-            currency: capture.currency,
-          });
+          trackPurchase(resolvedPlanCode, capture.captureId || orderId || null, { value: capture.amount, currency: capture.currency });
         }
 
         setMessage('Actualizando tu acceso...');
@@ -84,26 +78,14 @@ export default function PaymentSuccess() {
       }
 
       setMessage(subscriptionId ? 'Verificando tu prueba gratuita...' : 'Verificando tu acceso...');
-      const { data: profile } = await supabase
-        .from('users')
-        .select('has_access, plan')
-        .eq('id', currentUser.id)
-        .maybeSingle();
-
+      const { data: profile } = await supabase.from('users').select('has_access, plan').eq('id', currentUser.id).maybeSingle();
       if (normalizeCheckoutPlan(profile?.plan)) setPlanCode(normalizeCheckoutPlan(profile.plan));
 
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('status')
-        .eq('user_id', currentUser.id)
-        .in('status', ['active', 'trialing'])
-        .maybeSingle();
-
+      const { data: subscription } = await supabase.from('subscriptions').select('status').eq('user_id', currentUser.id).in('status', ['active', 'trialing']).maybeSingle();
       if (profile?.has_access || subscription) {
         setStatus('success');
         return;
       }
-
       setStatus('pending');
     };
 
@@ -116,17 +98,9 @@ export default function PaymentSuccess() {
   const goToDashboard = () => navigate('/Dashboard', { replace: true });
   const goToLogin = () => navigate(getLoginPath(planCode, { mode: 'login' }), { replace: true });
 
-  if (status === 'loading') {
-    return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><div className="text-center space-y-4"><Loader2 className="h-10 w-10 animate-spin text-[#D45387] mx-auto" /><p className="text-gray-600 text-sm">{message}</p></div></div>;
-  }
-
-  if (status === 'error') {
-    return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><p className="text-lg font-bold">No pudimos terminar la verificación</p><p className="text-sm text-gray-600">{message}</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
-  }
-
-  if (status === 'pending') {
-    return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><Loader2 className="h-8 w-8 animate-spin text-[#D45387] mx-auto" /><p className="text-lg font-bold">Tu acceso se está terminando de activar</p><p className="text-sm text-gray-600">PayPal ya devolvió la operación. Estamos esperando que CEO Rentable refleje la confirmación segura en tu cuenta.</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
-  }
+  if (status === 'loading') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><div className="text-center space-y-4"><Loader2 className="h-10 w-10 animate-spin text-[#D45387] mx-auto" /><p className="text-gray-600 text-sm">{message}</p></div></div>;
+  if (status === 'error') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><p className="text-lg font-bold">No pudimos terminar la verificación</p><p className="text-sm text-gray-600">{message}</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
+  if (status === 'pending') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><Loader2 className="h-8 w-8 animate-spin text-[#D45387] mx-auto" /><p className="text-lg font-bold">Tu acceso se está terminando de activar</p><p className="text-sm text-gray-600">PayPal ya confirmó la operación. Estamos terminando de activar tu acceso a CEO Rentable.</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4 py-8">
@@ -138,7 +112,7 @@ export default function PaymentSuccess() {
             </motion.div>
             <p className="text-xs font-black uppercase tracking-widest text-[#D45387]">¡Gracias por confiar en CEO Rentable!</p>
             <h1 className="mt-2 text-3xl font-black text-gray-900">{isSubscriptionFlow ? `Tu prueba de ${trialDays} días está lista` : 'Tu acceso está listo'}</h1>
-            <p className="mt-3 text-sm leading-6 text-gray-600">{isSubscriptionFlow ? `Tu suscripción ${planLabel} fue verificada correctamente. Hoy pagaste US$0.` : `Tu plan ${planLabel} fue verificado correctamente.`}</p>
+            <p className="mt-3 text-sm leading-6 text-gray-600">{isSubscriptionFlow ? `Tu plan ${planLabel} fue verificado correctamente. Hoy pagaste US$0.` : `Tu plan ${planLabel} fue verificado correctamente.`}</p>
           </div>
 
           <div className="space-y-5 px-8 py-8">
@@ -147,18 +121,15 @@ export default function PaymentSuccess() {
                 <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-[#D45387]" />
                 <div>
                   <p className="font-bold text-gray-900">¿Cómo entro ahora?</p>
-                  <p className="mt-1 text-sm leading-6 text-gray-600">Usa el mismo correo y la contraseña que creaste cuando te registraste en el checkout.</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">Entra con el mismo correo y contraseña de tu cuenta de CEO Rentable.</p>
                   {user?.email && <p className="mt-2 break-all text-xs font-semibold text-gray-500">Correo de acceso: {user.email}</p>}
                 </div>
               </div>
             </div>
 
-            <Button size="lg" className="w-full bg-[#D45387] hover:bg-[#C2477B] text-white font-bold" onClick={goToLogin}>
-              Ir a iniciar sesión
-              <ArrowRight className="h-5 w-5 ml-2" />
-            </Button>
-            <button type="button" onClick={goToDashboard} className="w-full text-sm font-semibold text-gray-500 hover:text-gray-800">Ya estoy dentro, ir al dashboard</button>
-            <p className="text-center text-xs leading-5 text-gray-400">Si no recuerdas tu contraseña, en la pantalla de inicio de sesión puedes usar “Olvidé mi contraseña”.</p>
+            <Button size="lg" className="w-full bg-[#D45387] hover:bg-[#C2477B] text-white font-bold" onClick={goToLogin}>Entrar a CEO Rentable<ArrowRight className="h-5 w-5 ml-2" /></Button>
+            <button type="button" onClick={goToDashboard} className="w-full text-sm font-semibold text-gray-500 hover:text-gray-800">Ya inicié sesión, ir al dashboard</button>
+            <p className="text-center text-xs leading-5 text-gray-400">¿No recuerdas tu contraseña? Puedes restablecerla desde la pantalla de inicio de sesión.</p>
           </div>
         </Card>
       </motion.div>
