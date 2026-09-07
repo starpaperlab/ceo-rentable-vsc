@@ -1,18 +1,25 @@
 export const CHECKOUT_TRIAL_DAYS = 21;
 
+const MONTHLY_AMOUNT = 17.99;
+const ANNUAL_AMOUNT = 179.00;
+
 const PAYPAL_BILLING_PLAN_IDS = {
   monthly: import.meta.env.VITE_PAYPAL_BILLING_PLAN_MONTHLY_ID || '',
   annual: import.meta.env.VITE_PAYPAL_BILLING_PLAN_ANNUAL_ID || '',
 };
 
+const formatUsd = (amount) => Number(amount).toFixed(2).replace(/\.00$/, '');
+const annualMonthlyEquivalent = (ANNUAL_AMOUNT / 12).toFixed(2);
+const annualSavings = (MONTHLY_AMOUNT * 12 - ANNUAL_AMOUNT).toFixed(2);
+
 export const CHECKOUT_PLANS = {
   monthly: {
     code: 'monthly',
     name: 'Mensual',
-    amount: '17.99',
+    amount: MONTHLY_AMOUNT.toFixed(2),
     currency: 'USD',
     billingLabel: '/mes',
-    renewalLabel: 'US$17.99/mes',
+    renewalLabel: `US$${formatUsd(MONTHLY_AMOUNT)}/mes`,
     trialDays: CHECKOUT_TRIAL_DAYS,
     badge: null,
     paypalBillingPlanId: PAYPAL_BILLING_PLAN_IDS.monthly,
@@ -20,13 +27,14 @@ export const CHECKOUT_PLANS = {
   annual: {
     code: 'annual',
     name: 'Anual',
-    amount: '179.00',
+    amount: ANNUAL_AMOUNT.toFixed(2),
     currency: 'USD',
     billingLabel: '/año',
-    renewalLabel: 'US$179/año',
+    renewalLabel: `US$${formatUsd(ANNUAL_AMOUNT)}/año`,
     trialDays: CHECKOUT_TRIAL_DAYS,
     badge: 'Mejor valor',
-    savingsAmount: '36.88',
+    monthlyEquivalentLabel: `Equivale a US$${annualMonthlyEquivalent}/mes`,
+    savingsAmount: annualSavings,
     paypalBillingPlanId: PAYPAL_BILLING_PLAN_IDS.annual,
   },
 };
