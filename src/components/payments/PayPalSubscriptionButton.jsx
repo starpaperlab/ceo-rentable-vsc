@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ENV_CONFIG } from '@/config/env';
 
 const SCRIPT_ID = 'paypal-subscription-sdk';
+const PENDING_SUBSCRIPTION_KEY = 'ceo-rentable-paypal-pending-subscription';
+const PENDING_SUBSCRIPTION_MAX_AGE_MS = 30 * 60 * 1000;
 
 function loadPayPalSdk(clientId) {
   return new Promise((resolve, reject) => {
@@ -27,11 +29,38 @@ function loadPayPalSdk(clientId) {
   });
 }
 
+function savePendingSubscription(subscriptionId, planCode) {
+  if (!subscriptionId || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(PENDING_SUBSCRIPTION_KEY, JSON.stringify({
+      subscriptionId,
+      planCode,
+      createdAt: Date.now(),
+    }));
+  } catch { /* session storage is optional */ }
+}
+
+function readPendingSubscription(planCode) {
+  if (typeof window === 'undefined') return null;
+  try {
+    const pending = JSON.parse(window.sessionStorage.getItem(PENDING_SUBSCRIPTION_KEY) || 'null');
+    if (!pending?.subscriptionId || pending?.planCode !== planCode) return null;
+    if (!pending?.createdAt || Date.now() - pending.createdAt > PENDING_SUBSCRIPTION_MAX_AGE_MS) {
+      window.sessionStorage.removeItem(PENDING_SUBSCRIPTION_KEY);
+      return null;
+    }
+    return pending;
+  } catch {
+    return null;
+  }
+}
+
 export default function PayPalSubscriptionButton({ plan, disabled = false, onApproved, onError }) {
   const containerRef = useRef(null);
   const buttonsRef = useRef(null);
   const approvedRef = useRef(onApproved);
   const errorRef = useRef(onError);
+  const recoveredPendingRef = useRef(false);
   const [sdkError, setSdkError] = useState('');
   const clientId = ENV_CONFIG.paypal.clientId;
   const planId = plan?.paypalBillingPlanId || '';
@@ -44,6 +73,30 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
   useEffect(() => {
     errorRef.current = onError;
   }, [onError]);
+
+  // En iPhone/Safari PayPal puede navegar fuera de la app y volver a cargarla.
+  // En ese caso el callback onApprove del SDK puede perderse. Guardamos el ID
+  // al crear la suscripción y, al volver a montar el checkout, retomamos la
+  // verificación automáticamente de forma idempotente.
+  useEffect(() => {
+    if (!ready || recoveredPendingRef.current || !plan?.code) return;
+    const pending = readPendingSubscription(plan.code);
+    if (!pending?.subscriptionId) return;
+
+    recoveredPendingRef.current = true;
+    Promise.resolve(
+      approvedRef.current?.({
+        subscriptionId: pending.subscriptionId,
+        planCode: pending.planCode,
+        recoveredAfterReturn: true,
+      })
+    ).catch((error) => {
+      recoveredPendingRef.current = false;
+      const message = error?.message || 'No pudimos retomar la confirmación de PayPal.';
+      setSdkError(message);
+      errorRef.current?.(error);
+    });
+  }, [plan?.code, ready]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +122,10 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
             height: 46,
           },
           createSubscription(_data, actions) {
-            return actions.subscription.create({ plan_id: planId });
+            return actions.subscription.create({ plan_id: planId }).then((subscriptionId) => {
+              savePendingSubscription(subscriptionId, plan.code);
+              return subscriptionId;
+            });
           },
           async onApprove(data) {
             if (!data?.subscriptionID) {
@@ -79,12 +135,16 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
               throw error;
             }
 
+            savePendingSubscription(data.subscriptionID, plan.code);
             if (approvedRef.current) {
               await approvedRef.current({
                 subscriptionId: data.subscriptionID,
                 planCode: plan.code,
               });
             }
+          },
+          onCancel() {
+            try { window.sessionStorage.removeItem(PENDING_SUBSCRIPTION_KEY); } catch { /* noop */ }
           },
           onError(error) {
             const message = error?.message || 'No se pudo iniciar la suscripción con PayPal.';
