@@ -98,14 +98,8 @@ async function fetchPayPalSubscription({ apiBase, accessToken, subscriptionId })
     if (!response.ok) return { response, subscription };
 
     const providerStatus = `${subscription?.status || ''}`.toUpperCase();
-    if (ACCESS_GRANT_PROVIDER_STATUSES.has(providerStatus)) {
-      return { response, subscription };
-    }
-
-    if (providerStatus !== 'APPROVAL_PENDING' || attempt === PAYPAL_SETTLE_RETRIES - 1) {
-      return { response, subscription };
-    }
-
+    if (ACCESS_GRANT_PROVIDER_STATUSES.has(providerStatus)) return { response, subscription };
+    if (providerStatus !== 'APPROVAL_PENDING' || attempt === PAYPAL_SETTLE_RETRIES - 1) return { response, subscription };
     await sleep(PAYPAL_SETTLE_DELAY_MS);
   }
 
@@ -114,6 +108,43 @@ async function fetchPayPalSubscription({ apiBase, accessToken, subscriptionId })
 
 function isCheckConstraintError(error) {
   return error?.code === '23514' || `${error?.message || ''}`.toLowerCase().includes('check constraint');
+}
+
+function isMissingRelationError(error) {
+  const message = `${error?.message || ''}`.toLowerCase();
+  return error?.code === '42P01' || error?.code === 'PGRST205' || message.includes('could not find the table') || message.includes('does not exist');
+}
+
+async function persistPayPalSubscription({ service, userId, subscription, subscriptionId, planCode, appStatus, nextBillingTime, now }) {
+  const { error } = await service.from('paypal_subscriptions').upsert({
+    user_id: userId,
+    paypal_subscription_id: subscriptionId,
+    paypal_plan_id: subscription.plan_id,
+    plan_code: planCode,
+    status: appStatus,
+    payer_email: subscription?.subscriber?.email_address || null,
+    start_time: subscription?.start_time || null,
+    next_billing_time: nextBillingTime,
+    raw_provider_status: `${subscription.status || ''}`.toUpperCase(),
+    updated_at: now,
+  }, { onConflict: 'paypal_subscription_id' });
+
+  // La tabla fue añadida en Fase 0.2. Un Preview con la migración pendiente no
+  // debe bloquear una suscripción que PayPal ya confirmó. El registro canónico
+  // queda también en subscriptions.metadata/provider_subscription_id y el
+  // webhook puede reconciliar paypal_subscriptions al aplicar la migración.
+  if (error && isMissingRelationError(error)) {
+    console.warn('paypal_subscriptions unavailable; continuing with canonical subscription record', error.code || '');
+    return { deferred: true };
+  }
+
+  if (error) {
+    const failure = new Error('SUBSCRIPTION_PERSIST_FAILED');
+    failure.causeCode = error.code || null;
+    throw failure;
+  }
+
+  return { deferred: false };
 }
 
 async function upsertAppSubscription({ service, userId, subscription, subscriptionId, planCode, appStatus, nextBillingTime, now }) {
@@ -137,15 +168,8 @@ async function upsertAppSubscription({ service, userId, subscription, subscripti
   };
 
   let result = await service.from('subscriptions').upsert(basePayload, { onConflict: 'user_id' });
-
-  // Compatibilidad temporal con esquemas antiguos: antes del plan anual,
-  // subscriptions.plan_code no aceptaba "annual". Conservamos el plan real
-  // en paypal_subscriptions + metadata y usamos "pro" solo en esa columna legacy.
   if (result.error && planCode === 'annual' && isCheckConstraintError(result.error)) {
-    result = await service.from('subscriptions').upsert({
-      ...basePayload,
-      plan_code: 'pro',
-    }, { onConflict: 'user_id' });
+    result = await service.from('subscriptions').upsert({ ...basePayload, plan_code: 'pro' }, { onConflict: 'user_id' });
   }
 
   if (result.error) {
@@ -160,33 +184,12 @@ async function activateVerifiedSubscription({ service, userId, subscription, sub
   const appStatus = deriveAppStatus(subscription);
   const nextBillingTime = subscription?.billing_info?.next_billing_time || null;
 
-  const { error: saveError } = await service.from('paypal_subscriptions').upsert({
-    user_id: userId,
-    paypal_subscription_id: subscriptionId,
-    paypal_plan_id: subscription.plan_id,
-    plan_code: planCode,
-    status: appStatus,
-    payer_email: subscription?.subscriber?.email_address || null,
-    start_time: subscription?.start_time || null,
-    next_billing_time: nextBillingTime,
-    raw_provider_status: `${subscription.status || ''}`.toUpperCase(),
-    updated_at: now,
-  }, { onConflict: 'paypal_subscription_id' });
-  if (saveError) {
-    const error = new Error('SUBSCRIPTION_PERSIST_FAILED');
-    error.causeCode = saveError.code || null;
-    throw error;
-  }
+  const persistence = await persistPayPalSubscription({
+    service, userId, subscription, subscriptionId, planCode, appStatus, nextBillingTime, now,
+  });
 
   await upsertAppSubscription({
-    service,
-    userId,
-    subscription,
-    subscriptionId,
-    planCode,
-    appStatus,
-    nextBillingTime,
-    now,
+    service, userId, subscription, subscriptionId, planCode, appStatus, nextBillingTime, now,
   });
 
   const { error: userError } = await service.from('users').update({
@@ -205,23 +208,16 @@ async function activateVerifiedSubscription({ service, userId, subscription, sub
     throw error;
   }
 
-  return { appStatus, nextBillingTime };
+  return { appStatus, nextBillingTime, persistenceDeferred: persistence.deferred };
 }
 
 function safeFailureFor(error) {
   const code = `${error?.message || ''}`.trim();
   const known = new Set([
-    'PAYPAL_SERVER_CONFIG_MISSING',
-    'PAYPAL_AUTH_FAILED',
-    'SUBSCRIPTION_PERSIST_FAILED',
-    'APP_SUBSCRIPTION_UPDATE_FAILED',
-    'USER_ACCESS_UPDATE_FAILED',
+    'PAYPAL_SERVER_CONFIG_MISSING', 'PAYPAL_AUTH_FAILED', 'SUBSCRIPTION_PERSIST_FAILED',
+    'APP_SUBSCRIPTION_UPDATE_FAILED', 'USER_ACCESS_UPDATE_FAILED',
   ]);
-
-  if (!known.has(code)) {
-    return { code: 'PAYPAL_SUBSCRIPTION_VERIFY_FAILED', error: 'No pudimos confirmar la suscripción en este momento.' };
-  }
-
+  if (!known.has(code)) return { code: 'PAYPAL_SUBSCRIPTION_VERIFY_FAILED', error: 'No pudimos confirmar la suscripción en este momento.' };
   const messages = {
     PAYPAL_SERVER_CONFIG_MISSING: 'La configuración segura de PayPal del servidor está incompleta.',
     PAYPAL_AUTH_FAILED: 'PayPal no permitió validar la suscripción desde el servidor.',
@@ -229,7 +225,6 @@ function safeFailureFor(error) {
     APP_SUBSCRIPTION_UPDATE_FAILED: 'PayPal confirmó la suscripción, pero no pudimos actualizar el plan de la cuenta.',
     USER_ACCESS_UPDATE_FAILED: 'PayPal confirmó la suscripción, pero no pudimos activar el acceso de la cuenta.',
   };
-
   return { code, error: messages[code], detailCode: error?.causeCode || null };
 }
 
@@ -246,16 +241,12 @@ export default async function handler(req, res) {
   }
 
   const expected = expectedPlanId(planCode);
-  if (!expected) {
-    return json(res, 503, { success: false, code: 'PAYPAL_PLAN_NOT_CONFIGURED', error: 'El plan de suscripción todavía no está configurado.' });
-  }
+  if (!expected) return json(res, 503, { success: false, code: 'PAYPAL_PLAN_NOT_CONFIGURED', error: 'El plan de suscripción todavía no está configurado.' });
 
   const token = getBearerToken(req);
   const anon = getSupabaseAnonClient();
   const service = getSupabaseServiceClient();
-  if (!token || !anon || !service) {
-    return json(res, 401, { success: false, code: 'AUTH_REQUIRED', error: 'Debes iniciar sesión para confirmar la suscripción.' });
-  }
+  if (!token || !anon || !service) return json(res, 401, { success: false, code: 'AUTH_REQUIRED', error: 'Debes iniciar sesión para confirmar la suscripción.' });
 
   let authData;
   try {
@@ -270,19 +261,10 @@ export default async function handler(req, res) {
 
   try {
     const paypal = await getPayPalAccessToken();
-    const { response, subscription } = await fetchPayPalSubscription({
-      apiBase: paypal.apiBase,
-      accessToken: paypal.accessToken,
-      subscriptionId,
-    });
+    const { response, subscription } = await fetchPayPalSubscription({ apiBase: paypal.apiBase, accessToken: paypal.accessToken, subscriptionId });
 
-    if (!response?.ok) {
-      return json(res, 502, { success: false, code: 'PAYPAL_SUBSCRIPTION_LOOKUP_FAILED', error: 'No pudimos verificar la suscripción con PayPal.' });
-    }
-
-    if (`${subscription.plan_id || ''}` !== expected) {
-      return json(res, 409, { success: false, code: 'PAYPAL_PLAN_MISMATCH', error: 'El plan confirmado por PayPal no coincide con el plan seleccionado.' });
-    }
+    if (!response?.ok) return json(res, 502, { success: false, code: 'PAYPAL_SUBSCRIPTION_LOOKUP_FAILED', error: 'No pudimos verificar la suscripción con PayPal.' });
+    if (`${subscription.plan_id || ''}` !== expected) return json(res, 409, { success: false, code: 'PAYPAL_PLAN_MISMATCH', error: 'El plan confirmado por PayPal no coincide con el plan seleccionado.' });
 
     const providerStatus = `${subscription.status || ''}`.toUpperCase();
     if (!ACCESS_GRANT_PROVIDER_STATUSES.has(providerStatus)) {
@@ -296,14 +278,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const activated = await activateVerifiedSubscription({
-      service,
-      userId: user.id,
-      subscription,
-      subscriptionId,
-      planCode,
-    });
-
+    const activated = await activateVerifiedSubscription({ service, userId: user.id, subscription, subscriptionId, planCode });
     return json(res, 200, {
       success: true,
       subscriptionId,
@@ -311,6 +286,7 @@ export default async function handler(req, res) {
       status: activated.appStatus,
       providerStatus,
       nextBillingTime: activated.nextBillingTime,
+      persistenceDeferred: activated.persistenceDeferred,
     });
   } catch (error) {
     console.error('verify PayPal subscription failed', error?.message || error, error?.causeCode || '');
