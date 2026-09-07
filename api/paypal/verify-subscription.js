@@ -5,8 +5,16 @@ const PAYPAL_API_BASES = {
   live: 'https://api-m.paypal.com',
 };
 
+const PAYPAL_SETTLE_RETRIES = 4;
+const PAYPAL_SETTLE_DELAY_MS = 750;
+const ACCESS_GRANT_PROVIDER_STATUSES = new Set(['ACTIVE', 'APPROVED']);
+
 function json(res, status, body) {
   res.status(status).json(body);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getBearerToken(req) {
@@ -63,12 +71,45 @@ function expectedPlanId(planCode) {
 
 function deriveAppStatus(subscription) {
   const providerStatus = `${subscription?.status || ''}`.toUpperCase();
-  if (providerStatus !== 'ACTIVE') return providerStatus.toLowerCase();
-
   const nextBilling = subscription?.billing_info?.next_billing_time
     ? new Date(subscription.billing_info.next_billing_time).getTime()
     : 0;
+
+  if (providerStatus === 'APPROVED') return 'trialing';
+  if (providerStatus !== 'ACTIVE') return providerStatus.toLowerCase();
   return nextBilling > Date.now() ? 'trialing' : 'active';
+}
+
+async function fetchPayPalSubscription({ apiBase, accessToken, subscriptionId }) {
+  let lastResponse = null;
+  let lastSubscription = null;
+
+  for (let attempt = 0; attempt < PAYPAL_SETTLE_RETRIES; attempt += 1) {
+    const response = await fetch(`${apiBase}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const subscription = await response.json().catch(() => ({}));
+    lastResponse = response;
+    lastSubscription = subscription;
+
+    if (!response.ok) return { response, subscription };
+
+    const providerStatus = `${subscription?.status || ''}`.toUpperCase();
+    if (ACCESS_GRANT_PROVIDER_STATUSES.has(providerStatus)) {
+      return { response, subscription };
+    }
+
+    if (providerStatus !== 'APPROVAL_PENDING' || attempt === PAYPAL_SETTLE_RETRIES - 1) {
+      return { response, subscription };
+    }
+
+    await sleep(PAYPAL_SETTLE_DELAY_MS);
+  }
+
+  return { response: lastResponse, subscription: lastSubscription };
 }
 
 async function activateVerifiedSubscription({ service, userId, subscription, subscriptionId, planCode }) {
@@ -103,6 +144,7 @@ async function activateVerifiedSubscription({ service, userId, subscription, sub
       paypal_subscription_id: subscriptionId,
       paypal_plan_id: subscription.plan_id,
       next_billing_time: nextBillingTime,
+      raw_provider_status: `${subscription.status || ''}`.toUpperCase(),
     },
     updated_at: now,
   }, { onConflict: 'user_id' });
@@ -160,14 +202,13 @@ export default async function handler(req, res) {
 
   try {
     const paypal = await getPayPalAccessToken();
-    const response = await fetch(`${paypal.apiBase}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`, {
-      headers: {
-        Authorization: `Bearer ${paypal.accessToken}`,
-        'Content-Type': 'application/json',
-      },
+    const { response, subscription } = await fetchPayPalSubscription({
+      apiBase: paypal.apiBase,
+      accessToken: paypal.accessToken,
+      subscriptionId,
     });
-    const subscription = await response.json().catch(() => ({}));
-    if (!response.ok) {
+
+    if (!response?.ok) {
       return json(res, 502, { success: false, code: 'PAYPAL_SUBSCRIPTION_LOOKUP_FAILED', error: 'No pudimos verificar la suscripción con PayPal.' });
     }
 
@@ -176,8 +217,15 @@ export default async function handler(req, res) {
     }
 
     const providerStatus = `${subscription.status || ''}`.toUpperCase();
-    if (providerStatus !== 'ACTIVE') {
-      return json(res, 409, { success: false, code: 'PAYPAL_SUBSCRIPTION_NOT_ACTIVE', error: 'PayPal todavía no confirmó la suscripción como activa.' });
+    if (!ACCESS_GRANT_PROVIDER_STATUSES.has(providerStatus)) {
+      return json(res, 409, {
+        success: false,
+        code: 'PAYPAL_SUBSCRIPTION_NOT_READY',
+        providerStatus,
+        error: providerStatus === 'APPROVAL_PENDING'
+          ? 'PayPal todavía está terminando de registrar tu aprobación. Inténtalo nuevamente en unos segundos.'
+          : 'PayPal no confirmó la suscripción como aprobada o activa.',
+      });
     }
 
     const activated = await activateVerifiedSubscription({
@@ -193,6 +241,7 @@ export default async function handler(req, res) {
       subscriptionId,
       planCode,
       status: activated.appStatus,
+      providerStatus,
       nextBillingTime: activated.nextBillingTime,
     });
   } catch (error) {
