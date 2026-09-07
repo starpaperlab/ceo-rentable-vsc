@@ -22,7 +22,7 @@ function PlanSelector({ plan, onSelect, disabled = false, compact = false }) {
       return <button key={option.code} type="button" role="radio" aria-checked={isSelected} onClick={() => onSelect(option.code)} disabled={disabled} className={`relative rounded-2xl border-2 text-left transition focus:outline-none focus:ring-2 focus:ring-[#D45387]/30 disabled:opacity-60 ${compact ? 'min-h-[108px] p-3.5' : 'min-h-[126px] p-4'} ${isSelected ? 'border-[#D45387] bg-[#D45387]/5 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
         {isAnnual && <span className={`absolute right-2.5 rounded-full bg-[#D45387] font-black uppercase tracking-wide text-white shadow-sm ${compact ? '-top-2.5 px-2 py-0.5 text-[9px]' : '-top-3 px-2.5 py-1 text-[10px]'}`}>Mejor valor</span>}
         <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-black text-gray-900">{option.name}</p><p className={`${compact ? 'mt-1.5 text-base' : 'mt-2 text-lg'} font-black text-gray-900`}>{option.renewalLabel}</p></div><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${isSelected ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-gray-300 bg-white text-transparent'}`}><Check className="h-3.5 w-3.5" strokeWidth={3} /></span></div>
-        <p className={`${compact ? 'mt-1.5' : 'mt-2'} text-xs leading-4 text-gray-500`}>{isAnnual ? 'Equivale a US$14.92/mes' : 'Facturación cada mes'}</p>
+        <p className={`${compact ? 'mt-1.5' : 'mt-2'} text-xs leading-4 text-gray-500`}>{isAnnual ? option.monthlyEquivalentLabel : 'Facturación cada mes'}</p>
       </button>;
     })}
   </div>;
