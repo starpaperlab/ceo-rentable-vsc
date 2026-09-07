@@ -12,6 +12,10 @@ function getCaptureOrderEndpoint() {
   return '/api/paypal/capture-order';
 }
 
+function getVerifySubscriptionEndpoint() {
+  return '/api/paypal/verify-subscription';
+}
+
 function isAuthenticationFailure(code, message) {
   const normalizedCode = `${code || ''}`.trim().toUpperCase()
   const normalizedMessage = `${message || ''}`.trim().toLowerCase()
@@ -55,24 +59,14 @@ async function getAccessToken() {
 export async function createPayPalOrder(planCode) {
   const accessToken = await getAccessToken();
   if (!accessToken) {
-    return {
-      success: false,
-      code: 'AUTH_REQUIRED',
-      error: AUTH_SESSION_ERROR,
-    };
+    return { success: false, code: 'AUTH_REQUIRED', error: AUTH_SESSION_ERROR };
   }
 
   const response = await fetch(getCreateOrderEndpoint(), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
     credentials: 'include',
-    body: JSON.stringify({
-      planCode,
-      provider: 'paypal',
-    }),
+    body: JSON.stringify({ planCode, provider: 'paypal' }),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -81,12 +75,8 @@ export async function createPayPalOrder(planCode) {
     const failureMessage = payload?.error || 'No se pudo crear la orden de PayPal.'
     return {
       success: false,
-      code: isAuthenticationFailure(failureCode, failureMessage)
-        ? 'AUTH_REQUIRED'
-        : failureCode,
-      error: isAuthenticationFailure(failureCode, failureMessage)
-        ? AUTH_SESSION_ERROR
-        : failureMessage,
+      code: isAuthenticationFailure(failureCode, failureMessage) ? 'AUTH_REQUIRED' : failureCode,
+      error: isAuthenticationFailure(failureCode, failureMessage) ? AUTH_SESSION_ERROR : failureMessage,
     };
   }
 
@@ -103,33 +93,19 @@ export async function createPayPalOrder(planCode) {
 export async function capturePayPalOrder(orderId) {
   const normalizedOrderId = `${orderId || ''}`.trim();
   if (!normalizedOrderId) {
-    return {
-      success: false,
-      code: 'PAYPAL_ORDER_REQUIRED',
-      error: 'Falta el ID de la orden PayPal.',
-    };
+    return { success: false, code: 'PAYPAL_ORDER_REQUIRED', error: 'Falta el ID de la orden PayPal.' };
   }
 
   const accessToken = await getAccessToken();
   if (!accessToken) {
-    return {
-      success: false,
-      code: 'AUTH_REQUIRED',
-      error: AUTH_SESSION_ERROR,
-    };
+    return { success: false, code: 'AUTH_REQUIRED', error: AUTH_SESSION_ERROR };
   }
 
   const response = await fetch(getCaptureOrderEndpoint(), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
     credentials: 'include',
-    body: JSON.stringify({
-      orderId: normalizedOrderId,
-      provider: 'paypal',
-    }),
+    body: JSON.stringify({ orderId: normalizedOrderId, provider: 'paypal' }),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -138,12 +114,8 @@ export async function capturePayPalOrder(orderId) {
     const failureMessage = payload?.error || 'No se pudo confirmar el pago de PayPal.'
     return {
       success: false,
-      code: isAuthenticationFailure(failureCode, failureMessage)
-        ? 'AUTH_REQUIRED'
-        : failureCode,
-      error: isAuthenticationFailure(failureCode, failureMessage)
-        ? AUTH_SESSION_ERROR
-        : failureMessage,
+      code: isAuthenticationFailure(failureCode, failureMessage) ? 'AUTH_REQUIRED' : failureCode,
+      error: isAuthenticationFailure(failureCode, failureMessage) ? AUTH_SESSION_ERROR : failureMessage,
     };
   }
 
@@ -159,7 +131,59 @@ export async function capturePayPalOrder(orderId) {
   };
 }
 
+export async function verifyPayPalSubscription(subscriptionId, planCode) {
+  const normalizedSubscriptionId = `${subscriptionId || ''}`.trim();
+  const normalizedPlanCode = `${planCode || ''}`.trim().toLowerCase();
+
+  if (!normalizedSubscriptionId || !['monthly', 'annual'].includes(normalizedPlanCode)) {
+    return {
+      success: false,
+      code: 'INVALID_SUBSCRIPTION_REQUEST',
+      error: 'Faltan datos para confirmar la suscripción.',
+    };
+  }
+
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    return { success: false, code: 'AUTH_REQUIRED', error: AUTH_SESSION_ERROR };
+  }
+
+  const response = await fetch(getVerifySubscriptionEndpoint(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      subscriptionId: normalizedSubscriptionId,
+      planCode: normalizedPlanCode,
+      provider: 'paypal',
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    const failureCode = payload?.code || 'PAYPAL_SUBSCRIPTION_VERIFY_FAILED';
+    const failureMessage = payload?.error || 'No se pudo confirmar la suscripción de PayPal.';
+    return {
+      success: false,
+      code: isAuthenticationFailure(failureCode, failureMessage) ? 'AUTH_REQUIRED' : failureCode,
+      error: isAuthenticationFailure(failureCode, failureMessage) ? AUTH_SESSION_ERROR : failureMessage,
+    };
+  }
+
+  return {
+    success: true,
+    subscriptionId: payload.subscriptionId || normalizedSubscriptionId,
+    planCode: payload.planCode || normalizedPlanCode,
+    status: payload.status || null,
+    nextBillingTime: payload.nextBillingTime || null,
+  };
+}
+
 export default {
   createPayPalOrder,
   capturePayPalOrder,
+  verifyPayPalSubscription,
 };

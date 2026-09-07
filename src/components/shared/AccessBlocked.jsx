@@ -31,7 +31,7 @@ export default function AccessBlocked() {
           <div className="space-y-3">
             <Button
               className="w-full bg-[#D45387] hover:bg-[#bf477a] text-white"
-              onClick={() => navigate('/paywall')}
+              onClick={() => navigate('/checkout')}
             >
               Ver planes y activar acceso
               <ArrowRight className="h-4 w-4 ml-2" />

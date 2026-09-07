@@ -3,33 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { capturePayPalOrder } from '@/lib/paypalService';
 import { useAuth } from '@/lib/AuthContext';
-import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
+import { CheckCircle, Loader2, ArrowRight, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
+import { getCheckoutPlan } from '@/lib/checkoutPlans';
 import { trackPurchase } from '@/lib/metaPixel';
 
-const AUTH_SESSION_ERROR =
-  'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar con el pago.'
+const AUTH_SESSION_ERROR = 'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
 
 export default function PaymentSuccess() {
   const navigate = useNavigate();
   const { refreshUserProfile } = useAuth();
-  const [status, setStatus] = useState('loading'); // loading | success | pending | error
+  const [status, setStatus] = useState('loading');
   const [user, setUser] = useState(null);
-  const [provider, setProvider] = useState('paypal');
   const [planCode, setPlanCode] = useState(null);
-  const [message, setMessage] = useState('Confirmando tu pago...');
+  const [message, setMessage] = useState('Confirmando tu acceso...');
+  const [isSubscriptionFlow, setIsSubscriptionFlow] = useState(false);
+  const [trialDays, setTrialDays] = useState(21);
   const hasProcessedRef = useRef(false);
   const hasTrackedPurchaseRef = useRef(false);
 
-  const planLabel =
-    planCode === 'founder_lifetime'
-      ? 'Founder Lifetime'
-      : planCode === 'monthly'
-        ? 'Mensual'
-        : 'suscripción';
+  const checkoutPlan = planCode ? getCheckoutPlan(planCode) : null;
+  const planLabel = checkoutPlan?.name || (planCode === 'founder_lifetime' ? 'Founder Lifetime' : 'seleccionado');
 
   useEffect(() => {
     const verifyAccess = async () => {
@@ -39,22 +36,20 @@ export default function PaymentSuccess() {
       const params = new URLSearchParams(window.location.search);
       const nextProvider = `${params.get('provider') || 'paypal'}`.trim().toLowerCase();
       const orderId = `${params.get('order_id') || params.get('orderId') || params.get('token') || ''}`.trim();
+      const subscriptionId = `${params.get('subscription_id') || ''}`.trim();
       const nextPlanCode = normalizeCheckoutPlan(params.get('plan'));
-      setProvider(nextProvider || 'paypal');
-      if (nextPlanCode) {
-        setPlanCode(nextPlanCode);
-      }
+      const requestedTrialDays = Number(params.get('trial_days'));
+
+      setIsSubscriptionFlow(Boolean(subscriptionId));
+      if (nextPlanCode) setPlanCode(nextPlanCode);
+      if (Number.isFinite(requestedTrialDays) && requestedTrialDays > 0) setTrialDays(requestedTrialDays);
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const currentUser = sessionData?.session?.user;
-      if (sessionError || !currentUser) {
-        throw new Error(AUTH_SESSION_ERROR)
-      }
-
+      if (sessionError || !currentUser) throw new Error(AUTH_SESSION_ERROR);
       setUser(currentUser);
 
       if (nextProvider === 'paypal' && orderId) {
-        setStatus('loading');
         setMessage('Procesando confirmación segura de PayPal...');
         const capture = await capturePayPalOrder(orderId);
         if (!capture.success) {
@@ -64,157 +59,78 @@ export default function PaymentSuccess() {
         }
         const normalizedCapturePlan = normalizeCheckoutPlan(capture.planCode);
         const resolvedPlanCode = normalizedCapturePlan || nextPlanCode || planCode || null;
-        if (normalizedCapturePlan) {
-          setPlanCode(normalizedCapturePlan);
-        }
+        if (normalizedCapturePlan) setPlanCode(normalizedCapturePlan);
 
         if (!hasTrackedPurchaseRef.current && `${capture.status || ''}`.toLowerCase() === 'completed') {
           hasTrackedPurchaseRef.current = true;
-          trackPurchase(
-            resolvedPlanCode,
-            capture.captureId || orderId || null,
-            {
-              value: capture.amount,
-              currency: capture.currency,
-            }
-          );
+          trackPurchase(resolvedPlanCode, capture.captureId || orderId || null, { value: capture.amount, currency: capture.currency });
         }
 
         setMessage('Actualizando tu acceso...');
         const refreshedProfile = await refreshUserProfile();
         if (!refreshedProfile?.has_access) {
-          setMessage('El pago fue confirmado, pero tu acceso aún no aparece actualizado. Intenta entrar al dashboard en unos segundos.');
+          setMessage('El pago fue confirmado, pero tu acceso aún se está actualizando.');
           setStatus('pending');
           return;
         }
-
         setStatus('success');
         return;
       }
 
-      setMessage('Verificando tu acceso...');
-      const { data: profile } = await supabase
-        .from('users')
-        .select('has_access, plan')
-        .eq('id', currentUser.id)
-        .maybeSingle();
-      if (normalizeCheckoutPlan(profile?.plan)) {
-        setPlanCode(normalizeCheckoutPlan(profile.plan));
-      }
+      setMessage(subscriptionId ? 'Verificando tu prueba gratuita...' : 'Verificando tu acceso...');
+      const { data: profile } = await supabase.from('users').select('has_access, plan').eq('id', currentUser.id).maybeSingle();
+      if (normalizeCheckoutPlan(profile?.plan)) setPlanCode(normalizeCheckoutPlan(profile.plan));
 
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('status')
-        .eq('user_id', currentUser.id)
-        .in('status', ['active', 'trialing'])
-        .maybeSingle();
-
+      const { data: subscription } = await supabase.from('subscriptions').select('status').eq('user_id', currentUser.id).in('status', ['active', 'trialing']).maybeSingle();
       if (profile?.has_access || subscription) {
         setStatus('success');
         return;
       }
-
       setStatus('pending');
     };
 
     verifyAccess().catch((error) => {
-      setMessage(error?.message || 'No pudimos verificar tu pago.');
+      setMessage(error?.message || 'No pudimos verificar tu acceso.');
       setStatus('error');
     });
   }, [refreshUserProfile]);
 
-  const goToDashboard = () => {
-    navigate('/Dashboard', { replace: true });
-  };
+  const goToDashboard = () => navigate('/Dashboard', { replace: true });
+  const goToLogin = () => navigate(getLoginPath(planCode, { mode: 'login' }), { replace: true });
 
-  const goToLogin = () => {
-    navigate(getLoginPath(planCode, { mode: 'login' }), { replace: true });
-  };
-
-  if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground text-sm">{message}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Card className="p-8 max-w-md text-center space-y-4">
-          <p className="text-lg font-bold text-foreground">Algo salió mal</p>
-          <p className="text-sm text-muted-foreground">{message || 'No pudimos verificar tu acceso automáticamente. Contacta soporte con tu recibo de pago.'}</p>
-          {message === AUTH_SESSION_ERROR ? (
-            <Button variant="outline" onClick={goToLogin}>Iniciar sesión</Button>
-          ) : (
-            <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
-          )}
-        </Card>
-      </div>
-    );
-  }
-
-  if (status === 'pending') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background px-4">
-        <Card className="p-8 max-w-md text-center space-y-4">
-          <p className="text-lg font-bold text-foreground">Pago en verificación</p>
-          <p className="text-sm text-muted-foreground">
-            Estamos esperando confirmación segura de {provider === 'paypal' ? 'PayPal' : 'la pasarela de pago'}. Tu acceso se activará cuando el backend confirme la transacción.
-          </p>
-          <Button variant="outline" onClick={goToDashboard}>Ir al dashboard</Button>
-        </Card>
-      </div>
-    );
-  }
+  if (status === 'loading') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><div className="text-center space-y-4"><Loader2 className="h-10 w-10 animate-spin text-[#D45387] mx-auto" /><p className="text-gray-600 text-sm">{message}</p></div></div>;
+  if (status === 'error') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><p className="text-lg font-bold">No pudimos terminar la verificación</p><p className="text-sm text-gray-600">{message}</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
+  if (status === 'pending') return <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4"><Card className="p-8 max-w-md text-center space-y-4"><Loader2 className="h-8 w-8 animate-spin text-[#D45387] mx-auto" /><p className="text-lg font-bold">Tu acceso se está terminando de activar</p><p className="text-sm text-gray-600">PayPal ya confirmó la operación. Estamos terminando de activar tu acceso a CEO Rentable.</p><Button variant="outline" onClick={goToLogin}>Ir a iniciar sesión</Button></Card></div>;
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background px-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.4 }}
-        className="max-w-md w-full"
-      >
-        <Card className="p-10 text-center space-y-6 border-green-300 dark:border-green-700 shadow-xl">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto"
-          >
-            <CheckCircle className="h-10 w-10 text-green-600" />
-          </motion.div>
-
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">¡Pago exitoso!</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              Bienvenida, <strong>{user?.full_name || user?.email}</strong>. Tu acceso a <strong>CEO Rentable OS™</strong> ya fue activado con tu plan <strong>{planLabel}</strong>.
-            </p>
+    <div className="flex min-h-screen items-center justify-center bg-[#F7F3EE] px-4 py-8">
+      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} className="max-w-md w-full">
+        <Card className="overflow-hidden border-[#F0D4DF] shadow-xl">
+          <div className="bg-[#FFF8FB] px-8 py-10 text-center">
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.15, type: 'spring', stiffness: 200 }} className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
+              <CheckCircle className="h-10 w-10 text-emerald-600" />
+            </motion.div>
+            <p className="text-xs font-black uppercase tracking-widest text-[#D45387]">¡Gracias por confiar en CEO Rentable!</p>
+            <h1 className="mt-2 text-3xl font-black text-gray-900">{isSubscriptionFlow ? `Tu prueba de ${trialDays} días está lista` : 'Tu acceso está listo'}</h1>
+            <p className="mt-3 text-sm leading-6 text-gray-600">{isSubscriptionFlow ? `Tu plan ${planLabel} fue verificado correctamente. Hoy pagaste US$0.` : `Tu plan ${planLabel} fue verificado correctamente.`}</p>
           </div>
 
-          <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tu acceso incluye</p>
-            {['Dashboard financiero completo', 'Módulo de Facturación & Cotizaciones', 'Control de Inventario', 'Análisis de Rentabilidad', 'Reportes exportables'].map(item => (
-              <div key={item} className="flex items-center gap-2 text-sm text-foreground">
-                <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                {item}
+          <div className="space-y-5 px-8 py-8">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 text-left">
+              <div className="flex gap-3">
+                <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-[#D45387]" />
+                <div>
+                  <p className="font-bold text-gray-900">¿Cómo entro ahora?</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">Entra con el mismo correo y contraseña de tu cuenta de CEO Rentable.</p>
+                  {user?.email && <p className="mt-2 break-all text-xs font-semibold text-gray-500">Correo de acceso: {user.email}</p>}
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
 
-          <Button
-            size="lg"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
-            onClick={goToDashboard}
-          >
-            Entrar al Dashboard
-            <ArrowRight className="h-5 w-5 ml-2" />
-          </Button>
+            <Button size="lg" className="w-full bg-[#D45387] hover:bg-[#C2477B] text-white font-bold" onClick={goToLogin}>Entrar a CEO Rentable<ArrowRight className="h-5 w-5 ml-2" /></Button>
+            <button type="button" onClick={goToDashboard} className="w-full text-sm font-semibold text-gray-500 hover:text-gray-800">Ya inicié sesión, ir al dashboard</button>
+            <p className="text-center text-xs leading-5 text-gray-400">¿No recuerdas tu contraseña? Puedes restablecerla desde la pantalla de inicio de sesión.</p>
+          </div>
         </Card>
       </motion.div>
     </div>

@@ -1,4 +1,8 @@
 import { handlePayPalWebhookPayload } from '../../server/paypalWebhookHandler.js';
+import {
+  handlePayPalSubscriptionWebhookPayload,
+  isPayPalSubscriptionEvent,
+} from '../../server/paypalSubscriptionWebhookHandler.js';
 
 function parseRequestBody(body) {
   if (!body) return {};
@@ -24,10 +28,17 @@ export default async function handler(req, res) {
   }
 
   const payload = parseRequestBody(req.body);
-  const result = await handlePayPalWebhookPayload(payload, {
-    env: process.env,
-    headers: req.headers || {},
-  });
+  const eventType = `${payload?.event_type || ''}`.trim();
 
-  res.status(result.status || 500).json(result.body || { success: false, error: 'Error interno' });
+  const result = isPayPalSubscriptionEvent(eventType)
+    ? await handlePayPalSubscriptionWebhookPayload(payload, {
+        env: process.env,
+        headers: req.headers || {},
+      })
+    : await handlePayPalWebhookPayload(payload, {
+        env: process.env,
+        headers: req.headers || {},
+      });
+
+  res.status(result?.status || 500).json(result?.body || { success: false, error: 'Error interno' });
 }

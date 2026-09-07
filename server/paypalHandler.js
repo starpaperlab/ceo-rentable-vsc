@@ -142,7 +142,7 @@ function validateLocalOrderAgainstActivePlan(localOrder) {
   return plan;
 }
 
-async function authenticate(payload = {}, { env = process.env, headers = {} } = {}) {
+async function authenticate(payload = {}, { env = process.env, headers = {}, anonClient = null } = {}) {
   const token = getBearerToken(payload, headers);
   if (!token) {
     return {
@@ -152,8 +152,8 @@ async function authenticate(payload = {}, { env = process.env, headers = {} } = 
     };
   }
 
-  const anonClient = getSupabaseAnonClient(env);
-  if (!anonClient) {
+  const authClient = anonClient || getSupabaseAnonClient(env);
+  if (!authClient) {
     return {
       ok: false,
       status: 500,
@@ -161,20 +161,28 @@ async function authenticate(payload = {}, { env = process.env, headers = {} } = 
     };
   }
 
-  const { data, error } = await anonClient.auth.getUser(token);
-  if (error || !data?.user?.id) {
+  try {
+    const { data, error } = await authClient.auth.getUser(token);
+    if (error || !data?.user?.id) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'Sesión inválida o expirada.',
+      };
+    }
+
+    return {
+      ok: true,
+      user: data.user,
+      token,
+    };
+  } catch {
     return {
       ok: false,
       status: 401,
-      error: `Sesión inválida o expirada.${error?.message ? ` ${error.message}` : ''}`,
+      error: 'Sesión inválida o expirada.',
     };
   }
-
-  return {
-    ok: true,
-    user: data.user,
-    token,
-  };
 }
 
 async function getPayPalAccessToken({ env = process.env, fetchImpl = fetch } = {}) {
@@ -248,7 +256,7 @@ async function createOrderWithPayPal(input, { env = process.env, fetchImpl = fet
       body: {
         success: false,
         code: 'PAYPAL_AUTH_FAILED',
-        error: auth.error,
+        error: 'No se pudo conectar con el proveedor de pagos.',
       },
     };
   }
@@ -586,14 +594,14 @@ export async function handleCreatePayPalOrderPayload(payload = {}, options = {})
     }
 
     return result;
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 500,
       body: {
         success: false,
         code: 'PAYPAL_ORDER_INTERNAL_ERROR',
-        error: error?.message || 'Error interno creando orden PayPal.',
+        error: 'No se pudo crear la orden de pago.',
       },
     };
   }
@@ -627,7 +635,7 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
       };
     }
 
-    const serviceClient = getSupabaseServiceClient(options.env || process.env);
+    const serviceClient = options.serviceClient || getSupabaseServiceClient(options.env || process.env);
     if (!serviceClient) {
       return {
         ok: false,
@@ -635,7 +643,7 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
         body: {
           success: false,
           code: 'SUPABASE_SERVICE_NOT_CONFIGURED',
-          error: 'Falta SUPABASE_SERVICE_ROLE_KEY en el servidor.',
+          error: 'Configuración de pagos incompleta.',
         },
       };
     }
@@ -673,7 +681,7 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
         body: {
           success: false,
           code: 'PAYPAL_AUTH_FAILED',
-          error: paypalAuth.error,
+          error: 'No se pudo conectar con el proveedor de pagos.',
         },
       };
     }
@@ -708,14 +716,14 @@ export async function handleCapturePayPalOrderPayload(payload = {}, options = {}
         alreadyProcessed: activation.alreadyProcessed,
       },
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 500,
       body: {
         success: false,
         code: 'PAYPAL_CAPTURE_INTERNAL_ERROR',
-        error: error?.message || 'Error interno capturando orden PayPal.',
+        error: 'No se pudo confirmar el pago. Inténtalo nuevamente.',
       },
     };
   }
