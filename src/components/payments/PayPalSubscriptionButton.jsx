@@ -30,10 +30,20 @@ function loadPayPalSdk(clientId) {
 export default function PayPalSubscriptionButton({ plan, disabled = false, onApproved, onError }) {
   const containerRef = useRef(null);
   const buttonsRef = useRef(null);
+  const approvedRef = useRef(onApproved);
+  const errorRef = useRef(onError);
   const [sdkError, setSdkError] = useState('');
   const clientId = ENV_CONFIG.paypal.clientId;
   const planId = plan?.paypalBillingPlanId || '';
   const ready = useMemo(() => Boolean(clientId && planId && !disabled), [clientId, planId, disabled]);
+
+  useEffect(() => {
+    approvedRef.current = onApproved;
+  }, [onApproved]);
+
+  useEffect(() => {
+    errorRef.current = onError;
+  }, [onError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,15 +71,25 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
           createSubscription(_data, actions) {
             return actions.subscription.create({ plan_id: planId });
           },
-          onApprove(data) {
-            if (data?.subscriptionID && onApproved) {
-              onApproved({ subscriptionId: data.subscriptionID, planCode: plan.code });
+          async onApprove(data) {
+            if (!data?.subscriptionID) {
+              const error = new Error('PayPal no devolvió el identificador de la suscripción.');
+              setSdkError(error.message);
+              errorRef.current?.(error);
+              throw error;
+            }
+
+            if (approvedRef.current) {
+              await approvedRef.current({
+                subscriptionId: data.subscriptionID,
+                planCode: plan.code,
+              });
             }
           },
           onError(error) {
             const message = error?.message || 'No se pudo iniciar la suscripción con PayPal.';
             setSdkError(message);
-            onError?.(error);
+            errorRef.current?.(error);
           },
         });
 
@@ -79,7 +99,7 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
         if (cancelled) return;
         const message = error?.message || 'No se pudo cargar PayPal.';
         setSdkError(message);
-        onError?.(error);
+        errorRef.current?.(error);
       }
     }
 
@@ -87,8 +107,11 @@ export default function PayPalSubscriptionButton({ plan, disabled = false, onApp
 
     return () => {
       cancelled = true;
+      if (buttonsRef.current?.close) {
+        try { buttonsRef.current.close(); } catch { /* noop */ }
+      }
     };
-  }, [clientId, onApproved, onError, plan?.code, planId, ready]);
+  }, [clientId, plan?.code, planId, ready]);
 
   if (!clientId || !planId) {
     return (
