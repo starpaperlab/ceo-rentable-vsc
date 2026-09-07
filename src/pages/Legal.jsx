@@ -1,8 +1,11 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { CHECKOUT_PLANS, CHECKOUT_TRIAL_DAYS } from '@/lib/checkoutPlans';
 
 const CONTACT_EMAIL = 'contacto@espinalguerra.com';
 const CONTACT_PHONE = '+1 809-251-7070';
+const MONTHLY_PRICE = CHECKOUT_PLANS.monthly.renewalLabel;
+const ANNUAL_PRICE = CHECKOUT_PLANS.annual.renewalLabel;
 
 const documents = {
   '/terminos': {
@@ -12,7 +15,7 @@ const documents = {
       ['1. Titularidad y alcance', 'CEO Rentable OS es una marca y producto operado por Espinal Guerra, S.R.L. y Espinal Guerra LLC (en conjunto, “Espinal Guerra”). Al crear una cuenta o utilizar el servicio aceptas estos Términos de Servicio.'],
       ['2. Servicio', 'CEO Rentable es una plataforma de gestión empresarial que ofrece herramientas para organizar información comercial, financiera y operativa. Las funciones disponibles pueden evolucionar como parte del desarrollo del producto.'],
       ['3. Cuenta y seguridad', 'Debes proporcionar información correcta, mantener la confidencialidad de tus credenciales y notificarnos si detectas un acceso no autorizado. Eres responsable de la actividad realizada desde tu cuenta, salvo actividad atribuible a una falla de nuestros sistemas.'],
-      ['4. Prueba gratuita y suscripciones', 'Los planes Mensual y Anual incluyen 7 días de prueba gratuita. Al iniciar la prueba eliges una frecuencia de facturación y registras un método de pago. Hoy pagas US$0. Si no cancelas antes de finalizar la prueba, la suscripción se renueva automáticamente según el plan seleccionado: US$21 al mes o US$210 al año.'],
+      ['4. Prueba gratuita y suscripciones', `Los planes Mensual y Anual incluyen ${CHECKOUT_TRIAL_DAYS} días de prueba gratuita. Al iniciar la prueba eliges una frecuencia de facturación y registras un método de pago. Hoy pagas US$0. Si no cancelas antes de finalizar la prueba, la suscripción se renueva automáticamente según el plan seleccionado: ${MONTHLY_PRICE} o ${ANNUAL_PRICE}.`],
       ['5. Pagos y renovación', 'Los pagos de suscripción se procesan mediante proveedores externos de pago, actualmente PayPal. CEO Rentable no almacena los datos completos de tu tarjeta. Las renovaciones continúan automáticamente hasta que canceles la suscripción.'],
       ['6. Cancelación', 'Puedes cancelar la renovación de tu suscripción. Si cancelas durante el período de prueba antes del primer cobro, no se realizará el cargo inicial. La cancelación impide futuras renovaciones y no elimina obligaciones ya generadas antes de la fecha efectiva de cancelación.'],
       ['7. Uso permitido', 'No puedes utilizar el servicio para actividades ilícitas, intentar acceder a cuentas o sistemas ajenos, interferir con la seguridad de la plataforma, extraer datos de forma abusiva, introducir código malicioso ni revender el acceso sin autorización escrita.'],
@@ -70,7 +73,7 @@ export default function Legal() {
           </a>
           <h1 className="mt-8 text-3xl font-black text-gray-900 sm:text-4xl">{document.title}</h1>
           <p className="mt-3 max-w-3xl leading-7 text-gray-600">{document.intro}</p>
-          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-400">Última actualización: 2 de septiembre de 2026</p>
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-400">Última actualización: 6 de septiembre de 2026</p>
         </header>
 
         <div className="space-y-8 px-6 py-8 sm:px-10 sm:py-10">
