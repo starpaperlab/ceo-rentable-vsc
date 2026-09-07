@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
-import { getCheckoutPlan } from '@/lib/checkoutPlans';
+import { CHECKOUT_TRIAL_DAYS, getCheckoutPlan } from '@/lib/checkoutPlans';
 import { trackPurchase } from '@/lib/metaPixel';
 
 const AUTH_SESSION_ERROR = 'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
@@ -21,7 +21,7 @@ export default function PaymentSuccess() {
   const [planCode, setPlanCode] = useState(null);
   const [message, setMessage] = useState('Confirmando tu acceso...');
   const [isSubscriptionFlow, setIsSubscriptionFlow] = useState(false);
-  const [trialDays, setTrialDays] = useState(21);
+  const [trialDays, setTrialDays] = useState(CHECKOUT_TRIAL_DAYS);
   const hasProcessedRef = useRef(false);
   const hasTrackedPurchaseRef = useRef(false);
 
