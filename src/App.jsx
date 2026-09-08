@@ -24,6 +24,7 @@ import AccessGuard from '@/components/shared/AccessGuard';
 import AdminRouteGuard from '@/components/shared/AdminRouteGuard';
 import MetaPixelRouteTracker from '@/components/tracking/MetaPixelRouteTracker';
 import { WorkContextProvider } from '@/contexts/WorkContext';
+import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -78,7 +79,21 @@ const AuthenticatedApp = () => {
 };
 
 function App() {
-  return <Router><MetaPixelRouteTracker /><AuthProvider><QueryClientProvider client={queryClientInstance}><WorkContextProvider><AuthenticatedApp /><Toaster /></WorkContextProvider></QueryClientProvider></AuthProvider></Router>;
+  return (
+    <Router>
+      <MetaPixelRouteTracker />
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <WorkspaceProvider>
+            <WorkContextProvider>
+              <AuthenticatedApp />
+              <Toaster />
+            </WorkContextProvider>
+          </WorkspaceProvider>
+        </QueryClientProvider>
+      </AuthProvider>
+    </Router>
+  );
 }
 
 export default App
