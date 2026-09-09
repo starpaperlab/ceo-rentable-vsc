@@ -1,0 +1,167 @@
+import { createClient } from '@supabase/supabase-js';
+import { randomBytes } from 'node:crypto';
+import { sendEmailWithResend } from './sendEmailHandler.js';
+
+const ALLOWED_ROLES = new Set(['admin', 'member', 'viewer']);
+const ALLOWED_PROFILES = new Set(['ventas', 'cobros', 'operaciones', 'finanzas', 'asistente', 'personalizado']);
+
+let anonClient = null;
+let serviceClient = null;
+
+const normalizeEmail = (value = '') => `${value || ''}`.trim().toLowerCase();
+
+function getBearerToken(headers = {}) {
+  const raw = headers.authorization || headers.Authorization || '';
+  const match = `${raw}`.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+function getAnonClient(env = process.env) {
+  if (anonClient) return anonClient;
+  const url = `${env.SUPABASE_URL || env.VITE_SUPABASE_URL || ''}`.trim();
+  const key = `${env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''}`.trim();
+  if (!url || !key) return null;
+  anonClient = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  return anonClient;
+}
+
+function getServiceClient(env = process.env) {
+  if (serviceClient) return serviceClient;
+  const url = `${env.SUPABASE_URL || env.VITE_SUPABASE_URL || ''}`.trim();
+  const key = `${env.SUPABASE_SERVICE_ROLE_KEY || ''}`.trim();
+  if (!url || !key) return null;
+  serviceClient = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  return serviceClient;
+}
+
+function resolveBaseUrl(headers = {}, env = process.env) {
+  const configured = `${env.APP_URL || env.VITE_APP_URL || ''}`.trim().replace(/\/$/, '');
+  if (configured) return configured;
+  const host = `${headers['x-forwarded-host'] || headers.host || ''}`.trim();
+  if (host) {
+    const proto = `${headers['x-forwarded-proto'] || 'https'}`.trim();
+    return `${proto}://${host}`;
+  }
+  return 'https://app.ceorentable.com';
+}
+
+function safePermissions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([key, allowed]) => [key, allowed === true]));
+}
+
+async function authenticate(headers, env) {
+  const token = getBearerToken(headers);
+  if (!token) return { ok: false, status: 401, error: 'Sesión inválida o expirada.' };
+  const client = getAnonClient(env);
+  if (!client) return { ok: false, status: 500, error: 'Configuración de autenticación incompleta.' };
+  try {
+    const { data, error } = await client.auth.getUser(token);
+    if (error || !data?.user?.id) return { ok: false, status: 401, error: 'Sesión inválida o expirada.' };
+    return { ok: true, user: data.user };
+  } catch (_) {
+    return { ok: false, status: 401, error: 'Sesión inválida o expirada.' };
+  }
+}
+
+function invitationHtml({ businessName, roleLabel, profileLabel, inviteLink, existing }) {
+  const title = existing ? `Ya tienes acceso a ${businessName}` : `${businessName} te invitó a CEO Rentable`;
+  const cta = existing ? 'Entrar a CEO Rentable' : 'Activar mi acceso';
+  return `<!doctype html><html><body style="margin:0;background:#f7f3ee;font-family:Arial,sans-serif;color:#1f2937"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:#fff;border-radius:20px;padding:30px;box-shadow:0 12px 35px rgba(0,0,0,.07)"><h1 style="margin:0 0 12px;font-size:24px">${title}</h1><p style="line-height:1.6;color:#4b5563">Has sido agregada al equipo de <strong>${businessName}</strong> en CEO Rentable OS™.</p><p style="line-height:1.6;color:#4b5563"><strong>Acceso:</strong> ${roleLabel}<br><strong>Perfil:</strong> ${profileLabel}</p><a href="${inviteLink}" style="display:inline-block;margin-top:12px;background:#D45387;color:#fff;text-decoration:none;padding:13px 20px;border-radius:10px;font-weight:700">${cta}</a><p style="margin-top:24px;font-size:12px;color:#8a7f85">CEO Rentable OS™ · Tu sistema financiero inteligente<br>Preguntas: hola@ceorentable.com</p></div></div></body></html>`;
+}
+
+export async function handleWorkspaceInvitation(payload = {}, { env = process.env, headers = {} } = {}) {
+  const auth = await authenticate(headers, env);
+  if (!auth.ok) return { status: auth.status, body: { success: false, error: auth.error } };
+
+  const supabase = getServiceClient(env);
+  if (!supabase) return { status: 500, body: { success: false, error: 'Configuración segura de servidor incompleta.' } };
+
+  const workspaceId = `${payload.workspaceId || ''}`.trim();
+  const email = normalizeEmail(payload.email);
+  const role = ALLOWED_ROLES.has(payload.role) ? payload.role : 'member';
+  const jobProfile = ALLOWED_PROFILES.has(payload.jobProfile) ? payload.jobProfile : 'personalizado';
+  const modulePermissions = safePermissions(payload.modulePermissions);
+  if (!workspaceId || !email) return { status: 400, body: { success: false, error: 'Faltan el negocio o el correo del usuario.' } };
+
+  const { data: callerMembership } = await supabase.from('workspace_members').select('role,status').eq('workspace_id', workspaceId).eq('user_id', auth.user.id).maybeSingle();
+  if (!callerMembership || callerMembership.status !== 'active' || !['owner', 'admin'].includes(callerMembership.role)) {
+    return { status: 403, body: { success: false, error: 'No tienes permisos para administrar este equipo.' } };
+  }
+
+  const { data: workspace } = await supabase.from('workspaces').select('id,name').eq('id', workspaceId).maybeSingle();
+  if (!workspace) return { status: 404, body: { success: false, error: 'No encontramos el negocio activo.' } };
+
+  const { data: profile, error: profileError } = await supabase.from('users').select('id,email,full_name').ilike('email', email).maybeSingle();
+  if (profileError) return { status: 500, body: { success: false, error: 'No se pudo comprobar el usuario.' } };
+
+  const baseUrl = resolveBaseUrl(headers, env);
+  const roleLabels = { admin: 'Administrador', member: 'Miembro', viewer: 'Solo lectura' };
+  const profileLabels = { ventas: 'Ventas', cobros: 'Cobros / Facturación', operaciones: 'Operaciones', finanzas: 'Finanzas', asistente: 'Asistente', personalizado: 'Personalizado' };
+
+  if (profile?.id) {
+    const { error: membershipError } = await supabase.from('workspace_members').upsert({
+      workspace_id: workspaceId,
+      user_id: profile.id,
+      role,
+      status: 'active',
+      module_permissions: modulePermissions,
+    }, { onConflict: 'workspace_id,user_id' });
+    if (membershipError) return { status: 500, body: { success: false, error: 'No se pudo asignar el acceso al negocio.' } };
+
+    const loginLink = `${baseUrl}/login?email=${encodeURIComponent(email)}`;
+    const emailResult = await sendEmailWithResend({
+      to: email,
+      subject: `Ya tienes acceso a ${workspace.name} en CEO Rentable`,
+      html: invitationHtml({ businessName: workspace.name, roleLabel: roleLabels[role], profileLabel: profileLabels[jobProfile], inviteLink: loginLink, existing: true }),
+    }, { env });
+
+    return { status: 200, body: { success: true, mode: 'existing_user', emailSent: emailResult.ok === true } };
+  }
+
+  const token = randomBytes(24).toString('hex');
+  const inviteLink = `${baseUrl}/activar-acceso?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: existingInvite } = await supabase.from('user_invitations').select('id,sent_count').eq('email', email).maybeSingle();
+  const invitationPayload = {
+    email,
+    role: 'user',
+    plan: 'free',
+    has_access: true,
+    invited_by: auth.user.id,
+    invitation_token: token,
+    invitation_link: inviteLink,
+    status: 'pending',
+    sent_count: (existingInvite?.sent_count || 0) + 1,
+    last_sent_at: new Date().toISOString(),
+    expires_at: expiresAt,
+    workspace_id: workspaceId,
+    workspace_role: role,
+    module_permissions: modulePermissions,
+    job_profile: jobProfile,
+    access_source: 'workspace_invitation',
+    is_lifetime: false,
+    processing_at: null,
+    accepted_at: null,
+    accepted_user_id: null,
+  };
+
+  const query = existingInvite
+    ? supabase.from('user_invitations').update(invitationPayload).eq('id', existingInvite.id)
+    : supabase.from('user_invitations').insert(invitationPayload);
+  const { data: invitation, error: invitationError } = await query.select('id').single();
+  if (invitationError) return { status: 500, body: { success: false, error: 'No se pudo crear la invitación.' } };
+
+  const emailResult = await sendEmailWithResend({
+    to: email,
+    subject: `${workspace.name} te invitó a CEO Rentable`,
+    html: invitationHtml({ businessName: workspace.name, roleLabel: roleLabels[role], profileLabel: profileLabels[jobProfile], inviteLink, existing: false }),
+  }, { env });
+
+  if (!emailResult.ok) {
+    return { status: 502, body: { success: false, code: emailResult.body?.code || 'EMAIL_SEND_FAILED', error: 'La invitación se creó, pero el correo no pudo enviarse.', invitationId: invitation.id } };
+  }
+
+  return { status: 200, body: { success: true, mode: 'invited', invitationId: invitation.id, emailSent: true } };
+}
