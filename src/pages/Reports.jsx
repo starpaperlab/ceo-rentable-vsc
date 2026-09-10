@@ -1,14 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/lib/AuthContext';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Package, TrendingUp, ShoppingCart, Users, AlertTriangle,
-  Download, Loader2, Filter, CheckCircle2
+  Download, Loader2, Filter, CheckCircle2, Eye
 } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 
@@ -19,7 +20,7 @@ const REPORTS_TOUR_STEPS = [
 ];
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { fetchOwnedRows, updateOwnedRowById } from '@/lib/supabaseOwnership';
+import { updateOwnedRowById } from '@/lib/supabaseOwnership';
 import { enrichInvoicesWithPayments, getInvoicePaymentSummary, getPaymentStatusMeta, groupPaymentsByInvoice } from '@/lib/invoicePayments';
 
 const TABS = [
@@ -55,42 +56,53 @@ function downloadCSV(rows, filename) {
   link.href = URL.createObjectURL(blob);
   link.download = `${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
+  URL.revokeObjectURL(link.href);
   toast.success('CSV descargado');
 }
 
 export default function Reports() {
   const queryClient = useQueryClient();
   const { formatMoney, currency } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const {
+    adminMode,
+    canWrite,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+  } = useWorkContextScope();
+  const { hasModuleAccess } = useWorkspace();
+  const writable = adminMode || canWrite;
+  const canMarkPaid = writable && (adminMode || hasModuleAccess('billing'));
   const [activeTab, setActiveTab] = useState('receivables');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const { data: products = [], isLoading: loadingProd } = useQuery({
-    queryKey: ['products', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'products', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['reports-products', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'products' }),
+    enabled,
   });
 
   const { data: invoices = [], isLoading: loadingInv } = useQuery({
-    queryKey: ['invoices', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'invoices', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['reports-invoices', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoices' }),
+    enabled,
   });
 
   const { data: invoicePayments = [], isLoading: loadingPayments } = useQuery({
-    queryKey: ['invoice-payments', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'invoice_payments', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['reports-invoice-payments', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoice_payments' }),
+    enabled,
   });
 
   const { data: inventoryItems = [], isLoading: loadingInventory } = useQuery({
-    queryKey: ['inventory-items', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'inventory_items', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['reports-inventory-items', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'inventory_items' }),
+    enabled,
   });
 
   const isLoading = loadingProd || loadingInv || loadingInventory || loadingPayments;
@@ -148,16 +160,18 @@ export default function Reports() {
 
   const markPaidMutation = useMutation({
     mutationFn: async (invoiceId) => {
+      if (!canMarkPaid) throw new Error('No tienes permiso para modificar facturas desde Reportes.');
       await updateOwnedRowById({
         table: 'invoices',
         id: invoiceId,
         payload: { status: 'paid' },
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Factura marcada como pagada');
     },
@@ -166,7 +180,6 @@ export default function Reports() {
     },
   });
 
-  // Filter paid invoices by date range
   const filteredInvoices = useMemo(() => paidInvoices.filter((inv) => {
     const invoiceDate = inv.date || `${inv.created_at || ''}`.slice(0, 10);
     if (dateFrom && invoiceDate < dateFrom) return false;
@@ -174,11 +187,8 @@ export default function Reports() {
     return true;
   }), [paidInvoices, dateFrom, dateTo]);
 
-  // ── Inventory report ──
   const inventorySource = useMemo(() => {
-    if (inventoryItems.length > 0) {
-      return inventoryItems;
-    }
+    if (inventoryItems.length > 0) return inventoryItems;
     return products.filter((product) => !product.product_type || product.product_type === 'fisico');
   }, [inventoryItems, products]);
 
@@ -188,7 +198,6 @@ export default function Reports() {
     const costoUnitario = Number(item.costo_unitario || 0);
     const hasMinControl = stockMinimo > 0;
     const isLowStock = hasMinControl && stockActual <= stockMinimo;
-
     return {
       producto: item.product_name || item.name || 'Producto',
       sku: item.sku || '—',
@@ -200,7 +209,6 @@ export default function Reports() {
     };
   }), [inventorySource]);
 
-  // ── Profitability per product ──
   const profitRows = useMemo(() => {
     const map = {};
     filteredInvoices.forEach(inv => {
@@ -211,7 +219,6 @@ export default function Reports() {
         const price = parseFloat(li.unit_price) || 0;
         map[name].ingresos += price * qty;
         map[name].ventas += qty;
-        // Try to match inventory cost
         const invMatch = inventoryItems.find(i => i.product_name?.toLowerCase() === name.toLowerCase());
         map[name].costos += (invMatch?.costo_unitario || 0) * qty;
       });
@@ -224,7 +231,6 @@ export default function Reports() {
     });
   }, [filteredInvoices, inventoryItems]);
 
-  // ── Sales report ──
   const salesRows = useMemo(() => {
     const byMonth = {};
     filteredInvoices.forEach(inv => {
@@ -239,7 +245,6 @@ export default function Reports() {
     }));
   }, [filteredInvoices]);
 
-  // ── Clients report ──
   const clientRows = useMemo(() => {
     const map = {};
     filteredInvoices.forEach(inv => {
@@ -251,7 +256,6 @@ export default function Reports() {
     return Object.values(map).sort((a, b) => b.total_comprado - a.total_comprado);
   }, [filteredInvoices]);
 
-  // ── Alerts ──
   const alertRows = useMemo(() => {
     const rows = [];
     products.filter(p => p.status === 'active').forEach(p => {
@@ -275,37 +279,30 @@ export default function Reports() {
         <p className="text-sm text-muted-foreground mt-1">Análisis completo del negocio, cobros y saldos pendientes</p>
       </motion.div>
 
+      {!writable && (
+        <Card className="p-4 border-dashed bg-muted/20">
+          <div className="flex items-start gap-3">
+            <Eye className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold">Modo solo lectura</p>
+              <p className="text-xs text-muted-foreground mt-1">Puedes consultar y exportar reportes, pero no modificar facturas ni datos del negocio.</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Total cobrado</p>
-          <p className="text-2xl font-bold text-primary mt-1">{formatMoney(reportSummary.totalCollected)}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Saldo por cobrar</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{formatMoney(reportSummary.balanceDue)}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Pago parcial</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{reportSummary.partial}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Pagadas</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{reportSummary.paid}</p>
-        </Card>
+        <Card className="p-4"><p className="text-xs text-muted-foreground uppercase tracking-wider">Total cobrado</p><p className="text-2xl font-bold text-primary mt-1">{formatMoney(reportSummary.totalCollected)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-muted-foreground uppercase tracking-wider">Saldo por cobrar</p><p className="text-2xl font-bold text-foreground mt-1">{formatMoney(reportSummary.balanceDue)}</p></Card>
+        <Card className="p-4"><p className="text-xs text-muted-foreground uppercase tracking-wider">Pago parcial</p><p className="text-2xl font-bold text-foreground mt-1">{reportSummary.partial}</p></Card>
+        <Card className="p-4"><p className="text-xs text-muted-foreground uppercase tracking-wider">Pagadas</p><p className="text-2xl font-bold text-foreground mt-1">{reportSummary.paid}</p></Card>
       </div>
 
-      {/* Date filter */}
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-4">
           <Filter className="h-4 w-4 text-muted-foreground mb-2" />
-          <div>
-            <Label className="text-xs">Desde</Label>
-            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 h-8 text-sm w-40" />
-          </div>
-          <div>
-            <Label className="text-xs">Hasta</Label>
-            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 h-8 text-sm w-40" />
-          </div>
+          <div><Label className="text-xs">Desde</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 h-8 text-sm w-40" /></div>
+          <div><Label className="text-xs">Hasta</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 h-8 text-sm w-40" /></div>
           <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(''); setDateTo(''); }}>Limpiar</Button>
           <span className="text-xs text-muted-foreground ml-auto">{filteredInvoices.length} facturas pagadas • {currency}</span>
         </div>
@@ -314,223 +311,77 @@ export default function Reports() {
       {pendingInvoices.length > 0 && (
         <Card className="p-4 border-amber-200 bg-amber-50/50">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Facturas pendientes por cobrar</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Marca como pagadas para actualizar Ventas, Rentabilidad y Clientes.
-              </p>
-            </div>
-            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-              {pendingInvoices.length} pendientes
-            </span>
+            <div><p className="text-sm font-semibold text-foreground">Facturas pendientes por cobrar</p><p className="text-xs text-muted-foreground mt-0.5">Consulta aquí los saldos. La modificación requiere acceso de Facturación.</p></div>
+            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">{pendingInvoices.length} pendientes</span>
           </div>
-
           <div className="mt-3 space-y-2">
             {pendingInvoices.slice(0, 6).map((invoice) => {
               const invoiceLabel = invoice.invoice_number || `FAC-${String(invoice.id || '').slice(0, 6)}`;
               const invoiceDate = invoice.date || `${invoice.created_at || ''}`.slice(0, 10) || '—';
               const isMarking = markPaidMutation.isPending && markPaidMutation.variables === invoice.id;
-
               return (
                 <div key={invoice.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-card border border-border">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {invoiceLabel} • {invoice.client_name || 'Cliente sin nombre'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {invoiceDate} • Saldo {formatMoney(invoice.payment_summary?.balanceDue || invoice.total_final || 0)}
-                    </p>
-                  </div>
+                  <div className="min-w-0"><p className="text-sm font-medium text-foreground truncate">{invoiceLabel} • {invoice.client_name || 'Cliente sin nombre'}</p><p className="text-xs text-muted-foreground mt-0.5">{invoiceDate} • Saldo {formatMoney(invoice.payment_summary?.balanceDue || invoice.total_final || 0)}</p></div>
                   {invoice.payment_summary?.hasPayments ? (
-                    <span className="shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-                      Pago parcial
-                    </span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="shrink-0 bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => markPaidMutation.mutate(invoice.id)}
-                      disabled={isMarking}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                      {isMarking ? 'Guardando...' : 'Marcar pagada'}
+                    <span className="shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700">Pago parcial</span>
+                  ) : canMarkPaid ? (
+                    <Button size="sm" className="shrink-0 bg-green-600 hover:bg-green-700 text-white" onClick={() => markPaidMutation.mutate(invoice.id)} disabled={isMarking}>
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />{isMarking ? 'Guardando...' : 'Marcar pagada'}
                     </Button>
+                  ) : (
+                    <span className="shrink-0 text-xs text-muted-foreground">Solo consulta</span>
                   )}
                 </div>
               );
             })}
           </div>
-
-          {pendingInvoices.length > 6 && (
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Mostrando 6 de {pendingInvoices.length} facturas pendientes.
-            </p>
-          )}
+          {pendingInvoices.length > 6 && <p className="text-[11px] text-muted-foreground mt-2">Mostrando 6 de {pendingInvoices.length} facturas pendientes.</p>}
         </Card>
       )}
 
-      {/* Tabs */}
       <div className="flex gap-2 flex-wrap">
         {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              activeTab === tab.id
-                ? 'bg-primary text-primary-foreground shadow'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-primary text-primary-foreground shadow' : 'bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
+            <tab.icon className="h-3.5 w-3.5" />{tab.label}
           </button>
         ))}
       </div>
 
       {activeTab === 'receivables' && (
-        <ReportSection
-          title="Cuentas por Cobrar"
-          count={receivableRows.length}
-          onExport={() => downloadCSV(receivableRows.map(r => ({
-            Factura: r.numero,
-            Cliente: r.cliente,
-            Fecha: r.fecha,
-            Vence: r.vence,
-            Total: r.total,
-            Abonado: r.abonado,
-            Saldo: r.saldo,
-            Estado: r.estado,
-          })), 'cuentas_por_cobrar')}
-        >
+        <ReportSection title="Cuentas por Cobrar" count={receivableRows.length} onExport={() => downloadCSV(receivableRows.map(r => ({ Factura: r.numero, Cliente: r.cliente, Fecha: r.fecha, Vence: r.vence, Total: r.total, Abonado: r.abonado, Saldo: r.saldo, Estado: r.estado })), 'cuentas_por_cobrar')}>
           <Table headers={['Factura', 'Cliente', 'Fecha', 'Vence', 'Total', 'Abonado', 'Saldo', 'Estado']}>
-            {receivableRows.map((r) => {
-              const meta = getPaymentStatusMeta(r.status);
-              return (
-                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                  <td className="py-2.5 px-3 text-sm font-mono font-semibold">{r.numero}</td>
-                  <td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td>
-                  <td className="py-2.5 px-3 text-sm text-muted-foreground">{r.fecha}</td>
-                  <td className="py-2.5 px-3 text-sm text-muted-foreground">{r.vence}</td>
-                  <td className="py-2.5 px-3 text-sm">{formatMoney(r.total)}</td>
-                  <td className="py-2.5 px-3 text-sm text-green-600 font-semibold">{formatMoney(r.abonado)}</td>
-                  <td className="py-2.5 px-3 text-sm font-bold text-red-600">{formatMoney(r.saldo)}</td>
-                  <td className="py-2.5 px-3">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badgeClass}`}>{meta.label}</span>
-                  </td>
-                </tr>
-              );
-            })}
+            {receivableRows.map((r) => { const meta = getPaymentStatusMeta(r.status); return <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-mono font-semibold">{r.numero}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.fecha}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.vence}</td><td className="py-2.5 px-3 text-sm">{formatMoney(r.total)}</td><td className="py-2.5 px-3 text-sm text-green-600 font-semibold">{formatMoney(r.abonado)}</td><td className="py-2.5 px-3 text-sm font-bold text-red-600">{formatMoney(r.saldo)}</td><td className="py-2.5 px-3"><span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badgeClass}`}>{meta.label}</span></td></tr>; })}
           </Table>
         </ReportSection>
       )}
 
-      {/* Inventory */}
       {activeTab === 'inventory' && (
-        <ReportSection
-          title="Reporte de Inventario"
-          count={inventoryRows.length}
-          onExport={() => downloadCSV(inventoryRows.map(r => ({ Producto: r.producto, SKU: r.sku, 'Stock Actual': r.stock_actual, 'Stock Mínimo': r.stock_minimo, 'Valor Inventario': r.valor_inventario, Estado: r.estado })), 'inventario')}
-        >
-          <Table headers={['Producto', 'SKU', 'Stock Actual', 'Stock Mín.', 'Valor Inventario', 'Estado']}>
-            {inventoryRows.map((r, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
-                <td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td>
-                <td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{r.sku}</td>
-                <td className="py-2.5 px-3 text-sm">{r.stock_actual}</td>
-                <td className="py-2.5 px-3 text-sm">{r.stock_minimo}</td>
-                <td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.valor_inventario)}</td>
-                <td className="py-2.5 px-3"><StatusBadge level={r._level} /></td>
-              </tr>
-            ))}
-          </Table>
+        <ReportSection title="Reporte de Inventario" count={inventoryRows.length} onExport={() => downloadCSV(inventoryRows.map(r => ({ Producto: r.producto, SKU: r.sku, 'Stock Actual': r.stock_actual, 'Stock Mínimo': r.stock_minimo, 'Valor Inventario': r.valor_inventario, Estado: r.estado })), 'inventario')}>
+          <Table headers={['Producto', 'SKU', 'Stock Actual', 'Stock Mín.', 'Valor Inventario', 'Estado']}>{inventoryRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{r.sku}</td><td className="py-2.5 px-3 text-sm">{r.stock_actual}</td><td className="py-2.5 px-3 text-sm">{r.stock_minimo}</td><td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.valor_inventario)}</td><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td></tr>)}</Table>
         </ReportSection>
       )}
 
-      {/* Profitability */}
       {activeTab === 'profitability' && (
-        <ReportSection
-          title="Rentabilidad por Producto"
-          count={profitRows.length}
-          onExport={() => downloadCSV(profitRows.map(r => ({ Producto: r.producto, Ingresos: r.ingresos, Costos: r.costos, Ganancia: r.ganancia, 'Margen %': r.margen_pct, Estado: r._level === 'green' ? 'Rentable' : r._level === 'yellow' ? 'Atención' : 'Riesgo' })), 'rentabilidad')}
-        >
-          <Table headers={['Producto', 'Ingresos', 'Costos', 'Ganancia', 'Margen %', 'Estado']}>
-            {profitRows.map((r, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
-                <td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td>
-                <td className="py-2.5 px-3 text-sm">{formatMoney(r.ingresos)}</td>
-                <td className="py-2.5 px-3 text-sm text-muted-foreground">{formatMoney(r.costos)}</td>
-                <td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.ganancia)}</td>
-                <td className={`py-2.5 px-3 text-sm font-bold ${parseFloat(r.margen_pct) >= 30 ? 'text-green-600' : parseFloat(r.margen_pct) >= 15 ? 'text-amber-500' : 'text-red-600'}`}>{r.margen_pct}%</td>
-                <td className="py-2.5 px-3"><StatusBadge level={r._level} /></td>
-              </tr>
-            ))}
-          </Table>
+        <ReportSection title="Rentabilidad por Producto" count={profitRows.length} onExport={() => downloadCSV(profitRows.map(r => ({ Producto: r.producto, Ingresos: r.ingresos, Costos: r.costos, Ganancia: r.ganancia, 'Margen %': r.margen_pct, Estado: r._level === 'green' ? 'Rentable' : r._level === 'yellow' ? 'Atención' : 'Riesgo' })), 'rentabilidad')}>
+          <Table headers={['Producto', 'Ingresos', 'Costos', 'Ganancia', 'Margen %', 'Estado']}>{profitRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-sm">{formatMoney(r.ingresos)}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{formatMoney(r.costos)}</td><td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.ganancia)}</td><td className={`py-2.5 px-3 text-sm font-bold ${parseFloat(r.margen_pct) >= 30 ? 'text-green-600' : parseFloat(r.margen_pct) >= 15 ? 'text-amber-500' : 'text-red-600'}`}>{r.margen_pct}%</td><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td></tr>)}</Table>
         </ReportSection>
       )}
 
-      {/* Sales */}
       {activeTab === 'sales' && (
-        <ReportSection
-          title="Reporte de Ventas"
-          count={salesRows.length}
-          onExport={() => downloadCSV(salesRows.map(r => ({ Período: r.periodo, 'Total Ventas': r.ventas, 'Unidades Vendidas': r.cantidad, 'Ticket Promedio': r.ticket_promedio })), 'ventas')}
-        >
-          <Table headers={['Período', 'Total Ventas', 'Unidades Vendidas', 'Ticket Promedio']}>
-            {salesRows.map((r, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
-                <td className="py-2.5 px-3 text-sm font-medium">{r.periodo}</td>
-                <td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.ventas)}</td>
-                <td className="py-2.5 px-3 text-sm">{r.cantidad}</td>
-                <td className="py-2.5 px-3 text-sm">{formatMoney(parseFloat(r.ticket_promedio))}</td>
-              </tr>
-            ))}
-          </Table>
+        <ReportSection title="Reporte de Ventas" count={salesRows.length} onExport={() => downloadCSV(salesRows.map(r => ({ Período: r.periodo, 'Total Ventas': r.ventas, 'Unidades Vendidas': r.cantidad, 'Ticket Promedio': r.ticket_promedio })), 'ventas')}>
+          <Table headers={['Período', 'Total Ventas', 'Unidades Vendidas', 'Ticket Promedio']}>{salesRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.periodo}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.ventas)}</td><td className="py-2.5 px-3 text-sm">{r.cantidad}</td><td className="py-2.5 px-3 text-sm">{formatMoney(parseFloat(r.ticket_promedio))}</td></tr>)}</Table>
         </ReportSection>
       )}
 
-      {/* Clients */}
       {activeTab === 'clients' && (
-        <ReportSection
-          title="Reporte de Clientes"
-          count={clientRows.length}
-          onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Nº Compras': r.num_compras })), 'clientes')}
-        >
-          <Table headers={['#', 'Cliente', 'Total Comprado', 'Nº Compras']}>
-            {clientRows.map((r, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
-                <td className="py-2.5 px-3 text-xs text-muted-foreground">#{i + 1}</td>
-                <td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td>
-                <td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.total_comprado)}</td>
-                <td className="py-2.5 px-3 text-sm">{r.num_compras}</td>
-              </tr>
-            ))}
-          </Table>
+        <ReportSection title="Reporte de Clientes" count={clientRows.length} onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Nº Compras': r.num_compras })), 'clientes')}>
+          <Table headers={['#', 'Cliente', 'Total Comprado', 'Nº Compras']}>{clientRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-xs text-muted-foreground">#{i + 1}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.total_comprado)}</td><td className="py-2.5 px-3 text-sm">{r.num_compras}</td></tr>)}</Table>
         </ReportSection>
       )}
 
-      {/* Alerts */}
       {activeTab === 'alerts' && (
-        <ReportSection
-          title="Reporte de Alertas"
-          count={alertRows.length}
-          onExport={() => downloadCSV(alertRows.map(r => ({ Tipo: r.tipo, Producto: r.producto, Detalle: r.detalle })), 'alertas')}
-        >
-          {alertRows.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-green-600 font-semibold">✓ Sin alertas activas</p>
-              <p className="text-xs text-muted-foreground mt-1">Todos los productos están en estado saludable</p>
-            </div>
-          ) : (
-            <Table headers={['Tipo', 'Producto', 'Detalle']}>
-              {alertRows.map((r, i) => (
-                <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
-                  <td className="py-2.5 px-3"><StatusBadge level={r._level} /></td>
-                  <td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td>
-                  <td className="py-2.5 px-3 text-sm text-muted-foreground">{r.detalle}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
+        <ReportSection title="Reporte de Alertas" count={alertRows.length} onExport={() => downloadCSV(alertRows.map(r => ({ Tipo: r.tipo, Producto: r.producto, Detalle: r.detalle })), 'alertas')}>
+          {alertRows.length === 0 ? <div className="text-center py-12"><p className="text-green-600 font-semibold">✓ Sin alertas activas</p><p className="text-xs text-muted-foreground mt-1">Todos los productos están en estado saludable</p></div> : <Table headers={['Tipo', 'Producto', 'Detalle']}>{alertRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.detalle}</td></tr>)}</Table>}
         </ReportSection>
       )}
     </div>
@@ -541,13 +392,8 @@ function ReportSection({ title, count, onExport, children }) {
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div>
-          <h2 className="text-sm font-bold text-foreground">{title}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{count} registros</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onExport} className="gap-2">
-          <Download className="h-3.5 w-3.5" /> Exportar CSV
-        </Button>
+        <div><h2 className="text-sm font-bold text-foreground">{title}</h2><p className="text-xs text-muted-foreground mt-0.5">{count} registros</p></div>
+        <Button variant="outline" size="sm" onClick={onExport} className="gap-2"><Download className="h-3.5 w-3.5" /> Exportar CSV</Button>
       </div>
       <div className="overflow-x-auto">{children}</div>
     </Card>
@@ -555,16 +401,5 @@ function ReportSection({ title, count, onExport, children }) {
 }
 
 function Table({ headers, children }) {
-  return (
-    <table className="w-full text-left">
-      <thead>
-        <tr className="bg-muted/40">
-          {headers.map(h => (
-            <th key={h} className="py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>{children}</tbody>
-    </table>
-  );
+  return <table className="w-full text-left"><thead><tr className="bg-muted/40">{headers.map(h => <th key={h} className="py-2 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{h}</th>)}</tr></thead><tbody>{children}</tbody></table>;
 }
