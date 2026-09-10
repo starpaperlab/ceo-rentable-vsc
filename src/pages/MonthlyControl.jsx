@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
@@ -11,9 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Plus, Lock, Unlock, Loader2, CalendarCheck, TrendingUp, TrendingDown } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
-import { useAuth } from '@/lib/AuthContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import {
-  fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
   updateOwnedRowById,
@@ -30,29 +29,48 @@ import { toast } from 'sonner';
 
 export default function MonthlyControl() {
   const { formatMoney } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
-  const ownerId = user?.id || userProfile?.id || null;
+  const {
+    adminMode,
+    canWrite,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ month: '', income: 0, expenses: 0, notes: '' });
+
+  useEffect(() => {
+    if (!canWrite) setShowForm(false);
+  }, [canWrite]);
+
+  const assertCanWrite = () => {
+    if (!canWrite) throw new Error('Tu acceso a Control Mensual es de solo lectura.');
+  };
+
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ['monthly-records', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({
+    queryKey: ['monthly-records', ...contextQueryKey],
+    queryFn: () => fetchRows({
       table: 'monthly_records',
-      ownerId,
-      ownerEmail,
-      adminMode,
       orderBy: 'month',
       ascending: false,
     }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    enabled,
   });
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      if (!adminMode && !ownerId && !ownerEmail) {
+      assertCanWrite();
+      if (!adminMode && !writeOwnerId && !writeOwnerEmail) {
         throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
       }
 
@@ -68,8 +86,8 @@ export default function MonthlyControl() {
         ...data,
         profit: (data.income || 0) - (data.expenses || 0),
         margin_pct: data.income > 0 ? (((data.income - data.expenses) / data.income) * 100) : 0,
-        user_id: ownerId,
-        created_by: ownerEmail,
+        user_id: writeOwnerId,
+        created_by: writeOwnerEmail,
         created_at: new Date().toISOString(),
       };
       const { error } = await supabase.from('monthly_records').insert(payload);
@@ -108,13 +126,14 @@ export default function MonthlyControl() {
 
   const toggleClose = useMutation({
     mutationFn: async ({ id, isClosed }) => {
+      assertCanWrite();
       await updateOwnedRowById({
         table: 'monthly_records',
         id,
         payload: { is_closed: !isClosed },
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -144,14 +163,22 @@ export default function MonthlyControl() {
           <h1 className="text-2xl font-bold text-foreground">Control Mensual</h1>
           <p className="text-sm text-muted-foreground mt-1">Registra ingresos y gastos mes a mes.</p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => setShowForm(!showForm)}>
-          <Plus className="h-4 w-4 mr-2" /> Nuevo Mes
-        </Button>
+        {canWrite ? (
+          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => setShowForm(!showForm)}>
+            <Plus className="h-4 w-4 mr-2" /> Nuevo Mes
+          </Button>
+        ) : null}
       </motion.div>
 
-      {/* New month form */}
+      {!canWrite ? (
+        <Card className="border-blue-200 bg-blue-50/70 p-4">
+          <p className="text-sm font-semibold text-blue-900">Modo solo lectura</p>
+          <p className="text-xs text-blue-700 mt-1">Puedes consultar resultados y comparativas, pero no registrar ni cerrar meses.</p>
+        </Card>
+      ) : null}
+
       <AnimatePresence>
-        {showForm && (
+        {canWrite && showForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
             <Card className="p-6 space-y-4">
               <h3 className="text-sm font-semibold">Registrar Mes</h3>
@@ -180,7 +207,6 @@ export default function MonthlyControl() {
         )}
       </AnimatePresence>
 
-      {/* Chart */}
       {chartData.length > 0 && (
         <Card className="p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">Comparativa Mensual</h3>
@@ -200,7 +226,6 @@ export default function MonthlyControl() {
         </Card>
       )}
 
-      {/* Records Table */}
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
@@ -241,15 +266,22 @@ export default function MonthlyControl() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 text-xs gap-1.5"
-                          onClick={() => toggleClose.mutate({ id: r.id, isClosed: r.is_closed })}
-                        >
-                          {r.is_closed ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                          {r.is_closed ? 'Cerrado' : 'Abierto'}
-                        </Button>
+                        {canWrite ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1.5"
+                            onClick={() => toggleClose.mutate({ id: r.id, isClosed: r.is_closed })}
+                          >
+                            {r.is_closed ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                            {r.is_closed ? 'Cerrado' : 'Abierto'}
+                          </Button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {r.is_closed ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                            {r.is_closed ? 'Cerrado' : 'Abierto'}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
