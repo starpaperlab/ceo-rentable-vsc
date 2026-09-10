@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/lib/AuthContext';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,13 +11,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2 } from 'lucide-react';
+import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   deleteOwnedRowById,
-  fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
   updateOwnedRowById,
@@ -60,30 +59,49 @@ function sortAppointments(rows = []) {
 }
 
 export default function Agenda() {
-  const { user, userProfile, isAdmin } = useAuth();
   const { formatMoney } = useCurrency();
   const queryClient = useQueryClient();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const {
+    adminMode,
+    canWrite,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
+  const writable = adminMode || canWrite;
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(INITIAL_FORM);
 
+  useEffect(() => {
+    if (!writable) {
+      setShowForm(false);
+      setEditingId(null);
+      setFormData(INITIAL_FORM);
+    }
+  }, [writable]);
+
   const withOwner = (payload) => ({
     ...payload,
-    user_id: ownerId,
-    created_by: ownerEmail || null,
+    user_id: writeOwnerId,
+    created_by: writeOwnerEmail || null,
   });
 
   const safeInsert = async (table, payload) => {
+    if (!writable) throw new Error('Tu acceso es de solo lectura.');
+
     try {
-      const { data, error } = await supabase
-        .from(table)
-        .insert(payload)
-        .select()
-        .single();
+      const { data, error } = await supabase.from(table).insert(payload).select().single();
       if (error) throw error;
       return data;
     } catch (error) {
@@ -96,11 +114,7 @@ export default function Agenda() {
         const legacy = { ...payload };
         delete legacy.user_id;
         delete legacy.created_by;
-        const { data, error: retryError } = await supabase
-          .from(table)
-          .insert(legacy)
-          .select()
-          .single();
+        const { data, error: retryError } = await supabase.from(table).insert(legacy).select().single();
         if (retryError) throw retryError;
         return data;
       }
@@ -108,11 +122,7 @@ export default function Agenda() {
       if (hasOwnerConstraintIssue(error, table)) {
         const legacy = { ...payload };
         delete legacy.user_id;
-        const { data, error: retryError } = await supabase
-          .from(table)
-          .insert(legacy)
-          .select()
-          .single();
+        const { data, error: retryError } = await supabase.from(table).insert(legacy).select().single();
         if (retryError) throw retryError;
         return data;
       }
@@ -122,53 +132,31 @@ export default function Agenda() {
   };
 
   const safeUpdate = async (table, id, payload) => {
+    if (!writable) throw new Error('Tu acceso es de solo lectura.');
+
     return updateOwnedRowById({
       table,
       id,
       payload,
-      ownerId,
-      ownerEmail,
-      adminMode,
+      ownerId: scopedOwnerId,
+      ownerEmail: scopedOwnerEmail,
+      adminMode: scopedAdminMode,
     });
   };
 
-  const getOwnedSingleByField = async (table, field, value) => {
-    const fetchBy = async (column, v) => {
-      const { data, error } = await supabase
-        .from(table)
-        .select('*')
-        .eq(column, v)
-        .eq(field, value)
-        .limit(1);
-      if (error) throw error;
-      return (data || [])[0] || null;
-    };
-
-    if (ownerId) {
-      try {
-        const row = await fetchBy('user_id', ownerId);
-        if (row || !ownerEmail) return row;
-      } catch (error) {
-        if (!isMissingColumnError(error, `${table}.user_id`) && !isMissingColumnError(error, 'user_id')) throw error;
-      }
-    }
-
-    if (ownerEmail) {
-      try {
-        return await fetchBy('created_by', ownerEmail);
-      } catch (error) {
-        if (!isMissingColumnError(error, `${table}.created_by`) && !isMissingColumnError(error, 'created_by')) throw error;
-      }
-    }
-
-    return null;
+  const getSingleByField = async (table, field, value) => {
+    const rows = await fetchRows({
+      table,
+      filters: [{ column: field, value }],
+    });
+    return rows[0] || null;
   };
 
   const syncCompletedAppointment = async (appointment) => {
     if (!appointment?.client_name || toNumber(appointment.price) <= 0) return;
 
     const amount = toNumber(appointment.price);
-    let client = await getOwnedSingleByField('clients', 'name', appointment.client_name);
+    let client = await getSingleByField('clients', 'name', appointment.client_name);
 
     if (client?.id) {
       client = await safeUpdate('clients', client.id, {
@@ -212,7 +200,7 @@ export default function Agenda() {
     const month = `${appointment.date || ''}`.slice(0, 7);
     if (!month) return;
 
-    const existingRecord = await getOwnedSingleByField('monthly_records', 'month', month);
+    const existingRecord = await getSingleByField('monthly_records', 'month', month);
     if (existingRecord?.id) {
       const nextIncome = toNumber(existingRecord.income) + amount;
       const nextExpenses = toNumber(existingRecord.expenses);
@@ -237,30 +225,25 @@ export default function Agenda() {
   };
 
   const { data: appointments = [], isLoading } = useQuery({
-    queryKey: ['appointments', ownerId, ownerEmail, adminMode],
-    queryFn: async () => {
-      const rows = await fetchOwnedRows({
-        table: 'appointments',
-        ownerId,
-        ownerEmail,
-        adminMode,
-        orderBy: 'date',
-        ascending: false,
-      });
-      return sortAppointments(rows);
-    },
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['appointments', ...contextQueryKey],
+    queryFn: async () => sortAppointments(await fetchRows({
+      table: 'appointments',
+      orderBy: 'date',
+      ascending: false,
+    })),
+    enabled,
   });
 
   const saveMutation = useMutation({
     mutationFn: async (input) => {
-      const payload = normalizeAppointmentPayload(input);
+      if (!writable) throw new Error('Tu acceso es de solo lectura.');
 
+      const payload = normalizeAppointmentPayload(input);
       if (!payload.client_name || !payload.service_type || !payload.date) {
         throw new Error('Completa los campos requeridos');
       }
 
-      if (!adminMode && !ownerId) {
+      if (!adminMode && !writeOwnerId && !writeOwnerEmail) {
         throw new Error('Tu sesión aún no está lista. Recarga la página e intenta de nuevo.');
       }
 
@@ -292,7 +275,6 @@ export default function Agenda() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       queryClient.invalidateQueries({ queryKey: ['monthly-records'] });
-      queryClient.invalidateQueries({ queryKey: ['monthly-records', ownerId, ownerEmail, adminMode] });
 
       const wasEditing = Boolean(editingId);
       setShowForm(false);
@@ -311,12 +293,13 @@ export default function Agenda() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
+      if (!writable) throw new Error('Tu acceso es de solo lectura.');
       await deleteOwnedRowById({
         table: 'appointments',
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -329,10 +312,12 @@ export default function Agenda() {
   });
 
   const handleSave = () => {
+    if (!writable) return;
     saveMutation.mutate(formData);
   };
 
   const handleEdit = (appointment) => {
+    if (!writable) return;
     setEditingId(appointment.id);
     setFormData({
       client_name: appointment.client_name || '',
@@ -379,83 +364,66 @@ export default function Agenda() {
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Calendar className="h-6 w-6" /> Agenda Inteligente
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Gestiona tus citas y servicios</p>
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nueva Cita
-        </Button>
+        {writable ? (
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nueva Cita
+          </Button>
+        ) : null}
       </div>
 
-      {showForm && (
+      {!writable ? (
+        <Card className="p-4 border-dashed bg-muted/20">
+          <div className="flex items-start gap-3">
+            <Eye className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold">Modo solo lectura</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Puedes consultar las citas y sus detalles, pero no crear, editar ni eliminar registros.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {writable && showForm ? (
         <Card className="p-6 space-y-4 border-primary/30">
           <h3 className="font-bold text-lg">{editingId ? 'Editar Cita' : 'Nueva Cita'}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label className="text-xs">Nombre del Cliente *</Label>
-              <Input
-                value={formData.client_name}
-                onChange={(event) => setFormData({ ...formData, client_name: event.target.value })}
-                placeholder="Nombre completo"
-                className="mt-1"
-              />
+              <Input value={formData.client_name} onChange={(event) => setFormData({ ...formData, client_name: event.target.value })} placeholder="Nombre completo" className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Teléfono (WhatsApp)</Label>
-              <Input
-                value={formData.client_phone}
-                onChange={(event) => setFormData({ ...formData, client_phone: event.target.value })}
-                placeholder="+1 809 555 0000"
-                className="mt-1"
-              />
+              <Input value={formData.client_phone} onChange={(event) => setFormData({ ...formData, client_phone: event.target.value })} placeholder="+1 809 555 0000" className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Tipo de Servicio *</Label>
-              <Input
-                value={formData.service_type}
-                onChange={(event) => setFormData({ ...formData, service_type: event.target.value })}
-                placeholder="Ej: Consultoría, Mantenimiento..."
-                className="mt-1"
-              />
+              <Input value={formData.service_type} onChange={(event) => setFormData({ ...formData, service_type: event.target.value })} placeholder="Ej: Consultoría, Mantenimiento..." className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Precio Estimado</Label>
-              <Input
-                type="number"
-                value={formData.price}
-                onChange={(event) => setFormData({ ...formData, price: toNumber(event.target.value) })}
-                placeholder="0.00"
-                className="mt-1"
-              />
+              <Input type="number" value={formData.price} onChange={(event) => setFormData({ ...formData, price: toNumber(event.target.value) })} placeholder="0.00" className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Fecha *</Label>
-              <Input
-                type="date"
-                value={formData.date}
-                onChange={(event) => setFormData({ ...formData, date: event.target.value })}
-                className="mt-1"
-              />
+              <Input type="date" value={formData.date} onChange={(event) => setFormData({ ...formData, date: event.target.value })} className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Hora</Label>
-              <Input
-                type="time"
-                value={formData.time}
-                onChange={(event) => setFormData({ ...formData, time: event.target.value })}
-                className="mt-1"
-              />
+              <Input type="time" value={formData.time} onChange={(event) => setFormData({ ...formData, time: event.target.value })} className="mt-1" />
             </div>
             <div>
               <Label className="text-xs">Estado</Label>
               <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="programado">Programado</SelectItem>
                   <SelectItem value="confirmado">Confirmado</SelectItem>
@@ -484,7 +452,7 @@ export default function Agenda() {
             </Button>
           </div>
         </Card>
-      )}
+      ) : null}
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -496,13 +464,13 @@ export default function Agenda() {
                 <TableHead>Fecha</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Precio</TableHead>
-                <TableHead className="w-24">Acciones</TableHead>
+                {writable ? <TableHead className="w-24">Acciones</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {appointments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
+                  <TableCell colSpan={writable ? 6 : 5} className="text-center py-12">
                     <Calendar className="h-10 w-10 mx-auto text-muted-foreground/30 mb-2" />
                     <p className="text-sm text-muted-foreground">No hay citas programadas</p>
                   </TableCell>
@@ -513,11 +481,11 @@ export default function Agenda() {
                     <TableCell>
                       <div>
                         <p className="font-medium text-sm">{appointment.client_name}</p>
-                        {appointment.client_phone && (
+                        {appointment.client_phone ? (
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <Phone className="h-3 w-3" /> {appointment.client_phone}
                           </p>
-                        )}
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{appointment.service_type}</TableCell>
@@ -526,11 +494,11 @@ export default function Agenda() {
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                         {appointment.date ? format(new Date(appointment.date), 'dd/MM/yyyy', { locale: es }) : '—'}
                       </div>
-                      {appointment.time && (
+                      {appointment.time ? (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                           <Clock className="h-3 w-3" /> {appointment.time}
                         </div>
-                      )}
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <Badge className={statusColors[appointment.status] || statusColors.programado}>
@@ -540,32 +508,28 @@ export default function Agenda() {
                     <TableCell className="text-sm font-medium">
                       {toNumber(appointment.price) > 0 ? formatMoney(appointment.price) : '—'}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleEdit(appointment)}
-                          title="Editar"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                          onClick={() => {
-                            if (window.confirm(`¿Eliminar cita de ${appointment.client_name}?`)) {
-                              deleteMutation.mutate(appointment.id);
-                            }
-                          }}
-                          title="Eliminar"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {writable ? (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(appointment)} title="Editar">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            onClick={() => {
+                              if (window.confirm(`¿Eliminar cita de ${appointment.client_name}?`)) {
+                                deleteMutation.mutate(appointment.id);
+                              }
+                            }}
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               )}
