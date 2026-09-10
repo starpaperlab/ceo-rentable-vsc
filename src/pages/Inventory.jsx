@@ -39,6 +39,7 @@ export default function Inventory() {
   const {
     activeBrandId,
     adminMode,
+    canWrite,
     enabled,
     fetchRows,
     ownerEmail,
@@ -52,10 +53,15 @@ export default function Inventory() {
     writeOwnerEmail,
     writeOwnerId,
   } = useWorkContextScope();
+
   const [editingItem, setEditingItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [movementItem, setMovementItem] = useState(null);
   const [movementForm, setMovementForm] = useState({ type: 'entrada', quantity: 1, reason: '' });
+
+  const assertCanWrite = () => {
+    if (!canWrite && !adminMode) throw new Error('Tu acceso es de solo lectura.');
+  };
 
   const addOwnerToPayload = (payload) => ({
     ...payload,
@@ -64,6 +70,7 @@ export default function Inventory() {
   });
 
   const insertOwned = async (table, payload) => {
+    assertCanWrite();
     try {
       const { data, error } = await supabase.from(table).insert(payload).select().single();
       if (error) throw error;
@@ -75,47 +82,26 @@ export default function Inventory() {
         isMissingColumnError(error, `${table}.created_by`) ||
         isMissingColumnError(error, 'created_by')
       ) {
-        const noUserId = { ...payload };
-        delete noUserId.user_id;
-        delete noUserId.created_by;
-        const { data, error: retryError } = await supabase.from(table).insert(noUserId).select().single();
+        const next = { ...payload };
+        delete next.user_id;
+        delete next.created_by;
+        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
         if (retryError) throw retryError;
         return data;
       }
       if (hasOwnerConstraintIssue(error, table)) {
-        const noUserId = { ...payload };
-        delete noUserId.user_id;
-        const { data, error: retryError } = await supabase.from(table).insert(noUserId).select().single();
-        if (retryError) throw retryError;
-        return data;
-      }
-      if (isMissingColumnError(error, `${table}.product_id`) || isMissingColumnError(error, 'product_id')) {
         const next = { ...payload };
-        delete next.product_id;
+        delete next.user_id;
         const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
         if (retryError) throw retryError;
         return data;
       }
-      if (isMissingColumnError(error, `${table}.category`) || isMissingColumnError(error, 'category')) {
-        const next = { ...payload };
-        delete next.category;
-        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
-        if (retryError) throw retryError;
-        return data;
-      }
-      if (isMissingColumnError(error, `${table}.is_active`) || isMissingColumnError(error, 'is_active')) {
-        const next = { ...payload };
-        delete next.is_active;
-        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
-        if (retryError) throw retryError;
-        return data;
-      }
-      if (isMissingColumnError(error, `${table}.brand_profile_id`) || isMissingColumnError(error, 'brand_profile_id')) {
-        const next = { ...payload };
-        delete next.brand_profile_id;
-        const { data, error: retryError } = await supabase.from(table).insert(next).select().single();
-        if (retryError) throw retryError;
-        return data;
+      for (const column of ['product_id', 'category', 'is_active', 'brand_profile_id']) {
+        if (isMissingColumnError(error, `${table}.${column}`) || isMissingColumnError(error, column)) {
+          const next = { ...payload };
+          delete next[column];
+          return insertOwned(table, next);
+        }
       }
       throw error;
     }
@@ -134,6 +120,7 @@ export default function Inventory() {
   });
 
   const persistInventoryItem = async (payload, { targetItem = null } = {}) => {
+    assertCanWrite();
     if (!adminMode && !ownerId && !ownerEmail) {
       throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
     }
@@ -171,11 +158,7 @@ export default function Inventory() {
         ownerEmail: scopedOwnerEmail,
         adminMode: scopedAdminMode,
       });
-
-      return {
-        payload: safePayload,
-        remoteUpdatedAt: now,
-      };
+      return { payload: safePayload, remoteUpdatedAt: now };
     }
 
     const saved = await insertOwned('inventory_items', addOwnerToPayload({
@@ -183,22 +166,17 @@ export default function Inventory() {
       product_type: 'fisico',
       brand_profile_id: activeBrandId || null,
     }));
-    return {
-      payload: safePayload,
-      remoteUpdatedAt: saved?.updated_at || now,
-      saved,
-    };
+    return { payload: safePayload, remoteUpdatedAt: saved?.updated_at || now, saved };
   };
 
   const saveItemMutation = useMutation({
     mutationFn: async (payload) => persistInventoryItem(payload, { targetItem: editingItem }),
-    onError: (error) => {
-      toast.error(`No se pudo guardar el producto: ${error.message}`);
-    },
+    onError: (error) => toast.error(`No se pudo guardar el producto: ${error.message}`),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
+      assertCanWrite();
       await deleteOwnedRowById({
         table: 'inventory_items',
         id,
@@ -211,13 +189,12 @@ export default function Inventory() {
       queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
       toast.success('Producto eliminado');
     },
-    onError: (error) => {
-      toast.error(`No se pudo eliminar: ${error.message}`);
-    },
+    onError: (error) => toast.error(`No se pudo eliminar: ${error.message}`),
   });
 
   const movementMutation = useMutation({
     mutationFn: async ({ item, movement }) => {
+      assertCanWrite();
       if (ownerId) {
         try {
           await ensureDbUserRecord({ user, userProfile });
@@ -256,9 +233,7 @@ export default function Inventory() {
       setMovementForm({ type: 'entrada', quantity: 1, reason: '' });
       toast.success('Movimiento registrado');
     },
-    onError: (error) => {
-      toast.error(`No se pudo registrar el movimiento: ${error.message}`);
-    },
+    onError: (error) => toast.error(`No se pudo registrar el movimiento: ${error.message}`),
   });
 
   const fisicos = useMemo(
@@ -270,8 +245,7 @@ export default function Inventory() {
     [fisicos]
   );
 
-  const isLoading = loadingItems || loadingMovements;
-  if (isLoading) {
+  if (loadingItems || loadingMovements) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -287,96 +261,100 @@ export default function Inventory() {
         <p className="text-sm text-muted-foreground mt-1">Controla únicamente tus productos físicos con stock real.</p>
       </motion.div>
 
+      {!canWrite && !adminMode && (
+        <Card className="p-4 border-blue-200 bg-blue-50">
+          <p className="text-sm font-semibold text-blue-800">Acceso de solo lectura</p>
+          <p className="text-xs text-blue-700 mt-1">Puedes consultar existencias, alertas y movimientos, pero no modificar el inventario.</p>
+        </Card>
+      )}
+
       <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <Card className="p-4 text-center">
-              <p className="text-2xl font-bold">{fisicos.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Productos</p>
-            </Card>
-            <Card className="p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{fisicos.reduce((sum, item) => sum + (item.current_stock || 0), 0)}</p>
-              <p className="text-xs text-muted-foreground mt-1">Unidades</p>
-            </Card>
-            <Card className="p-4 text-center">
-              <p className={`text-2xl font-bold ${lowStock.length > 0 ? 'text-amber-500' : 'text-green-600'}`}>{lowStock.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">Stock bajo</p>
-            </Card>
-          </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-4 text-center">
+            <p className="text-2xl font-bold">{fisicos.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Productos</p>
+          </Card>
+          <Card className="p-4 text-center">
+            <p className="text-2xl font-bold text-primary">{fisicos.reduce((sum, item) => sum + (item.current_stock || 0), 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Unidades</p>
+          </Card>
+          <Card className="p-4 text-center">
+            <p className={`text-2xl font-bold ${lowStock.length > 0 ? 'text-amber-500' : 'text-green-600'}`}>{lowStock.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Stock bajo</p>
+          </Card>
+        </div>
 
-          {lowStock.length > 0 && (
-            <Card className="p-4 border-amber-300 bg-amber-50">
-              <p className="text-sm font-semibold text-amber-700 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Productos con alerta de stock
-              </p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {lowStock.map((item) => (
-                  <Badge key={item.id} variant="outline">{item.product_name} ({item.current_stock})</Badge>
-                ))}
-              </div>
-            </Card>
-          )}
+        {lowStock.length > 0 && (
+          <Card className="p-4 border-amber-300 bg-amber-50">
+            <p className="text-sm font-semibold text-amber-700 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Productos con alerta de stock
+            </p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {lowStock.map((item) => <Badge key={item.id} variant="outline">{item.product_name} ({item.current_stock})</Badge>)}
+            </div>
+          </Card>
+        )}
 
+        {(canWrite || adminMode) && (
           <div className="flex justify-end">
-            <Button
-              onClick={() => {
-                setEditingItem(null);
-                setShowForm(true);
-              }}
-            >
+            <Button onClick={() => { setEditingItem(null); setShowForm(true); }}>
               <Plus className="h-4 w-4 mr-2" /> Agregar Producto
             </Button>
           </div>
+        )}
 
-          {(showForm || editingItem) && (
-            <InventoryItemForm
-              key={editingItem?.id || 'new-inventory-item'}
-              item={editingItem}
-              onSubmit={async (payload) => {
-                const result = await saveItemMutation.mutateAsync(payload);
-                queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
-                return result;
-              }}
-              onRemoteSave={(payload) => persistInventoryItem(payload, { targetItem: editingItem })}
-              onSaved={() => {
-                setShowForm(false);
-                setEditingItem(null);
-                toast.success(editingItem?.id ? 'Producto actualizado' : 'Producto guardado');
-              }}
-              onCancel={() => { setShowForm(false); setEditingItem(null); }}
-              isLoading={saveItemMutation.isPending}
-              autosaveUserId={ownerId || ownerEmail || 'anon'}
-              remoteUpdatedAt={editingItem?.updated_at || null}
-            />
-          )}
+        {(canWrite || adminMode) && (showForm || editingItem) && (
+          <InventoryItemForm
+            key={editingItem?.id || 'new-inventory-item'}
+            item={editingItem}
+            onSubmit={async (payload) => {
+              const result = await saveItemMutation.mutateAsync(payload);
+              queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
+              return result;
+            }}
+            onRemoteSave={(payload) => persistInventoryItem(payload, { targetItem: editingItem })}
+            onSaved={() => {
+              const wasEditing = Boolean(editingItem?.id);
+              setShowForm(false);
+              setEditingItem(null);
+              toast.success(wasEditing ? 'Producto actualizado' : 'Producto guardado');
+            }}
+            onCancel={() => { setShowForm(false); setEditingItem(null); }}
+            isLoading={saveItemMutation.isPending}
+            autosaveUserId={ownerId || ownerEmail || 'anon'}
+            remoteUpdatedAt={editingItem?.updated_at || null}
+          />
+        )}
 
-          {fisicos.length === 0 ? (
-            <Card className="p-12 text-center">
-              <Package className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground">No hay productos fisicos todavia.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {fisicos.map((item) => (
-                <Card key={item.id} className="p-4">
-                  <div className="flex items-start gap-4 flex-wrap">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-sm">{item.product_name}</p>
-                        {item.sku && <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.sku}</span>}
-                        {item.category && <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.category}</span>}
-                        {(item.current_stock || 0) <= (item.min_stock_alert || 0) && (
-                          <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">Stock bajo</Badge>
-                        )}
-                      </div>
-                      <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                        <span>Stock: <strong className="text-foreground">{item.current_stock || 0}</strong> {item.unit || 'unidad'}</span>
-                        <span>Mínimo: <strong>{item.min_stock_alert || 0}</strong></span>
-                        <span>Venta: <strong className="text-primary">{formatMoney(item.sale_price || 0)}</strong></span>
-                        <span>Costo: <strong>{formatMoney(item.costo_unitario || 0)}</strong></span>
-                        <span>Valor: <strong>{formatMoney((item.current_stock || 0) * (item.costo_unitario || 0))}</strong></span>
-                      </div>
+        {fisicos.length === 0 ? (
+          <Card className="p-12 text-center">
+            <Package className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">No hay productos fisicos todavia.</p>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {fisicos.map((item) => (
+              <Card key={item.id} className="p-4">
+                <div className="flex items-start gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-sm">{item.product_name}</p>
+                      {item.sku && <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.sku}</span>}
+                      {item.category && <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.category}</span>}
+                      {(item.current_stock || 0) <= (item.min_stock_alert || 0) && (
+                        <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">Stock bajo</Badge>
+                      )}
                     </div>
+                    <div className="flex gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                      <span>Stock: <strong className="text-foreground">{item.current_stock || 0}</strong> {item.unit || 'unidad'}</span>
+                      <span>Mínimo: <strong>{item.min_stock_alert || 0}</strong></span>
+                      <span>Venta: <strong className="text-primary">{formatMoney(item.sale_price || 0)}</strong></span>
+                      <span>Costo: <strong>{formatMoney(item.costo_unitario || 0)}</strong></span>
+                      <span>Valor: <strong>{formatMoney((item.current_stock || 0) * (item.costo_unitario || 0))}</strong></span>
+                    </div>
+                  </div>
+
+                  {(canWrite || adminMode) && (
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -388,49 +366,43 @@ export default function Inventory() {
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" /> Movimiento
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setEditingItem(item);
-                          setShowForm(true);
-                        }}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => { setEditingItem(item); setShowForm(true); }}>
                         Editar
                       </Button>
                       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteMutation.mutate(item.id)}>
                         Eliminar
                       </Button>
                     </div>
-                  </div>
-
-                  {movements.filter((movement) => movement.inventory_item_id === item.id).length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <p className="text-[11px] font-semibold text-muted-foreground uppercase">Ultimos movimientos</p>
-                      <div className="mt-2 space-y-1">
-                        {movements
-                          .filter((movement) => movement.inventory_item_id === item.id)
-                          .slice(0, 3)
-                          .map((movement) => (
-                            <div key={movement.id} className="text-xs flex items-center gap-2 text-muted-foreground">
-                              {movement.type === 'entrada' && <ArrowUp className="h-3.5 w-3.5 text-green-600" />}
-                              {movement.type === 'salida' && <ArrowDown className="h-3.5 w-3.5 text-red-500" />}
-                              {movement.type === 'ajuste' && <RefreshCw className="h-3.5 w-3.5 text-blue-500" />}
-                              <span>{movement.type}</span>
-                              <span className="font-medium">{movement.quantity}</span>
-                              <span>{movement.reason || '-'}</span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
                   )}
-                </Card>
-              ))}
-            </div>
-          )}
+                </div>
+
+                {movements.filter((movement) => movement.inventory_item_id === item.id).length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase">Ultimos movimientos</p>
+                    <div className="mt-2 space-y-1">
+                      {movements
+                        .filter((movement) => movement.inventory_item_id === item.id)
+                        .slice(0, 3)
+                        .map((movement) => (
+                          <div key={movement.id} className="text-xs flex items-center gap-2 text-muted-foreground">
+                            {movement.type === 'entrada' && <ArrowUp className="h-3.5 w-3.5 text-green-600" />}
+                            {movement.type === 'salida' && <ArrowDown className="h-3.5 w-3.5 text-red-500" />}
+                            {movement.type === 'ajuste' && <RefreshCw className="h-3.5 w-3.5 text-blue-500" />}
+                            <span>{movement.type}</span>
+                            <span className="font-medium">{movement.quantity}</span>
+                            <span>{movement.reason || '-'}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
-      {movementItem && (
+      {(canWrite || adminMode) && movementItem && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
             <Card className="p-6 space-y-4">
