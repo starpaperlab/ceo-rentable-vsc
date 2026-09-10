@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/lib/AuthContext';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ import { toast } from 'sonner';
 import {
   deleteOwnedRowById,
   extractMissingColumnFromError,
-  fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
   updateOwnedRowById,
@@ -360,10 +359,24 @@ function buildCostLinePayloads({
 export default function Profitability() {
   const location = useLocation();
   const { formatMoney, currency } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const {
+    adminMode,
+    canWrite,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
+  const writable = adminMode || canWrite;
+  const contextKey = contextQueryKey.join(':');
   const moneyUnit = currency || 'USD';
 
   const [isLoadingPanel, setIsLoadingPanel] = useState(true);
@@ -515,7 +528,7 @@ export default function Profitability() {
   }, [isAuditStarted, margin, typeConfig.itemNoun]);
 
   const loadAnalysis = async (preferredSource = analysisSource) => {
-    if (!adminMode && !ownerId && !ownerEmail) {
+    if (!enabled) {
       setAnalysisRows([]);
       setIsLoadingPanel(false);
       return;
@@ -532,11 +545,8 @@ export default function Profitability() {
 
       for (const source of sourceOrder) {
         try {
-          const rows = await fetchOwnedRows({
+          const rows = await fetchRows({
             table: source,
-            ownerId,
-            ownerEmail,
-            adminMode,
             orderBy: 'created_at',
             ascending: false,
           });
@@ -581,7 +591,14 @@ export default function Profitability() {
 
   useEffect(() => {
     loadAnalysis(analysisSource);
-  }, [ownerId, ownerEmail, adminMode]);
+  }, [contextKey, enabled]);
+
+  useEffect(() => {
+    if (!writable) {
+      setSelector((prev) => ({ ...prev, open: false }));
+      setDeleteLineTarget(null);
+    }
+  }, [writable]);
 
   useEffect(() => {
     if (!selector.open) return;
@@ -784,17 +801,24 @@ export default function Profitability() {
     throw error;
   };
 
+  const assertCanWrite = () => {
+    if (!writable) throw new Error('Tu acceso es de solo lectura.');
+  };
+
   const insertOwnedProduct = async (payload) => {
-    const withOwner = { ...payload, user_id: ownerId, created_by: ownerEmail || null };
+    assertCanWrite();
+    const withOwner = { ...payload, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
     return insertWithAdaptiveFallback('products', withOwner);
   };
 
   const insertOwnedAnalysis = async (payload) => {
-    const withOwner = { ...payload, user_id: ownerId, created_by: ownerEmail || null };
+    assertCanWrite();
+    const withOwner = { ...payload, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
     return insertWithAdaptiveFallback(ANALYSIS_TABLE, withOwner);
   };
 
   const insertCostLineSnapshots = async (productAnalysisId, linePayloads) => {
+    assertCanWrite();
     if (!linePayloads.length) return [];
 
     const { data, error } = await supabase
@@ -879,6 +903,7 @@ export default function Profitability() {
   }, [physicalCostLines, physicalModes, usesLibraryLines]);
 
   const saveToAnalysis = async () => {
+    if (!writable) return;
     if (!form.name.trim()) {
       toast.error('Escribe el nombre del producto');
       return;
@@ -901,8 +926,8 @@ export default function Profitability() {
       ? buildCostLinePayloads({
         linesBySection: activeLibraryLinesBySection,
         productAnalysisId: null,
-        ownerId,
-        ownerEmail,
+        ownerId: writeOwnerId,
+        ownerEmail: writeOwnerEmail,
         salePrice: price,
       })
       : [];
@@ -993,6 +1018,7 @@ export default function Profitability() {
   };
 
   const approveItem = async (id) => {
+    if (!writable) return;
     try {
       const table = analysisSource === ANALYSIS_TABLE ? ANALYSIS_TABLE : 'products';
       const nextStatus = table === ANALYSIS_TABLE ? 'approved' : 'en_analisis';
@@ -1000,9 +1026,9 @@ export default function Profitability() {
         table,
         id,
         payload: { status: nextStatus },
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
       toast.success('Producto aprobado para sincronización');
       await loadAnalysis();
@@ -1012,6 +1038,7 @@ export default function Profitability() {
   };
 
   const syncItem = async (item) => {
+    if (!writable) return;
     try {
       if (analysisSource === ANALYSIS_TABLE) {
         await insertOwnedProduct({
@@ -1049,14 +1076,15 @@ export default function Profitability() {
   };
 
   const deleteItem = async (id) => {
+    if (!writable) return;
     try {
       const table = analysisSource === ANALYSIS_TABLE ? ANALYSIS_TABLE : 'products';
       await deleteOwnedRowById({
         table,
         id,
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
       toast.success('Registro eliminado');
       await loadAnalysis();
@@ -1075,6 +1103,16 @@ export default function Profitability() {
 
   return (
     <div className="p-4 lg:p-6 max-w-[1220px] mx-auto space-y-6">
+      {!writable ? (
+        <Card className="p-4 border-dashed bg-muted/20">
+          <p className="text-sm font-semibold">Modo solo lectura</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Puedes consultar los productos en análisis, sus precios, costos y márgenes, pero no crear, aprobar, sincronizar ni eliminar análisis.
+          </p>
+        </Card>
+      ) : null}
+
+      {writable ? (
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-y-5 lg:gap-x-7 xl:gap-x-8 items-start">
         <Card className="order-1 lg:order-1 p-6 lg:p-7 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
           <p className="text-[11px] font-extrabold tracking-[0.12em] text-muted-foreground mb-5">DATOS DE AUDITORÍA</p>
@@ -1400,6 +1438,7 @@ export default function Profitability() {
           </Card>
         </div>
       </div>
+      ) : null}
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
@@ -1435,6 +1474,7 @@ export default function Profitability() {
                 </p>
               </div>
 
+              {writable ? (
               <div className="flex items-center gap-2">
                 {analysisSource === ANALYSIS_TABLE && item.status === 'analysis' && (
                   <Button size="sm" variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => approveItem(item.id)}>
@@ -1454,11 +1494,13 @@ export default function Profitability() {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              ) : null}
             </Card>
           ))
         )}
       </div>
 
+      {writable ? (
       <CostLibrarySelectorDialog
         open={selector.open}
         section={selector.section}
@@ -1472,7 +1514,9 @@ export default function Profitability() {
         onClose={closeCostSelector}
         onAdd={addLibraryLine}
       />
+      ) : null}
 
+      {writable ? (
       <AlertDialog open={Boolean(deleteLineTarget)} onOpenChange={(open) => !open && setDeleteLineTarget(null)}>
         <AlertDialogContent className="w-[calc(100vw-2rem)] rounded-lg">
           <AlertDialogHeader>
@@ -1492,6 +1536,7 @@ export default function Profitability() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      ) : null}
     </div>
   );
 }
