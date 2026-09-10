@@ -1,11 +1,37 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { useWorkContext } from '@/contexts/WorkContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { fetchOwnedRows, resolveWorkContextOwnership } from '@/lib/supabaseOwnership';
+import {
+  fetchOwnedRows,
+  isMissingColumnError,
+  resolveWorkContextOwnership,
+} from '@/lib/supabaseOwnership';
 
 function normalizeEmail(value = '') {
   return `${value || ''}`.trim().toLowerCase();
+}
+
+function sortRows(rows = [], orderBy = 'created_at', ascending = false) {
+  if (!orderBy) return rows;
+
+  return [...rows].sort((a, b) => {
+    const av = a?.[orderBy];
+    const bv = b?.[orderBy];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+
+    const ad = new Date(av).getTime();
+    const bd = new Date(bv).getTime();
+    let diff;
+    if (!Number.isNaN(ad) && !Number.isNaN(bd)) diff = ad - bd;
+    else if (typeof av === 'number' && typeof bv === 'number') diff = av - bv;
+    else diff = `${av}`.localeCompare(`${bv}`);
+
+    return ascending ? diff : -diff;
+  });
 }
 
 export function useWorkContextScope() {
@@ -41,16 +67,75 @@ export function useWorkContextScope() {
   const writeOwnerId = scopedOwnership.adminMode ? authenticatedUserId : scopedOwnership.ownerId;
   const writeOwnerEmail = authenticatedEmail;
   const queryKey = [authenticatedUserId, authenticatedEmail, adminMode, activeWorkspaceId, activeBrandId, activeView, activeUserId];
-  const enabled = adminMode || Boolean(scopedOwnership.ownerId || scopedOwnership.ownerEmail);
+  const enabled = adminMode || Boolean(activeWorkspaceId || scopedOwnership.ownerId || scopedOwnership.ownerEmail);
 
-  const fetchRows = (options = {}) => fetchOwnedRows({
-    ...options,
-    ownerId: scopedOwnership.ownerId,
-    ownerEmail: scopedOwnership.ownerEmail,
-    adminMode: scopedOwnership.adminMode,
-    brandProfileId: activeBrandId,
-    includeUnbranded: options.includeUnbranded ?? true,
-  });
+  const fetchRows = async (options = {}) => {
+    const {
+      table,
+      orderBy = 'created_at',
+      ascending = false,
+      filters = [],
+      includeUnbranded = true,
+    } = options;
+
+    // Los miembros de un equipo deben leer los datos del negocio, no solamente
+    // las filas cuyo user_id coincide con su propia cuenta. RLS decide qué
+    // módulos puede consultar cada miembro dentro del workspace.
+    if (!adminMode && !isLegacyWorkspaceMode && activeWorkspaceId && table) {
+      const runWorkspaceQuery = async ({ includeBrand = true } = {}) => {
+        let query = supabase
+          .from(table)
+          .select('*')
+          .eq('workspace_id', activeWorkspaceId);
+
+        filters.forEach((filter) => {
+          if (filter?.column) query = query.eq(filter.column, filter.value);
+        });
+
+        if (includeBrand && activeBrandId) {
+          query = includeUnbranded
+            ? query.or(`brand_profile_id.eq.${activeBrandId},brand_profile_id.is.null`)
+            : query.eq('brand_profile_id', activeBrandId);
+        }
+
+        const { data, error } = await query;
+        return { data: data || [], error };
+      };
+
+      let result = await runWorkspaceQuery({ includeBrand: true });
+
+      if (
+        result.error &&
+        activeBrandId &&
+        (isMissingColumnError(result.error, `${table}.brand_profile_id`) ||
+          isMissingColumnError(result.error, 'brand_profile_id'))
+      ) {
+        result = await runWorkspaceQuery({ includeBrand: false });
+      }
+
+      if (!result.error) {
+        return sortRows(result.data, orderBy, ascending);
+      }
+
+      // Algunas tablas de configuración todavía conservan el esquema legado.
+      // Solo en ese caso usamos el ownership anterior para no romper histórico.
+      if (
+        !isMissingColumnError(result.error, `${table}.workspace_id`) &&
+        !isMissingColumnError(result.error, 'workspace_id')
+      ) {
+        throw result.error;
+      }
+    }
+
+    return fetchOwnedRows({
+      ...options,
+      ownerId: scopedOwnership.ownerId,
+      ownerEmail: scopedOwnership.ownerEmail,
+      adminMode: scopedOwnership.adminMode,
+      brandProfileId: activeBrandId,
+      includeUnbranded,
+    });
+  };
 
   return {
     activeBrandId,
