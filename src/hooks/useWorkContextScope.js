@@ -11,7 +11,7 @@ function normalizeEmail(value = '') {
 export function useWorkContextScope() {
   const { user, userProfile, isAdmin } = useAuth();
   const { activeBrand, activeBrandId, activeView, activeUserId, activeUser } = useWorkContext();
-  const { activeWorkspace, activeWorkspaceId, isLegacyWorkspaceMode } = useWorkspace();
+  const { activeWorkspace, activeWorkspaceId, isLegacyWorkspaceMode, canWrite } = useWorkspace();
 
   const authenticatedUserId = user?.id || userProfile?.id || null;
   const authenticatedEmail = normalizeEmail(userProfile?.email || user?.email || '');
@@ -61,6 +61,7 @@ export function useWorkContextScope() {
     activeWorkspace,
     activeWorkspaceId,
     adminMode,
+    canWrite,
     enabled,
     fetchRows,
     ownerEmail: authenticatedEmail,
