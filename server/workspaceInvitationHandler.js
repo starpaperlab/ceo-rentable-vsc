@@ -47,7 +47,15 @@ export async function handleWorkspaceInvitation(payload = {}, { env = process.en
   const workspaceId = `${payload.workspaceId || ''}`.trim(); const email = normalizeEmail(payload.email); const role = ALLOWED_ROLES.has(payload.role) ? payload.role : 'member'; const jobProfile = ALLOWED_PROFILES.has(payload.jobProfile) ? payload.jobProfile : 'personalizado'; const modulePermissions = safePermissions(payload.modulePermissions);
   if (!workspaceId || !email) return { status: 400, body: { success: false, error: 'Faltan el negocio o el correo del usuario.' } };
   if (!(await authorizeWorkspaceManager(supabase, workspaceId, auth.user.id))) return { status: 403, body: { success: false, error: 'No tienes permisos para administrar este equipo.' } };
-  const { data: workspace } = await supabase.from('workspaces').select('id,name').eq('id', workspaceId).maybeSingle(); if (!workspace) return { status: 404, body: { success: false, error: 'No encontramos el negocio activo.' } };
+  const { data: workspace } = await supabase.from('workspaces').select('id,name,team_enabled,seat_limit').eq('id', workspaceId).maybeSingle(); if (!workspace) return { status: 404, body: { success: false, error: 'No encontramos el negocio activo.' } };
+  if (workspace.team_enabled !== true) return { status: 403, body: { success: false, code: 'BUSINESS_REQUIRED', error: 'Los usuarios de equipo estarán disponibles en CEO Rentable Business.' } };
+  const seatLimit = Math.max(1, Number(workspace.seat_limit || 1));
+  const [{ count: activeSeats, error: activeSeatsError }, { count: pendingSeats, error: pendingSeatsError }] = await Promise.all([
+    supabase.from('workspace_members').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId).eq('status', 'active'),
+    supabase.from('user_invitations').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId).in('status', ['pending','processing']),
+  ]);
+  if (activeSeatsError || pendingSeatsError) return { status: 500, body: { success: false, error: 'No se pudo comprobar el límite de usuarios.' } };
+  if ((activeSeats || 0) + (pendingSeats || 0) >= seatLimit) return { status: 409, body: { success: false, code: 'SEAT_LIMIT_REACHED', error: 'Has alcanzado el límite de usuarios contratado para este negocio.' } };
   const { data: profile, error: profileError } = await supabase.from('users').select('id,email,full_name').ilike('email', email).maybeSingle(); if (profileError) return { status: 500, body: { success: false, error: 'No se pudo comprobar el usuario.' } };
   let existingUserId = profile?.id || null;
   if (!existingUserId) {
