@@ -166,7 +166,7 @@ export default function MonthlyControl() {
           <p className="text-sm text-muted-foreground mt-1">Registra ingresos y gastos mes a mes.</p>
         </div>
         {canWrite ? (
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => setShowForm(!showForm)}>
+          <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto" onClick={() => setShowForm(!showForm)}>
             <Plus className="h-4 w-4 mr-2" /> Nuevo Mes
           </Button>
         ) : null}
