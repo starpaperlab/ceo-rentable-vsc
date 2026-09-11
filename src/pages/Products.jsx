@@ -660,7 +660,7 @@ export default function Products() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[170px] h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
+          <SelectTrigger className="h-11 w-full rounded-xl sm:w-[170px]"><SelectValue placeholder="Estado" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos</SelectItem>
             {STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
