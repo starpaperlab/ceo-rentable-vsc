@@ -168,8 +168,15 @@ export default function AppSettings() {
 
   const config = configs[0] || {};
   const baselineForm = useMemo(
-    () => buildSettingsForm(config, userProfile, ownerEmail),
-    [config, ownerEmail, userProfile]
+    () => buildSettingsForm({
+      ...config,
+      business_name: config.business_name || activeWorkspace?.name || '',
+      logo_url: config.logo_url || activeWorkspace?.logo_url || '',
+      brand_color: config.brand_color || activeWorkspace?.brand_primary_color || '#D94F8A',
+      brand_accent_color: config.brand_accent_color || activeWorkspace?.brand_accent_color || '#111827',
+      currency: config.currency || activeWorkspace?.currency_code || 'USD',
+    }, userProfile, ownerEmail),
+    [activeWorkspace?.brand_accent_color, activeWorkspace?.brand_primary_color, activeWorkspace?.currency_code, activeWorkspace?.logo_url, activeWorkspace?.name, config, ownerEmail, userProfile]
   );
 
   const [form, setForm] = useState(() => buildSettingsForm({}, userProfile, ownerEmail));
