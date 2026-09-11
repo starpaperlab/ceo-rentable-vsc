@@ -807,13 +807,13 @@ export default function Profitability() {
 
   const insertOwnedProduct = async (payload) => {
     assertCanWrite();
-    const withOwner = { ...payload, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
+    const withOwner = { ...payload, workspace_id: activeWorkspaceId || null, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
     return insertWithAdaptiveFallback('products', withOwner);
   };
 
   const insertOwnedAnalysis = async (payload) => {
     assertCanWrite();
-    const withOwner = { ...payload, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
+    const withOwner = { ...payload, workspace_id: activeWorkspaceId || null, user_id: writeOwnerId, created_by: writeOwnerEmail || null };
     return insertWithAdaptiveFallback(ANALYSIS_TABLE, withOwner);
   };
 
@@ -823,7 +823,7 @@ export default function Profitability() {
 
     const { data, error } = await supabase
       .from(COST_LINE_TABLE)
-      .insert(linePayloads)
+      .insert(linePayloads.map((line) => ({ ...line, workspace_id: line.workspace_id || activeWorkspaceId || null })))
       .select('id');
 
     if (error) {
