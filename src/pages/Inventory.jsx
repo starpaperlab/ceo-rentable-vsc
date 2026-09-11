@@ -38,6 +38,7 @@ export default function Inventory() {
   const { formatMoney } = useCurrency();
   const {
     activeBrandId,
+    activeWorkspaceId,
     adminMode,
     canWrite,
     enabled,
@@ -65,6 +66,7 @@ export default function Inventory() {
 
   const addOwnerToPayload = (payload) => ({
     ...payload,
+    workspace_id: activeWorkspaceId || null,
     user_id: writeOwnerId,
     created_by: writeOwnerEmail || null,
   });
@@ -96,7 +98,7 @@ export default function Inventory() {
         if (retryError) throw retryError;
         return data;
       }
-      for (const column of ['product_id', 'category', 'is_active', 'brand_profile_id']) {
+      for (const column of ['workspace_id', 'product_id', 'category', 'is_active', 'brand_profile_id']) {
         if (isMissingColumnError(error, `${table}.${column}`) || isMissingColumnError(error, column)) {
           const next = { ...payload };
           delete next[column];
