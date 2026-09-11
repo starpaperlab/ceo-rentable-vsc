@@ -642,14 +642,25 @@ export default function DocumentForm({
     let saved;
     if (doc?.id) {
       await updateOwnedRow(entityTable, doc.id, payload);
-      const updatedRows = await fetchOwnedRows({
-        table: entityTable,
-        ownerId,
-        ownerEmail,
-        adminMode,
-        filters: [{ column: 'id', value: doc.id }],
-      });
-      saved = updatedRows?.[0] || null;
+      if (workspaceId) {
+        const { data: updatedRow, error: updatedRowError } = await supabase
+          .from(entityTable)
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .eq('id', doc.id)
+          .maybeSingle();
+        if (updatedRowError) throw updatedRowError;
+        saved = updatedRow || null;
+      } else {
+        const updatedRows = await fetchOwnedRows({
+          table: entityTable,
+          ownerId,
+          ownerEmail,
+          adminMode,
+          filters: [{ column: 'id', value: doc.id }],
+        });
+        saved = updatedRows?.[0] || null;
+      }
     } else {
       saved = await insertOwnedRow(entityTable, payload);
     }
