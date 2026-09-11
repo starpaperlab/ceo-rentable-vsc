@@ -82,7 +82,7 @@ export default function Imports() {
       {!writable ? (
         <Card className="p-4 border-dashed bg-muted/20">
           <p className="text-sm font-semibold">Modo solo lectura</p>
-          <p className="text-xs text-muted-foreground mt-1">Puedes consultar el formato de importación y descargar plantillas, pero no cargar ni procesar archivos.</p>
+          <p className="text-xs text-muted-foreground mt-1">Puedes consultar el formato de importación, pero no cargar, procesar ni descargar archivos.</p>
         </Card>
       ) : null}
 
@@ -102,7 +102,7 @@ export default function Imports() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
-          <TemplateDownloader typeKey={typeKey} />
+          {writable ? <TemplateDownloader typeKey={typeKey} /> : null}
           {writable ? (
             <FileDropzone file={file} onFileSelected={handleFileSelected} isParsing={isParsing} />
           ) : null}
