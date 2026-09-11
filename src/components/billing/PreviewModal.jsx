@@ -246,10 +246,12 @@ export default function PreviewModal({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold text-sm">Vista Previa del Documento</h3>
           <div className="flex gap-2">
+{canExport ? (
             <Button onClick={handleExportPDF} size="sm" className="bg-white text-foreground hover:bg-white/90 text-xs">
               <Download className="h-3.5 w-3.5 mr-1.5" />
               Exportar PDF
             </Button>
+            ) : null}
             <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-white/10 h-8 w-8">
               <X className="h-4 w-4" />
             </Button>
