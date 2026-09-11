@@ -76,20 +76,28 @@ async function authenticateRequest(
     };
   }
 
-  const { data, error } = await authClient.auth.getUser(accessToken);
-  if (error || !data?.user?.id) {
+  try {
+    const { data, error } = await authClient.auth.getUser(accessToken);
+    if (error || !data?.user?.id) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'Sesión inválida o expirada.',
+      };
+    }
+
+    return {
+      ok: true,
+      accessToken,
+      user: data.user,
+    };
+  } catch (_) {
     return {
       ok: false,
       status: 401,
-      error: `Sesión inválida o expirada.${error?.message ? ` ${error.message}` : ''}`,
+      error: 'Sesión inválida o expirada.',
     };
   }
-
-  return {
-    ok: true,
-    accessToken,
-    user: data.user,
-  };
 }
 
 async function claimInvitation(supabase, { token, email, userId }) {
