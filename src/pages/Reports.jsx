@@ -348,7 +348,7 @@ export default function Reports() {
       </div>
 
       {activeTab === 'receivables' && (
-        <ReportSection title="Cuentas por Cobrar" count={receivableRows.length} onExport={() => downloadCSV(receivableRows.map(r => ({ Factura: r.numero, Cliente: r.cliente, Fecha: r.fecha, Vence: r.vence, Total: r.total, Abonado: r.abonado, Saldo: r.saldo, Estado: r.estado })), 'cuentas_por_cobrar')}>
+        <ReportSection canExport={writable} title="Cuentas por Cobrar" count={receivableRows.length} onExport={() => downloadCSV(receivableRows.map(r => ({ Factura: r.numero, Cliente: r.cliente, Fecha: r.fecha, Vence: r.vence, Total: r.total, Abonado: r.abonado, Saldo: r.saldo, Estado: r.estado })), 'cuentas_por_cobrar')}>
           <Table headers={['Factura', 'Cliente', 'Fecha', 'Vence', 'Total', 'Abonado', 'Saldo', 'Estado']}>
             {receivableRows.map((r) => { const meta = getPaymentStatusMeta(r.status); return <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-mono font-semibold">{r.numero}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.fecha}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.vence}</td><td className="py-2.5 px-3 text-sm">{formatMoney(r.total)}</td><td className="py-2.5 px-3 text-sm text-green-600 font-semibold">{formatMoney(r.abonado)}</td><td className="py-2.5 px-3 text-sm font-bold text-red-600">{formatMoney(r.saldo)}</td><td className="py-2.5 px-3"><span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badgeClass}`}>{meta.label}</span></td></tr>; })}
           </Table>
@@ -356,31 +356,31 @@ export default function Reports() {
       )}
 
       {activeTab === 'inventory' && (
-        <ReportSection title="Reporte de Inventario" count={inventoryRows.length} onExport={() => downloadCSV(inventoryRows.map(r => ({ Producto: r.producto, SKU: r.sku, 'Stock Actual': r.stock_actual, 'Stock Mínimo': r.stock_minimo, 'Valor Inventario': r.valor_inventario, Estado: r.estado })), 'inventario')}>
+        <ReportSection canExport={writable} title="Reporte de Inventario" count={inventoryRows.length} onExport={() => downloadCSV(inventoryRows.map(r => ({ Producto: r.producto, SKU: r.sku, 'Stock Actual': r.stock_actual, 'Stock Mínimo': r.stock_minimo, 'Valor Inventario': r.valor_inventario, Estado: r.estado })), 'inventario')}>
           <Table headers={['Producto', 'SKU', 'Stock Actual', 'Stock Mín.', 'Valor Inventario', 'Estado']}>{inventoryRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{r.sku}</td><td className="py-2.5 px-3 text-sm">{r.stock_actual}</td><td className="py-2.5 px-3 text-sm">{r.stock_minimo}</td><td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.valor_inventario)}</td><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td></tr>)}</Table>
         </ReportSection>
       )}
 
       {activeTab === 'profitability' && (
-        <ReportSection title="Rentabilidad por Producto" count={profitRows.length} onExport={() => downloadCSV(profitRows.map(r => ({ Producto: r.producto, Ingresos: r.ingresos, Costos: r.costos, Ganancia: r.ganancia, 'Margen %': r.margen_pct, Estado: r._level === 'green' ? 'Rentable' : r._level === 'yellow' ? 'Atención' : 'Riesgo' })), 'rentabilidad')}>
+        <ReportSection canExport={writable} title="Rentabilidad por Producto" count={profitRows.length} onExport={() => downloadCSV(profitRows.map(r => ({ Producto: r.producto, Ingresos: r.ingresos, Costos: r.costos, Ganancia: r.ganancia, 'Margen %': r.margen_pct, Estado: r._level === 'green' ? 'Rentable' : r._level === 'yellow' ? 'Atención' : 'Riesgo' })), 'rentabilidad')}>
           <Table headers={['Producto', 'Ingresos', 'Costos', 'Ganancia', 'Margen %', 'Estado']}>{profitRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-sm">{formatMoney(r.ingresos)}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{formatMoney(r.costos)}</td><td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.ganancia)}</td><td className={`py-2.5 px-3 text-sm font-bold ${parseFloat(r.margen_pct) >= 30 ? 'text-green-600' : parseFloat(r.margen_pct) >= 15 ? 'text-amber-500' : 'text-red-600'}`}>{r.margen_pct}%</td><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td></tr>)}</Table>
         </ReportSection>
       )}
 
       {activeTab === 'sales' && (
-        <ReportSection title="Reporte de Ventas" count={salesRows.length} onExport={() => downloadCSV(salesRows.map(r => ({ Período: r.periodo, 'Total Ventas': r.ventas, 'Unidades Vendidas': r.cantidad, 'Ticket Promedio': r.ticket_promedio })), 'ventas')}>
+        <ReportSection canExport={writable} title="Reporte de Ventas" count={salesRows.length} onExport={() => downloadCSV(salesRows.map(r => ({ Período: r.periodo, 'Total Ventas': r.ventas, 'Unidades Vendidas': r.cantidad, 'Ticket Promedio': r.ticket_promedio })), 'ventas')}>
           <Table headers={['Período', 'Total Ventas', 'Unidades Vendidas', 'Ticket Promedio']}>{salesRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-sm font-medium">{r.periodo}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.ventas)}</td><td className="py-2.5 px-3 text-sm">{r.cantidad}</td><td className="py-2.5 px-3 text-sm">{formatMoney(parseFloat(r.ticket_promedio))}</td></tr>)}</Table>
         </ReportSection>
       )}
 
       {activeTab === 'clients' && (
-        <ReportSection title="Reporte de Clientes" count={clientRows.length} onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Nº Compras': r.num_compras })), 'clientes')}>
+        <ReportSection canExport={writable} title="Reporte de Clientes" count={clientRows.length} onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Nº Compras': r.num_compras })), 'clientes')}>
           <Table headers={['#', 'Cliente', 'Total Comprado', 'Nº Compras']}>{clientRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-xs text-muted-foreground">#{i + 1}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.total_comprado)}</td><td className="py-2.5 px-3 text-sm">{r.num_compras}</td></tr>)}</Table>
         </ReportSection>
       )}
 
       {activeTab === 'alerts' && (
-        <ReportSection title="Reporte de Alertas" count={alertRows.length} onExport={() => downloadCSV(alertRows.map(r => ({ Tipo: r.tipo, Producto: r.producto, Detalle: r.detalle })), 'alertas')}>
+        <ReportSection canExport={writable} title="Reporte de Alertas" count={alertRows.length} onExport={() => downloadCSV(alertRows.map(r => ({ Tipo: r.tipo, Producto: r.producto, Detalle: r.detalle })), 'alertas')}>
           {alertRows.length === 0 ? <div className="text-center py-12"><p className="text-green-600 font-semibold">✓ Sin alertas activas</p><p className="text-xs text-muted-foreground mt-1">Todos los productos están en estado saludable</p></div> : <Table headers={['Tipo', 'Producto', 'Detalle']}>{alertRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3"><StatusBadge level={r._level} /></td><td className="py-2.5 px-3 text-sm font-medium">{r.producto}</td><td className="py-2.5 px-3 text-sm text-muted-foreground">{r.detalle}</td></tr>)}</Table>}
         </ReportSection>
       )}
@@ -388,12 +388,12 @@ export default function Reports() {
   );
 }
 
-function ReportSection({ title, count, onExport, children }) {
+function ReportSection({ title, count, onExport, canExport = false, children }) {
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div><h2 className="text-sm font-bold text-foreground">{title}</h2><p className="text-xs text-muted-foreground mt-0.5">{count} registros</p></div>
-        <Button variant="outline" size="sm" onClick={onExport} className="w-full gap-2 sm:w-auto"><Download className="h-3.5 w-3.5" /> Exportar CSV</Button>
+        {canExport ? <Button variant="outline" size="sm" onClick={onExport} className="w-full gap-2 sm:w-auto"><Download className="h-3.5 w-3.5" /> Exportar CSV</Button> : null}
       </div>
       <div className="overflow-x-auto">{children}</div>
     </Card>
