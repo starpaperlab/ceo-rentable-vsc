@@ -391,9 +391,9 @@ export default function Reports() {
 function ReportSection({ title, count, onExport, children }) {
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div><h2 className="text-sm font-bold text-foreground">{title}</h2><p className="text-xs text-muted-foreground mt-0.5">{count} registros</p></div>
-        <Button variant="outline" size="sm" onClick={onExport} className="gap-2"><Download className="h-3.5 w-3.5" /> Exportar CSV</Button>
+        <Button variant="outline" size="sm" onClick={onExport} className="w-full gap-2 sm:w-auto"><Download className="h-3.5 w-3.5" /> Exportar CSV</Button>
       </div>
       <div className="overflow-x-auto">{children}</div>
     </Card>
