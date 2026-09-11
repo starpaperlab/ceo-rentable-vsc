@@ -53,6 +53,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useCurrency } from '@/components/shared/CurrencyContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import {
   createCostLibraryItem,
   deleteCostLibraryItem,
@@ -639,6 +640,7 @@ function CostFormModal({ open, item, onOpenChange, onSubmit, isSaving, formatMon
 }
 
 export default function CostLibrary() {
+  const { activeWorkspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const { formatMoney } = useCurrency();
   const [search, setSearch] = useState('');
@@ -685,7 +687,7 @@ export default function CostLibrary() {
     data: allItems = [],
     isLoading: loadingSummary,
   } = useQuery({
-    queryKey: ['cost-library-summary'],
+    queryKey: ['cost-library-summary', activeWorkspaceId],
     queryFn: () => listCostLibraryItems({ orderBy: 'name', ascending: true }),
   });
 
@@ -696,7 +698,7 @@ export default function CostLibrary() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['cost-library-items', queryFilters],
+    queryKey: ['cost-library-items', activeWorkspaceId, queryFilters],
     queryFn: () => listCostLibraryItems(queryFilters),
   });
 
@@ -738,8 +740,8 @@ export default function CostLibrary() {
     onMutate: async (item) => {
       setBusyId(item.id);
       await queryClient.cancelQueries({ queryKey: ['cost-library-items'] });
-      const previousItems = queryClient.getQueryData(['cost-library-items', queryFilters]);
-      queryClient.setQueryData(['cost-library-items', queryFilters], (current = []) => (
+      const previousItems = queryClient.getQueryData(['cost-library-items', activeWorkspaceId, queryFilters]);
+      queryClient.setQueryData(['cost-library-items', activeWorkspaceId, queryFilters], (current = []) => (
         current.map((row) => row.id === item.id ? { ...row, isActive: !row.isActive } : row)
       ));
       return { previousItems };
@@ -749,7 +751,7 @@ export default function CostLibrary() {
     },
     onError: (mutationError, _item, context) => {
       if (context?.previousItems) {
-        queryClient.setQueryData(['cost-library-items', queryFilters], context.previousItems);
+        queryClient.setQueryData(['cost-library-items', activeWorkspaceId, queryFilters], context.previousItems);
       }
       showNotice('No se pudo cambiar el estado', mutationError.message, 'error');
     },
