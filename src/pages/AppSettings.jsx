@@ -135,8 +135,9 @@ function isMeaningfulSettingsDraft(payload) {
 export default function AppSettings() {
   const { setCurrency } = useCurrency();
   const {
+    activeWorkspace,
+    activeWorkspaceId,
     adminMode,
-    canWrite,
     enabled,
     fetchRows,
     ownerEmail,
@@ -150,7 +151,7 @@ export default function AppSettings() {
     writeOwnerEmail,
     writeOwnerId,
   } = useWorkContextScope();
-  const writable = adminMode || canWrite;
+  const writable = adminMode || Boolean(activeWorkspace?.legacy) || ['owner', 'admin'].includes(activeWorkspace?.role);
   const contextKey = contextQueryKey.join(':');
   const queryClient = useQueryClient();
   const autosaveUserId = ownerId || ownerEmail || 'anon';
@@ -223,6 +224,7 @@ export default function AppSettings() {
     const serialized = serializeSettingsForm(data);
     const payload = {
       ...serialized,
+      workspace_id: activeWorkspaceId || null,
       user_id: writeOwnerId,
       created_by: writeOwnerEmail,
       updated_at: new Date().toISOString(),
@@ -301,6 +303,21 @@ export default function AppSettings() {
       }
     }
 
+    if (activeWorkspaceId) {
+      const { error: workspaceUpdateError } = await supabase
+        .from('workspaces')
+        .update({
+          name: serialized.business_name?.trim() || activeWorkspace?.name || 'Mi empresa',
+          logo_url: serialized.logo_url || null,
+          brand_primary_color: serialized.brand_color || null,
+          brand_accent_color: serialized.brand_accent_color || null,
+          currency_code: serialized.currency || activeWorkspace?.currency_code || 'DOP',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', activeWorkspaceId);
+      if (workspaceUpdateError) throw workspaceUpdateError;
+    }
+
     const nextUpdatedAt = savedRow?.updated_at || payload.updated_at;
     setCurrentRemoteUpdatedAt(nextUpdatedAt);
     setCurrency(serialized.currency);
@@ -311,7 +328,7 @@ export default function AppSettings() {
       remoteUpdatedAt: nextUpdatedAt,
       saved: savedRow,
     };
-  }, [adminMode, currentConfigId, ownerEmail, ownerId, scopedAdminMode, scopedOwnerEmail, scopedOwnerId, setCurrency, user, userProfile, writable, writeOwnerEmail, writeOwnerId]);
+  }, [activeWorkspace?.currency_code, activeWorkspace?.name, activeWorkspaceId, adminMode, currentConfigId, ownerEmail, ownerId, scopedAdminMode, scopedOwnerEmail, scopedOwnerId, setCurrency, user, userProfile, writable, writeOwnerEmail, writeOwnerId]);
 
   const autosaveSerializer = useCallback((value) => serializeSettingsForm(value), []);
 
