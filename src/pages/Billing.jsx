@@ -514,6 +514,7 @@ export default function Billing() {
           ownerName={userProfile?.full_name || ownerEmail}
           adminMode={scopedAdminMode}
           contextBrandProfileId={editDoc.doc?.brand_profile_id || activeBrandId || null}
+          workspaceId={activeWorkspaceId}
           totalCount={editDoc.type === 'invoice' ? invoices.length : quotes.length}
           autoRecoverDraft={Boolean(editDoc.autoRecoverDraft)}
         />
