@@ -241,7 +241,7 @@ export default function PreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-4">
       <div className="w-full max-w-4xl mt-4 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold text-sm">Vista Previa del Documento</h3>
