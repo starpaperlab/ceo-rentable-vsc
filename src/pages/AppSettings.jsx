@@ -482,7 +482,7 @@ export default function AppSettings() {
         </TabsList>
 
         <TabsContent value="business" className="space-y-4 mt-4">
-          <Card className="p-6 space-y-5">
+          <Card className="space-y-5 p-4 sm:p-6">
             <div>
               <h2 className="text-sm font-semibold text-foreground">Datos de empresa</h2>
               <p className="text-xs text-muted-foreground mt-1">Estos datos alimentan cotizaciones, facturas y PDFs.</p>
