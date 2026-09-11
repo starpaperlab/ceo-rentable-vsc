@@ -1114,7 +1114,7 @@ export default function Profitability() {
 
       {writable ? (
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-y-5 lg:gap-x-7 xl:gap-x-8 items-start">
-        <Card className="order-1 lg:order-1 p-6 lg:p-7 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+        <Card className="order-1 rounded-2xl border border-[#E7E1D9] p-4 shadow-[0_1px_3px_rgba(16,24,40,0.06)] sm:p-6 lg:order-1 lg:p-7">
           <p className="text-[11px] font-extrabold tracking-[0.12em] text-muted-foreground mb-5">DATOS DE AUDITORÍA</p>
 
           <div className="space-y-1.5 mb-4">
