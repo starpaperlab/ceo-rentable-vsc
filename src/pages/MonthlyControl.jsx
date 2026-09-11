@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 export default function MonthlyControl() {
   const { formatMoney } = useCurrency();
   const {
+    activeWorkspaceId,
     adminMode,
     canWrite,
     enabled,
@@ -84,6 +85,7 @@ export default function MonthlyControl() {
 
       const payload = {
         ...data,
+        workspace_id: activeWorkspaceId || null,
         profit: (data.income || 0) - (data.expenses || 0),
         margin_pct: data.income > 0 ? (((data.income - data.expenses) / data.income) * 100) : 0,
         user_id: writeOwnerId,
