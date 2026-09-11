@@ -23,8 +23,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { fetchOwnedRows } from '@/lib/supabaseOwnership';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 
 function monthLabel(dateValue) {
   if (!dateValue) return '—';
@@ -71,22 +71,20 @@ function normalizeInvoiceTotal(invoice) {
 export default function Dashboard() {
   const { formatMoney } = useCurrency();
   const { canWrite } = useWorkspace();
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const { user, userProfile } = useAuth();
+  const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
   const userName = (userProfile?.full_name || user?.email || 'CEO').split(' ')[0];
 
   const { data: products = [], isLoading: loadingProducts } = useQuery({
-    queryKey: ['dashboard-products', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'products', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['dashboard-products', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'products' }),
+    enabled,
   });
 
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
-    queryKey: ['dashboard-invoices', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'invoices', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['dashboard-invoices', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoices' }),
+    enabled,
   });
 
   const paidInvoices = useMemo(
