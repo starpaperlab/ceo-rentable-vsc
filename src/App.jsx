@@ -2,83 +2,17 @@ import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
-import PaymentSuccess from './pages/PaymentSuccess';
-import Acceso from './pages/Acceso';
-import ActivateAccess from './pages/ActivateAccess';
-import PaymentCancel from './pages/PaymentCancel';
-import ManualPaymentConfirmation from './pages/ManualPaymentConfirmation';
-import EmailLogs from './pages/EmailLogs';
-import EmailTemplates from './pages/EmailTemplates';
-import Learn from './pages/Learn';
-import Diagnostico from './pages/Diagnostico';
-import Agenda from './pages/Agenda';
-import Paywall from './pages/Paywall';
-import Checkout from './pages/Checkout';
-import Legal from './pages/Legal';
-import CostLibrary from './pages/CostLibrary';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import Login from '@/pages/Login';
-import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import AccessGuard from '@/components/shared/AccessGuard';
-import AdminRouteGuard from '@/components/shared/AdminRouteGuard';
-import MetaPixelRouteTracker from '@/components/tracking/MetaPixelRouteTracker';
-import { WorkContextProvider } from '@/contexts/WorkContext';
-
-const { Pages, Layout, mainPage } = pagesConfig;
-const mainPageKey = mainPage ?? Object.keys(Pages)[0];
-const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
-
-const LayoutWrapper = ({ children, currentPageName }) => Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
-const GuardedLayoutWrapper = ({ children, currentPageName }) => <AccessGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AccessGuard>;
-const GuardedAdminLayoutWrapper = ({ children, currentPageName = 'AdminPanel' }) => <AccessGuard><AdminRouteGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AdminRouteGuard></AccessGuard>;
-const ADMIN_PAGES = new Set(['AdminPanel']);
-const GuardedPageElement = ({ path, Page }) => <GuardedLayoutWrapper currentPageName={path}>{ADMIN_PAGES.has(path) ? <AdminRouteGuard><Page /></AdminRouteGuard> : <Page />}</GuardedLayoutWrapper>;
-
-const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, user } = useAuth();
-  if (isLoadingPublicSettings || isLoadingAuth) {
-    return <div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>;
-  }
-
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Login />} />
-      <Route path="/diagnostico" element={<Diagnostico />} />
-      <Route path="/acceso" element={<Acceso />} />
-      <Route path="/activar-acceso" element={<ActivateAccess />} />
-      <Route path="/paywall" element={<Paywall />} />
-      <Route path="/checkout" element={<Checkout />} />
-      <Route path="/terminos" element={<Legal />} />
-      <Route path="/privacidad" element={<Legal />} />
-      <Route path="/cookies" element={<Legal />} />
-      <Route path="/payment-success" element={<PaymentSuccess />} />
-      <Route path="/payment-cancel" element={<PaymentCancel />} />
-      <Route path="/manual-payment" element={<ManualPaymentConfirmation />} />
-
-      {user ? <>
-        <Route path="/" element={<GuardedLayoutWrapper currentPageName={mainPageKey}><MainPage /></GuardedLayoutWrapper>} />
-        {Object.entries(Pages).flatMap(([path, Page]) => {
-          const element = <GuardedPageElement path={path} Page={Page} />;
-          const canonicalPath = `/${path}`;
-          const lowerPath = `/${path.toLowerCase()}`;
-          if (canonicalPath === lowerPath) return <Route key={path} path={canonicalPath} element={element} />;
-          return [<Route key={path} path={canonicalPath} element={element} />, <Route key={`${path}-lower`} path={lowerPath} element={element} />];
-        })}
-        <Route path="/admin/emails" element={<GuardedAdminLayoutWrapper currentPageName="AdminPanel"><EmailLogs /></GuardedAdminLayoutWrapper>} />
-        <Route path="/admin/email-templates" element={<GuardedAdminLayoutWrapper currentPageName="AdminPanel"><EmailTemplates /></GuardedAdminLayoutWrapper>} />
-        <Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><Learn /></GuardedLayoutWrapper>} />
-        <Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><Agenda /></GuardedLayoutWrapper>} />
-        <Route path="/biblioteca-costos" element={<GuardedLayoutWrapper currentPageName="biblioteca-costos"><CostLibrary /></GuardedLayoutWrapper>} />
-      </> : <Route path="*" element={<Login />} />}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
-  );
-};
-
-function App() {
-  return <Router><MetaPixelRouteTracker /><AuthProvider><QueryClientProvider client={queryClientInstance}><WorkContextProvider><AuthenticatedApp /><Toaster /></WorkContextProvider></QueryClientProvider></AuthProvider></Router>;
-}
-
-export default App
+import PaymentSuccess from './pages/PaymentSuccess';import Acceso from './pages/Acceso';import ActivateAccess from './pages/ActivateAccess';import PaymentCancel from './pages/PaymentCancel';import ManualPaymentConfirmation from './pages/ManualPaymentConfirmation';import EmailLogs from './pages/EmailLogs';import EmailTemplates from './pages/EmailTemplates';import Learn from './pages/Learn';import Diagnostico from './pages/Diagnostico';import Agenda from './pages/Agenda';import Paywall from './pages/Paywall';import Checkout from './pages/Checkout';import Legal from './pages/Legal';import CostLibrary from './pages/CostLibrary';import CostLibraryViewer from './pages/CostLibraryViewer';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';import Login from '@/pages/Login';import PageNotFound from './lib/PageNotFound';import { AuthProvider, useAuth } from '@/lib/AuthContext';import AccessGuard from '@/components/shared/AccessGuard';import AdminRouteGuard from '@/components/shared/AdminRouteGuard';import MetaPixelRouteTracker from '@/components/tracking/MetaPixelRouteTracker';import { WorkContextProvider } from '@/contexts/WorkContext';import { WorkspaceProvider,useWorkspace } from '@/contexts/WorkspaceContext';
+const{Pages,Layout,mainPage}=pagesConfig;const mainPageKey=mainPage??Object.keys(Pages)[0];const MainPage=mainPageKey?Pages[mainPageKey]:<></>;
+const PAGE_MODULE={Dashboard:'dashboard',Orders:'orders',Billing:'billing',Receivables:'receivables',Clients:'clients',Products:'products',Inventory:'inventory',MonthlyControl:'monthly_control',Profitability:'profitability',Projection:'projection',Agenda:'agenda',Reports:'reports',Imports:'imports',WorkspaceSettings:'settings',AppSettings:'settings',Learn:'learn'};
+const MODULE_ROUTE_ORDER=[['dashboard','/Dashboard'],['orders','/Orders'],['billing','/Billing'],['receivables','/Receivables'],['clients','/Clients'],['products','/Products'],['inventory','/Inventory'],['monthly_control','/MonthlyControl'],['profitability','/Profitability'],['projection','/Projection'],['agenda','/agenda'],['reports','/Reports'],['imports','/Imports'],['cost_library','/biblioteca-costos'],['learn','/Learn'],['settings','/WorkspaceSettings']];
+const LayoutWrapper=({children,currentPageName})=>Layout?<Layout currentPageName={currentPageName}>{children}</Layout>:<>{children}</>;
+const GuardedLayoutWrapper=({children,currentPageName})=><AccessGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AccessGuard>;
+const GuardedAdminLayoutWrapper=({children,currentPageName='AdminPanel'})=><AccessGuard><AdminRouteGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AdminRouteGuard></AccessGuard>;
+const ADMIN_PAGES=new Set(['AdminPanel']);
+function ModuleGuard({module,children}){const{hasModuleAccess,isLoadingWorkspace}=useWorkspace();if(isLoadingWorkspace)return <div className="fixed inset-0 flex items-center justify-center"><div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-slate-800 animate-spin"/></div>;if(module&&!hasModuleAccess(module)){const fallback=MODULE_ROUTE_ORDER.find(([key])=>hasModuleAccess(key))?.[1];if(fallback)return <Navigate to={fallback} replace/>;return <div className="mx-auto max-w-xl p-6"><div className="rounded-2xl border bg-white p-6 text-center shadow-sm"><h1 className="text-xl font-semibold text-slate-900">Sin módulos asignados</h1><p className="mt-2 text-sm text-slate-600">Tu cuenta está activa, pero todavía no tiene módulos habilitados. Contacta a la persona administradora de tu negocio.</p></div></div>}return children}
+function CostLibraryRoute(){const{activeWorkspace}=useWorkspace();return activeWorkspace?.role==='viewer'?<CostLibraryViewer/>:<CostLibrary/>}
+const GuardedPageElement=({path,Page})=><GuardedLayoutWrapper currentPageName={path}>{ADMIN_PAGES.has(path)?<AdminRouteGuard><Page/></AdminRouteGuard>:<ModuleGuard module={PAGE_MODULE[path]}><Page/></ModuleGuard>}</GuardedLayoutWrapper>;
+const AuthenticatedApp=()=>{const{isLoadingAuth,isLoadingPublicSettings,user}=useAuth();if(isLoadingPublicSettings||isLoadingAuth)return <div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"/></div>;return <Routes><Route path="/login" element={<Login/>}/><Route path="/register" element={<Login/>}/><Route path="/diagnostico" element={<Diagnostico/>}/><Route path="/acceso" element={<Acceso/>}/><Route path="/activar-acceso" element={<ActivateAccess/>}/><Route path="/paywall" element={<Paywall/>}/><Route path="/checkout" element={<Checkout/>}/><Route path="/terminos" element={<Legal/>}/><Route path="/privacidad" element={<Legal/>}/><Route path="/cookies" element={<Legal/>}/><Route path="/payment-success" element={<PaymentSuccess/>}/><Route path="/payment-cancel" element={<PaymentCancel/>}/><Route path="/manual-payment" element={<ManualPaymentConfirmation/>}/>{user?<><Route path="/" element={<GuardedLayoutWrapper currentPageName={mainPageKey}><ModuleGuard module={PAGE_MODULE[mainPageKey]}><MainPage/></ModuleGuard></GuardedLayoutWrapper>}/>{Object.entries(Pages).flatMap(([path,Page])=>{const element=<GuardedPageElement path={path} Page={Page}/>;const canonicalPath=`/${path}`,lowerPath=`/${path.toLowerCase()}`;return canonicalPath===lowerPath?<Route key={path} path={canonicalPath} element={element}/>: [<Route key={path} path={canonicalPath} element={element}/>,<Route key={`${path}-lower`} path={lowerPath} element={element}/>]})}<Route path="/admin/emails" element={<GuardedAdminLayoutWrapper><EmailLogs/></GuardedAdminLayoutWrapper>}/><Route path="/admin/email-templates" element={<GuardedAdminLayoutWrapper><EmailTemplates/></GuardedAdminLayoutWrapper>}/><Route path="/Learn" element={<GuardedLayoutWrapper currentPageName="Learn"><ModuleGuard module="learn"><Learn/></ModuleGuard></GuardedLayoutWrapper>}/><Route path="/agenda" element={<GuardedLayoutWrapper currentPageName="Agenda"><ModuleGuard module="agenda"><Agenda/></ModuleGuard></GuardedLayoutWrapper>}/><Route path="/biblioteca-costos" element={<GuardedLayoutWrapper currentPageName="biblioteca-costos"><ModuleGuard module="cost_library"><CostLibraryRoute/></ModuleGuard></GuardedLayoutWrapper>}/></>:<Route path="*" element={<Login/>}/>}<Route path="*" element={<PageNotFound/>}/></Routes>};
+function App(){return <Router><MetaPixelRouteTracker/><AuthProvider><QueryClientProvider client={queryClientInstance}><WorkspaceProvider><WorkContextProvider><AuthenticatedApp/><Toaster/></WorkContextProvider></WorkspaceProvider></QueryClientProvider></AuthProvider></Router>};export default App

@@ -2,273 +2,33 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/AuthContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { CurrencyProvider } from '@/components/shared/CurrencyContext';
 import CurrencySelector from '@/components/shared/CurrencySelector';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import WorkContextSelector from '@/components/shared/WorkContextSelector';
-import {
-  LayoutDashboard,
-  Calculator,
-  Layers,
-  Package,
-  TrendingUp,
-  Users,
-  CalendarCheck,
-  FileBarChart,
-  GraduationCap,
-  Settings,
-  Menu,
-  X,
-  LogOut,
-  ChevronRight,
-  Shield,
-  Receipt,
-  Boxes,
-  Calendar,
-  ClipboardList,
-  Upload
-} from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Package, WalletCards, CalendarDays, FileBarChart, Settings, Menu, X, LogOut, ChevronRight, Shield, Receipt, CreditCard, Boxes, TrendingUp, Upload, BookOpen, GraduationCap, Building2, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const NAV_ITEMS = [
-  { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard },
-  { name: 'Rentabilidad', page: 'Profitability', icon: Calculator },
-  { name: 'Biblioteca de Costos', page: 'biblioteca-costos', icon: Layers },
-  { name: 'Productos', page: 'Products', icon: Package },
-  { name: 'Proyección', page: 'Projection', icon: TrendingUp },
-  { name: 'Clientes', page: 'Clients', icon: Users },
-  { name: 'Agenda Inteligente', page: 'Agenda', icon: Calendar },
-  { name: 'Control Mensual', page: 'MonthlyControl', icon: CalendarCheck },
-  { name: 'Pedidos', page: 'Orders', icon: ClipboardList },
-  { name: 'Facturación', page: 'Billing', icon: Receipt },
-  { name: 'Cuentas por Cobrar', page: 'Receivables', icon: FileBarChart },
-  { name: 'Inventario', page: 'Inventory', icon: Boxes },
-  { name: 'Importar', page: 'Imports', icon: Upload },
-  { name: 'Reportes', page: 'Reports', icon: FileBarChart },
-  { name: 'Aprende', page: 'Learn', icon: GraduationCap },
-  { name: 'Configuración', page: 'AppSettings', icon: Settings },
+const NAV_SECTIONS=[
+ {label:'Principal',items:[{name:'Inicio',page:'Dashboard',icon:LayoutDashboard,module:'dashboard'}]},
+ {label:'Ventas',items:[{name:'Pedidos / Ventas',page:'Orders',icon:ShoppingBag,module:'orders'},{name:'Facturación',page:'Billing',icon:Receipt,module:'billing'},{name:'Cuentas por Cobrar',page:'Receivables',icon:CreditCard,module:'receivables'},{name:'Clientes',page:'Clients',icon:Users,module:'clients'},{name:'Productos / Servicios',page:'Products',icon:Package,module:'products'}]},
+ {label:'Gestión y finanzas',items:[{name:'Inventario',page:'Inventory',icon:Boxes,module:'inventory'},{name:'Control Mensual',page:'MonthlyControl',icon:WalletCards,module:'monthly_control'},{name:'Rentabilidad',page:'Profitability',icon:TrendingUp,module:'profitability'},{name:'Proyección',page:'Projection',icon:TrendingUp,module:'projection'},{name:'Calendario / Actividades',page:'Agenda',icon:CalendarDays,module:'agenda'}]},
+ {label:'Análisis y recursos',items:[{name:'Reportes',page:'Reports',icon:FileBarChart,module:'reports'},{name:'Importar datos',page:'Imports',icon:Upload,module:'imports'},{name:'Biblioteca de Costos',page:'biblioteca-costos',icon:BookOpen,directPath:'/biblioteca-costos',module:'cost_library'},{name:'Aprende',page:'Learn',icon:GraduationCap,directPath:'/Learn',module:'learn'},{name:'Mi negocio',page:'WorkspaceSettings',icon:Building2,module:'settings'},{name:'Configuración',page:'AppSettings',icon:Settings,module:'settings'}]}
 ];
-
-export default function Layout({ children, currentPageName }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { userProfile, logout, isAdmin } = useAuth();
-  const userEmail = userProfile?.email || '';
-  const userName = userProfile?.full_name || userEmail || 'Usuario';
-  const businessName =
-    userProfile?.business_name ||
-    userProfile?.company_name ||
-    userProfile?.business?.name ||
-    '';
-  const planLabel = userProfile?.plan
-    ? `Plan ${userProfile.plan}`
-    : userProfile?.has_access
-      ? 'Acceso activo'
-      : 'Sin plan activo';
-  const userInitial = `${userName || userEmail || 'U'}`.trim()[0]?.toUpperCase() || 'U';
-
-  const handleLogout = async () => {
-    setSidebarOpen(false);
-    await logout();
-  };
-
-  return (
-    <CurrencyProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col w-64 border-r border-sidebar-border bg-sidebar shrink-0">
-          <div className="p-6 border-b border-sidebar-border">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/brand/isotipo.png" 
-                alt="CEO Rentable OS" 
-                className="w-9 h-9 object-contain"
-              />
-              <div>
-                <h1 className="text-sm font-bold text-sidebar-foreground tracking-tight">
-                  CEO <span className="text-primary">Rentable</span> OS™
-                </h1>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Plataforma Financiera</p>
-              </div>
-            </div>
-          </div>
-
-          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-            {NAV_ITEMS.map((item) => {
-              const isActive = currentPageName === item.page;
-              return (
-                <Link
-                  key={item.page}
-                  to={createPageUrl(item.page)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? 'bg-sidebar-accent text-primary'
-                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.name}
-                  {isActive && <ChevronRight className="h-3.5 w-3.5 ml-auto" />}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {isAdmin?.() && (
-            <div className="px-3 pb-2">
-              <Link
-                to={createPageUrl('AdminPanel')}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  currentPageName === 'AdminPanel'
-                    ? 'bg-sidebar-accent text-primary'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                }`}
-              >
-                <Shield className="h-4 w-4" />
-                Admin Panel
-              </Link>
-            </div>
-          )}
-
-          <div className="p-4 border-t border-sidebar-border">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
-                {userInitial}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">{userName}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{userEmail}</p>
-              </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleLogout}>
-                <LogOut className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        </aside>
-
-        {/* Mobile Overlay */}
-        <AnimatePresence>
-          {sidebarOpen && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/40 z-40 lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-              />
-              <motion.aside
-                initial={{ x: -280 }}
-                animate={{ x: 0 }}
-                exit={{ x: -280 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-                className="fixed inset-y-0 left-0 w-72 border-r border-sidebar-border bg-sidebar z-50 lg:hidden flex flex-col"
-              >
-                <div className="p-5 border-b border-sidebar-border flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img 
-                      src="/brand/isotipo.png" 
-                      alt="CEO Rentable OS" 
-                      className="w-9 h-9 object-contain"
-                    />
-                    <h1 className="text-sm font-bold text-sidebar-foreground">CEO <span className="text-primary">Rentable</span> OS™</h1>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
-                    <X className="h-5 w-5" />
-                  </Button>
-                </div>
-                <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                  {NAV_ITEMS.map((item) => {
-                    const isActive = currentPageName === item.page;
-                    return (
-                      <Link
-                        key={item.page}
-                        to={createPageUrl(item.page)}
-                        onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                          isActive
-                            ? 'bg-sidebar-accent text-primary'
-                            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50'
-                        }`}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {item.name}
-                      </Link>
-                    );
-                  })}
-                  {isAdmin?.() && (
-                    <Link
-                      to={createPageUrl('AdminPanel')}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        currentPageName === 'AdminPanel'
-                          ? 'bg-sidebar-accent text-primary'
-                          : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50'
-                      }`}
-                    >
-                      <Shield className="h-4 w-4" />
-                      Admin Panel
-                    </Link>
-                  )}
-                </nav>
-                <div className="border-t border-sidebar-border p-4">
-                  <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent/35 p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold shrink-0">
-                        {userInitial}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-sidebar-foreground truncate">{userName}</p>
-                        {businessName && (
-                          <p className="text-xs text-sidebar-foreground/70 truncate">{businessName}</p>
-                        )}
-                        {userEmail && (
-                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{userEmail}</p>
-                        )}
-                        <p className="text-[11px] text-primary font-medium truncate mt-1">{planLabel}</p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full mt-3 justify-center gap-2 border-sidebar-border bg-background/80"
-                      onClick={handleLogout}
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      Cerrar sesión
-                    </Button>
-                  </div>
-                </div>
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
-
-        {/* Main content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Top bar */}
-          <header className="h-14 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-4 lg:px-6 shrink-0">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9" onClick={() => setSidebarOpen(true)}>
-                <Menu className="h-5 w-5" />
-              </Button>
-              <h2 className="text-sm font-semibold text-foreground hidden sm:block">
-                {NAV_ITEMS.find(n => n.page === currentPageName)?.name || currentPageName}
-              </h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <WorkContextSelector />
-              <CurrencySelector />
-              <ThemeToggle />
-            </div>
-          </header>
-
-          {/* Page content */}
-          <main className="flex-1 overflow-y-auto">
-            {children}
-          </main>
-        </div>
-      </div>
-    </CurrencyProvider>
-  );
+const ALL_NAV_ITEMS=NAV_SECTIONS.flatMap(s=>s.items);
+function hexToHslToken(hex){const value=`${hex||''}`.trim().replace('#','');if(!/^[0-9a-fA-F]{6}$/.test(value))return null;const r=parseInt(value.slice(0,2),16)/255,g=parseInt(value.slice(2,4),16)/255,b=parseInt(value.slice(4,6),16)/255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h=0,s=0;const l=(max+min)/2;const d=max-min;if(d!==0){s=d/(1-Math.abs(2*l-1));switch(max){case r:h=60*(((g-b)/d)%6);break;case g:h=60*((b-r)/d+2);break;default:h=60*((r-g)/d+4);}if(h<0)h+=360;}return `${Math.round(h)} ${Math.round(s*100)}% ${Math.round(l*100)}%`;}
+export default function Layout({children,currentPageName}){
+ const [sidebarOpen,setSidebarOpen]=useState(false); const {userProfile,logout,isAdmin}=useAuth(); const {workspaces,activeWorkspace,setActiveWorkspaceId,isLegacyWorkspaceMode,hasModuleAccess}=useWorkspace();
+ const userEmail=userProfile?.email||''; const userName=userProfile?.full_name||userEmail||'Usuario'; const legacyBusinessName=userProfile?.business_name||userProfile?.company_name||userProfile?.business?.name||'Mi empresa'; const businessName=activeWorkspace?.name||legacyBusinessName; const planLabel=userProfile?.plan?`Plan ${userProfile.plan}`:userProfile?.has_access?'Acceso activo':'Sin plan activo'; const userInitial=`${userName||userEmail||'U'}`.trim()[0]?.toUpperCase()||'U'; const adminAccess=isAdmin?.()||userProfile?.plan==='admin'; const canSwitchWorkspace=!isLegacyWorkspaceMode&&workspaces.filter(w=>w.id).length>1; const businessLogo=activeWorkspace?.logo_url||'/brand/isotipo.png'; const primaryToken=hexToHslToken(activeWorkspace?.brand_primary_color); const accentToken=hexToHslToken(activeWorkspace?.brand_accent_color); const workspaceThemeStyle={...(primaryToken?{'--primary':primaryToken,'--ring':primaryToken,'--chart-1':primaryToken,'--sidebar-primary':primaryToken,'--sidebar-ring':primaryToken}:{}),...(accentToken?{'--accent':accentToken,'--chart-3':accentToken}: {})};
+ const handleLogout=async()=>{setSidebarOpen(false);await logout();};
+ const visibleSections=NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>hasModuleAccess(item.module))})).filter(section=>section.items.length);
+ const renderNav=(close=false)=>visibleSections.map(section=><div key={section.label} className="mb-4"><p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">{section.label}</p><div className="space-y-1">{section.items.map(item=>{const active=currentPageName===item.page;const to=item.directPath||createPageUrl(item.page);return <Link key={`${section.label}-${item.page}`} to={to} onClick={close?()=>setSidebarOpen(false):undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${active?'bg-sidebar-accent text-primary':'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'}`}><item.icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1">{item.name}</span>{active&&!close&&<ChevronRight className="h-3.5 w-3.5 shrink-0"/>}</Link>})}</div></div>);
+ const adminLink=(close=false)=>adminAccess?<Link to={createPageUrl('AdminPanel')} onClick={close?()=>setSidebarOpen(false):undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${currentPageName==='AdminPanel'?'bg-primary/10 text-primary':'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'}`}><Shield className="h-4 w-4 shrink-0"/><span>Administración CEO</span></Link>:null;
+ const currentLabel=ALL_NAV_ITEMS.find(item=>item.page===currentPageName)?.name||(currentPageName==='AdminPanel'?'Administración CEO':currentPageName);
+ const workspaceSelector=canSwitchWorkspace?<div className="relative"><Building2 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"/><select aria-label="Empresa activa" value={activeWorkspace?.id||''} onChange={e=>setActiveWorkspaceId(e.target.value)} className="h-9 max-w-[190px] appearance-none rounded-md border border-input bg-background pl-8 pr-8 text-xs font-medium"><option value="" disabled>Selecciona empresa</option>{workspaces.filter(w=>w.id).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select><ChevronsUpDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"/></div>:null;
+ return <CurrencyProvider><div className="flex h-[100dvh] overflow-hidden bg-background" style={workspaceThemeStyle}><aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex"><div className="border-b border-sidebar-border p-5"><div className="flex items-center gap-3"><img src={businessLogo} alt={`${businessName} logo`} className="h-9 w-9 rounded-md object-contain"/><div className="min-w-0"><h1 className="text-sm font-bold text-sidebar-foreground">CEO <span className="text-primary">Rentable</span> OS™</h1><p className="truncate text-[10px] uppercase tracking-widest text-muted-foreground">{businessName}</p></div></div></div><nav className="flex-1 overflow-y-auto p-3">{renderNav()}</nav>{adminAccess&&<div className="border-t border-sidebar-border px-3 py-3"><p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">Sistema</p>{adminLink()}</div>}<div className="border-t border-sidebar-border p-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{userInitial}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-medium text-sidebar-foreground">{userName}</p><p className="truncate text-[10px] text-muted-foreground">{planLabel}</p></div><Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}><LogOut className="h-3.5 w-3.5"/></Button></div></div></aside>
+ <AnimatePresence>{sidebarOpen&&<><motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={()=>setSidebarOpen(false)}/><motion.aside initial={{x:-300}} animate={{x:0}} exit={{x:-300}} transition={{type:'spring',damping:25,stiffness:250}} className="fixed inset-y-0 left-0 z-50 flex w-[min(86vw,320px)] flex-col border-r border-sidebar-border bg-sidebar lg:hidden"><div className="flex items-center justify-between border-b border-sidebar-border p-5"><div className="flex min-w-0 items-center gap-3"><img src={businessLogo} alt={`${businessName} logo`} className="h-9 w-9 rounded-md object-contain"/><div className="min-w-0"><p className="text-sm font-bold">CEO <span className="text-primary">Rentable</span></p><p className="truncate text-xs text-muted-foreground">{businessName}</p></div></div><Button variant="ghost" size="icon" onClick={()=>setSidebarOpen(false)}><X className="h-5 w-5"/></Button></div><nav className="flex-1 overflow-y-auto p-3">{renderNav(true)}{adminAccess&&<div className="mt-2 border-t border-sidebar-border pt-3"><p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">Sistema</p>{adminLink(true)}</div>}</nav><div className="border-t border-sidebar-border p-4"><div className="rounded-2xl border border-sidebar-border p-3"><p className="truncate text-sm font-semibold">{userName}</p><p className="truncate text-xs text-muted-foreground">{userEmail}</p><Button variant="outline" size="sm" className="mt-3 w-full gap-2" onClick={handleLogout}><LogOut className="h-3.5 w-3.5"/>Cerrar sesión</Button></div></div></motion.aside></>}</AnimatePresence>
+ <div className="flex min-w-0 flex-1 flex-col overflow-hidden"><header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-card/90 px-3 backdrop-blur-sm sm:px-4 lg:px-6"><div className="flex min-w-0 items-center gap-2"><Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 lg:hidden" onClick={()=>setSidebarOpen(true)}><Menu className="h-5 w-5"/></Button><div className="min-w-0"><h2 className="truncate text-sm font-semibold text-foreground">{currentLabel}</h2><p className="hidden truncate text-[11px] text-muted-foreground sm:block">{businessName}</p></div></div><div className="flex shrink-0 items-center gap-1 sm:gap-2">{workspaceSelector}<div className="hidden md:block"><WorkContextSelector/></div><CurrencySelector/><ThemeToggle/></div></header><main className="flex-1 overflow-y-auto overscroll-contain">{children}</main></div></div></CurrencyProvider>;
 }

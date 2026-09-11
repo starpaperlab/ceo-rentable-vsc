@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -116,7 +116,6 @@ function getSkuPrefix(name = '') {
     .replace(/[^a-zA-Z0-9 ]/g, ' ')
     .trim()
     .toUpperCase()
-
   const compact = normalized.replace(/\s+/g, '')
   if (compact.length >= 3) return compact.slice(0, 3)
   return `${compact}XXX`.slice(0, 3)
@@ -129,14 +128,12 @@ function generateUniqueSku(name, existingSkus = []) {
       .map((sku) => `${sku || ''}`.trim().toUpperCase())
       .filter(Boolean)
   )
-
   let counter = 1
   while (counter < 10000) {
     const candidate = `${prefix}-${String(counter).padStart(3, '0')}`
     if (!skuSet.has(candidate)) return candidate
     counter += 1
   }
-
   return `${prefix}-${Date.now().toString().slice(-3)}`
 }
 
@@ -171,6 +168,7 @@ export default function Products() {
   const {
     activeBrandId,
     adminMode,
+    canWrite,
     enabled,
     fetchRows,
     ownerEmail,
@@ -193,42 +191,42 @@ export default function Products() {
   const [editingState, setEditingState] = useState(null)
   const [productForm, setProductForm] = useState(() => buildProductForm())
 
+  const assertCanWrite = () => {
+    if (!canWrite) throw new Error('Tu acceso a este módulo es de solo lectura.')
+  }
+
+  useEffect(() => {
+    if (!canWrite) {
+      setInventoryModalProduct(null)
+      setEditingState(null)
+    }
+  }, [canWrite])
+
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products', ...contextQueryKey],
-    queryFn: async () => fetchRows({
-      table: 'products',
-      orderBy: 'created_at',
-      ascending: false,
-    }),
+    queryFn: async () => fetchRows({ table: 'products', orderBy: 'created_at', ascending: false }),
     enabled,
   })
 
   const { data: inventoryItems = [], isLoading: loadingInventoryItems } = useQuery({
     queryKey: ['products-inventory-items', ...contextQueryKey],
-    queryFn: async () => fetchRows({
-      table: 'inventory_items',
-      orderBy: 'created_at',
-      ascending: false,
-    }),
+    queryFn: async () => fetchRows({ table: 'inventory_items', orderBy: 'created_at', ascending: false }),
     enabled,
   })
 
   const inventoryLookup = useMemo(() => {
     const activeMap = new Map()
     const anyMap = new Map()
-
     inventoryItems.forEach((item) => {
       const keys = []
       if (item.product_id) keys.push(`id:${item.product_id}`)
       const nameKey = normalizeProductName(item.product_name)
       if (nameKey) keys.push(`name:${nameKey}`)
-
       keys.forEach((key) => {
         if (!anyMap.has(key)) anyMap.set(key, item)
         if (isInventoryActive(item) && !activeMap.has(key)) activeMap.set(key, item)
       })
     })
-
     return { activeMap, anyMap }
   }, [inventoryItems])
 
@@ -247,12 +245,10 @@ export default function Products() {
 
   const getInventoryLinkForProduct = (product) => {
     if (!product) return { activeItem: null, anyItem: null }
-
     const keys = []
     if (product.id) keys.push(`id:${product.id}`)
     const nameKey = normalizeProductName(product.name)
     if (nameKey) keys.push(`name:${nameKey}`)
-
     const activeItem = keys.map((key) => inventoryLookup.activeMap.get(key)).find(Boolean) || null
     const anyItem = keys.map((key) => inventoryLookup.anyMap.get(key)).find(Boolean) || null
     return { activeItem, anyItem }
@@ -270,8 +266,8 @@ export default function Products() {
   }
 
   const updateProductCatalog = async (productId, payload) => {
+    assertCanWrite()
     const nextPayload = { ...payload }
-
     while (true) {
       try {
         await updateOwnedRowById({
@@ -294,8 +290,8 @@ export default function Products() {
   }
 
   const updateInventoryRecord = async (inventoryId, payload) => {
+    assertCanWrite()
     const nextPayload = { ...payload }
-
     while (true) {
       try {
         await updateOwnedRowById({
@@ -326,9 +322,9 @@ export default function Products() {
   }
 
   const insertInventoryRecord = async (candidate) => {
+    assertCanWrite()
     const { data, error } = await supabase.from('inventory_items').insert(candidate).select().single()
     if (!error) return data
-
     if (isMissingColumnError(error, 'inventory_items.user_id') || isMissingColumnError(error, 'user_id')) {
       const next = { ...candidate }
       delete next.user_id
@@ -368,11 +364,8 @@ export default function Products() {
     throw error
   }
 
-  const syncPhysicalInventory = async ({
-    product,
-    existingInventory,
-    inventoryPayload,
-  }) => {
+  const syncPhysicalInventory = async ({ product, existingInventory, inventoryPayload }) => {
+    assertCanWrite()
     if (existingInventory?.id) {
       await updateInventoryRecord(existingInventory.id, {
         ...inventoryPayload,
@@ -381,7 +374,6 @@ export default function Products() {
       })
       return { mode: isInventoryActive(existingInventory) ? 'updated' : 'reactivated' }
     }
-
     await insertInventoryRecord({
       user_id: writeOwnerId,
       created_by: writeOwnerEmail || null,
@@ -395,11 +387,11 @@ export default function Products() {
 
   const deleteMutation = useMutation({
     mutationFn: async (product) => {
+      assertCanWrite()
       const { activeItem } = getInventoryLinkForProduct(product)
       if (activeItem) {
         throw new Error('Este producto tiene inventario activo. Desactívalo o elimínalo del inventario primero.')
       }
-
       await deleteOwnedRowById({
         table: 'products',
         id: product.id,
@@ -412,17 +404,15 @@ export default function Products() {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       toast.success('Producto eliminado')
     },
-    onError: (error) => {
-      toast.error(error.message || 'No se pudo eliminar el producto')
-    },
+    onError: (error) => toast.error(error.message || 'No se pudo eliminar el producto'),
   })
 
   const passToInventoryMutation = useMutation({
     mutationFn: async ({ product, form }) => {
+      assertCanWrite()
       if (!isPhysicalProductType(product.product_type)) {
         throw new Error('Solo los productos físicos pueden pasar a inventario.')
       }
-
       if (ownerId) {
         try {
           await ensureDbUserRecord({ user, userProfile })
@@ -430,12 +420,8 @@ export default function Products() {
           console.warn('No se pudo asegurar perfil antes de pasar producto a inventario:', profileError?.message || profileError)
         }
       }
-
       const { activeItem, anyItem } = getInventoryLinkForProduct(product)
-      if (activeItem?.id) {
-        throw new Error('Este producto ya está en inventario')
-      }
-
+      if (activeItem?.id) throw new Error('Este producto ya está en inventario')
       const nextStock = toNonNegativeInteger(form.stock)
       const nextMinStock = toNonNegativeInteger(form.min_stock_alert)
       const nextCost = toNumber(form.costo_unitario)
@@ -476,15 +462,13 @@ export default function Products() {
       setInventoryModalProduct(null)
       toast.success('Producto conectado con inventario')
     },
-    onError: (error) => {
-      toast.error(error.message || 'No se pudo pasar el producto a inventario')
-    },
+    onError: (error) => toast.error(error.message || 'No se pudo pasar el producto a inventario'),
   })
 
   const saveProductMutation = useMutation({
     mutationFn: async ({ originalProduct, existingInventory, form, allowDeactivateInventory = false }) => {
+      assertCanWrite()
       if (!originalProduct?.id) throw new Error('Producto inválido')
-
       if (ownerId) {
         try {
           await ensureDbUserRecord({ user, userProfile })
@@ -502,7 +486,6 @@ export default function Products() {
       const nextSku = parseText(form.sku)
       const nextCategory = parseText(form.category)
       const margin = getMarginMetrics(salePrice, unitCost)
-
       const productPatch = {
         name: `${form.name || ''}`.trim(),
         descripcion: parseText(form.descripcion),
@@ -552,9 +535,7 @@ export default function Products() {
       setEditingState(null)
       toast.success('Producto actualizado')
     },
-    onError: (error) => {
-      toast.error(error.message || 'No se pudo actualizar el producto')
-    },
+    onError: (error) => toast.error(error.message || 'No se pudo actualizar el producto'),
   })
 
   const getTypeBadge = (type) => {
@@ -574,6 +555,7 @@ export default function Products() {
   }), [products, search, statusFilter])
 
   const openPassToInventory = (product) => {
+    if (!canWrite) return
     const { anyItem } = getInventoryLinkForProduct(product)
     const suggestedSku = product?.sku || anyItem?.sku || generateUniqueSku(product?.name, existingSkus)
     setInventoryModalProduct({ product, inventoryItem: anyItem })
@@ -581,21 +563,18 @@ export default function Products() {
   }
 
   const openEditProduct = (product) => {
+    if (!canWrite) return
     const { activeItem, anyItem } = getInventoryLinkForProduct(product)
     const preferredInventoryItem = activeItem || anyItem || null
-    setEditingState({
-      product,
-      activeInventoryItem: activeItem,
-      anyInventoryItem: preferredInventoryItem,
-    })
+    setEditingState({ product, activeInventoryItem: activeItem, anyInventoryItem: preferredInventoryItem })
     setProductForm(buildProductForm(product, preferredInventoryItem, Boolean(activeItem)))
   }
 
   const updateProductForm = (field, value) => {
+    if (!canWrite) return
     setProductForm((prev) => {
       const next = { ...prev, [field]: value }
       const nextType = normalizeProductType(field === 'product_type' ? value : next.product_type)
-
       if (!isPhysicalProductType(nextType)) {
         next.sync_inventory = false
       } else if (
@@ -604,33 +583,29 @@ export default function Products() {
       ) {
         next.sync_inventory = true
       }
-
       if (field === 'product_type' && isPhysicalProductType(nextType) && editingState?.activeInventoryItem) {
         next.sync_inventory = true
       }
-
       return next
     })
   }
 
   const handleSaveEditedProduct = () => {
+    if (!canWrite) return
     if (!editingState?.product?.id) return
     if (!`${productForm.name || ''}`.trim()) {
       toast.error('El nombre del producto es obligatorio')
       return
     }
-
     const changingAwayFromPhysical = (
       editingState?.activeInventoryItem &&
       !isPhysicalProductType(productForm.product_type) &&
       isPhysicalProductType(editingState.product.product_type)
     )
-
     if (changingAwayFromPhysical) {
       const confirmed = window.confirm('Este producto dejará de manejar inventario. ¿Deseas continuar?')
       if (!confirmed) return
     }
-
     saveProductMutation.mutate({
       originalProduct: editingState.product,
       existingInventory: editingState.anyInventoryItem,
@@ -662,10 +637,15 @@ export default function Products() {
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <h1 className="text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Catálogo de Productos</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Catálogo maestro de productos y servicios conectado con inventario físico.
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Catálogo maestro de productos y servicios conectado con inventario físico.</p>
       </motion.div>
+
+      {!canWrite ? (
+        <Card className="border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm font-semibold text-blue-800">Modo solo lectura</p>
+          <p className="text-xs text-blue-700 mt-1">Puedes consultar productos, precios, costos, márgenes e inventario, pero no modificar información.</p>
+        </Card>
+      ) : null}
 
       <div className="flex flex-col sm:flex-row gap-3 items-center">
         <div className="relative flex-1">
@@ -677,16 +657,11 @@ export default function Products() {
             className="pl-10 h-11 rounded-xl"
           />
         </div>
-
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[170px] h-11 rounded-xl">
-            <SelectValue placeholder="Estado" />
-          </SelectTrigger>
+          <SelectTrigger className="w-[170px] h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos</SelectItem>
-            {STATUS_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-            ))}
+            {STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -704,179 +679,88 @@ export default function Products() {
                 <TableHead className="text-xs font-bold text-muted-foreground">Margen</TableHead>
                 <TableHead className="text-xs font-bold text-muted-foreground">Estado</TableHead>
                 <TableHead className="text-xs font-bold text-muted-foreground">Fecha</TableHead>
-                <TableHead className="text-right text-xs font-bold text-muted-foreground">Acciones</TableHead>
+                {canWrite ? <TableHead className="text-right text-xs font-bold text-muted-foreground">Acciones</TableHead> : null}
               </TableRow>
             </TableHeader>
-
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-14">
+                  <TableCell colSpan={canWrite ? 9 : 8} className="text-center py-14">
                     <Package className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
                     <p className="text-sm text-muted-foreground">No hay productos todavía</p>
                   </TableCell>
                 </TableRow>
-              ) : (
-                filtered.map((product) => {
-                  const inventoryStatus = getInventoryStatus(product)
-                  const typeBadge = getTypeBadge(product.product_type)
-                  const margin = getMarginMetrics(product.sale_price, product.costo_unitario)
-
-                  return (
-                    <TableRow key={product.id} className="hover:bg-muted/20">
-                      <TableCell className="min-w-[220px]">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-sm text-foreground">{product.name}</p>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {product.sku ? (
-                              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {product.sku}
-                              </span>
-                            ) : null}
-                            {product.category ? (
-                              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {product.category}
-                              </span>
-                            ) : null}
-                          </div>
+              ) : filtered.map((product) => {
+                const inventoryStatus = getInventoryStatus(product)
+                const typeBadge = getTypeBadge(product.product_type)
+                const margin = getMarginMetrics(product.sale_price, product.costo_unitario)
+                return (
+                  <TableRow key={product.id} className="hover:bg-muted/20">
+                    <TableCell className="min-w-[220px]">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-sm text-foreground">{product.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {product.sku ? <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.sku}</span> : null}
+                          {product.category ? <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.category}</span> : null}
                         </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge className={`border font-semibold text-xs ${typeBadge.cls}`}>
-                          {typeBadge.label}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge className={`border text-xs font-bold ${inventoryStatus.cls}`}>
-                          {inventoryStatus.label}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="text-sm font-semibold text-foreground">
-                        {formatMoney(product.sale_price || 0)}
-                      </TableCell>
-
-                      <TableCell>
-                        {margin.hasCost ? (
-                          <span className="text-sm font-medium text-foreground">{formatMoney(product.costo_unitario || 0)}</span>
-                        ) : (
-                          <Badge className="border text-xs font-bold bg-amber-100 text-amber-700 border-amber-200">
-                            Costo pendiente
-                          </Badge>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        {margin.hasCost ? (
-                          <div className="space-y-1">
-                            <Badge className="border text-xs font-bold bg-emerald-100 text-emerald-700 border-emerald-200">
-                              {formatMoney(margin.marginValue)} · {(margin.marginPct || 0).toFixed(1)}%
-                            </Badge>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Pendiente</span>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge className={`border text-xs font-bold ${STATUS_COLORS[normalizeProductStatus(product.status)] || STATUS_COLORS.draft}`}>
-                          {STATUS_LABELS[normalizeProductStatus(product.status)] || STATUS_LABELS.draft}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="text-xs text-muted-foreground font-medium">
-                        {product.created_at ? format(new Date(product.created_at), 'dd/MM/yy') : '-'}
-                      </TableCell>
-
+                      </div>
+                    </TableCell>
+                    <TableCell><Badge className={`border font-semibold text-xs ${typeBadge.cls}`}>{typeBadge.label}</Badge></TableCell>
+                    <TableCell><Badge className={`border text-xs font-bold ${inventoryStatus.cls}`}>{inventoryStatus.label}</Badge></TableCell>
+                    <TableCell className="text-sm font-semibold text-foreground">{formatMoney(product.sale_price || 0)}</TableCell>
+                    <TableCell>
+                      {margin.hasCost ? <span className="text-sm font-medium text-foreground">{formatMoney(product.costo_unitario || 0)}</span> : <Badge className="border text-xs font-bold bg-amber-100 text-amber-700 border-amber-200">Costo pendiente</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      {margin.hasCost ? <Badge className="border text-xs font-bold bg-emerald-100 text-emerald-700 border-emerald-200">{formatMoney(margin.marginValue)} · {(margin.marginPct || 0).toFixed(1)}%</Badge> : <span className="text-xs text-muted-foreground">Pendiente</span>}
+                    </TableCell>
+                    <TableCell><Badge className={`border text-xs font-bold ${STATUS_COLORS[normalizeProductStatus(product.status)] || STATUS_COLORS.draft}`}>{STATUS_LABELS[normalizeProductStatus(product.status)] || STATUS_LABELS.draft}</Badge></TableCell>
+                    <TableCell className="text-xs text-muted-foreground font-medium">{product.created_at ? format(new Date(product.created_at), 'dd/MM/yy') : '-'}</TableCell>
+                    {canWrite ? (
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
                           {inventoryStatus.canPass ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => openPassToInventory(product)}
-                            >
-                              Pasar a inventario
-                            </Button>
+                            <Button variant="outline" size="sm" className="h-8" onClick={() => openPassToInventory(product)}>Pasar a inventario</Button>
                           ) : null}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => openEditProduct(product)}
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                            Editar
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => openEditProduct(product)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => deleteMutation.mutate(product)}
-                            disabled={deleteMutation.isPending}
-                          >
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => deleteMutation.mutate(product)} disabled={deleteMutation.isPending}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
+                    ) : null}
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>
       </Card>
 
-      {inventoryModalProduct ? (
+      {canWrite && inventoryModalProduct ? (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
             <Card className="p-6 space-y-4">
               <div>
                 <h3 className="font-semibold text-foreground">Pasar a inventario</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {inventoryModalProduct.product.name} se conectará como producto físico dentro del inventario.
-                </p>
+                <p className="text-sm text-muted-foreground mt-1">{inventoryModalProduct.product.name} se conectará como producto físico dentro del inventario.</p>
               </div>
-
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label className="text-xs">Stock inicial</Label>
-                  <Input type="number" value={inventoryForm.stock} onChange={(event) => setInventoryForm((prev) => ({ ...prev, stock: event.target.value }))} className="mt-1" min="0" placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-xs">Stock mínimo</Label>
-                  <Input type="number" value={inventoryForm.min_stock_alert} onChange={(event) => setInventoryForm((prev) => ({ ...prev, min_stock_alert: event.target.value }))} className="mt-1" min="0" placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-xs">Costo unitario</Label>
-                  <Input type="number" value={inventoryForm.costo_unitario} onChange={(event) => setInventoryForm((prev) => ({ ...prev, costo_unitario: event.target.value }))} className="mt-1" min="0" placeholder="Costo de compra del producto" />
-                </div>
+                <div><Label className="text-xs">Stock inicial</Label><Input type="number" value={inventoryForm.stock} onChange={(event) => setInventoryForm((prev) => ({ ...prev, stock: event.target.value }))} className="mt-1" min="0" placeholder="0" /></div>
+                <div><Label className="text-xs">Stock mínimo</Label><Input type="number" value={inventoryForm.min_stock_alert} onChange={(event) => setInventoryForm((prev) => ({ ...prev, min_stock_alert: event.target.value }))} className="mt-1" min="0" placeholder="0" /></div>
+                <div><Label className="text-xs">Costo unitario</Label><Input type="number" value={inventoryForm.costo_unitario} onChange={(event) => setInventoryForm((prev) => ({ ...prev, costo_unitario: event.target.value }))} className="mt-1" min="0" placeholder="Costo de compra del producto" /></div>
                 <div>
                   <Label className="text-xs">SKU (opcional)</Label>
                   <Input value={inventoryForm.sku} onChange={(event) => setInventoryForm((prev) => ({ ...prev, sku: event.target.value.toUpperCase() }))} className="mt-1" placeholder={inventoryModalSuggestedSku || 'Se generará automáticamente'} />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    SKU sugerido: <span className="font-mono">{inventoryModalSuggestedSku || 'Se generará automáticamente'}</span>
-                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">SKU sugerido: <span className="font-mono">{inventoryModalSuggestedSku || 'Se generará automáticamente'}</span></p>
                 </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs">Categoría</Label>
-                  <Input value={inventoryForm.category} onChange={(event) => setInventoryForm((prev) => ({ ...prev, category: event.target.value }))} className="mt-1" />
-                </div>
+                <div className="sm:col-span-2"><Label className="text-xs">Categoría</Label><Input value={inventoryForm.category} onChange={(event) => setInventoryForm((prev) => ({ ...prev, category: event.target.value }))} className="mt-1" /></div>
               </div>
-
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setInventoryModalProduct(null)}>Cancelar</Button>
-                <Button
-                  onClick={() => passToInventoryMutation.mutate({
-                    product: inventoryModalProduct.product,
-                    form: inventoryForm,
-                  })}
-                  disabled={passToInventoryMutation.isPending}
-                >
+                <Button onClick={() => passToInventoryMutation.mutate({ product: inventoryModalProduct.product, form: inventoryForm })} disabled={passToInventoryMutation.isPending}>
                   {passToInventoryMutation.isPending ? 'Guardando...' : 'Confirmar'}
                 </Button>
               </div>
@@ -885,154 +769,73 @@ export default function Products() {
         </div>
       ) : null}
 
-      {editingState ? (
+      {canWrite && editingState ? (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-3xl">
             <Card className="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="font-semibold text-foreground">Editar producto</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Actualiza tu catálogo maestro y, si aplica, sincroniza inventario sin crear duplicados.
-                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">Actualiza tu catálogo maestro y, si aplica, sincroniza inventario sin crear duplicados.</p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setEditingState(null)}>
-                  Cerrar
-                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setEditingState(null)}>Cerrar</Button>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label className="text-xs">Nombre *</Label>
-                  <Input value={productForm.name} onChange={(event) => updateProductForm('name', event.target.value)} className="mt-1" />
-                </div>
+                <div><Label className="text-xs">Nombre *</Label><Input value={productForm.name} onChange={(event) => updateProductForm('name', event.target.value)} className="mt-1" /></div>
                 <div>
                   <Label className="text-xs">Tipo</Label>
                   <Select value={productForm.product_type} onValueChange={(value) => updateProductForm('product_type', value)}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="physical">Físico</SelectItem>
-                      <SelectItem value="digital">Digital</SelectItem>
-                      <SelectItem value="service">Servicio</SelectItem>
-                    </SelectContent>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="physical">Físico</SelectItem><SelectItem value="digital">Digital</SelectItem><SelectItem value="service">Servicio</SelectItem></SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-2">
-                  <Label className="text-xs">Descripción</Label>
-                  <Textarea value={productForm.descripcion} onChange={(event) => updateProductForm('descripcion', event.target.value)} className="mt-1 min-h-[88px]" />
-                </div>
-                <div>
-                  <Label className="text-xs">Categoría</Label>
-                  <Input value={productForm.category} onChange={(event) => updateProductForm('category', event.target.value)} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">SKU</Label>
-                  <Input value={productForm.sku} onChange={(event) => updateProductForm('sku', event.target.value)} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Precio de venta</Label>
-                  <Input type="number" value={productForm.sale_price} onChange={(event) => updateProductForm('sale_price', event.target.value)} className="mt-1" min="0" />
-                </div>
-                <div>
-                  <Label className="text-xs">Costo unitario</Label>
-                  <Input type="number" value={productForm.costo_unitario} onChange={(event) => updateProductForm('costo_unitario', event.target.value)} className="mt-1" min="0" />
-                </div>
+                <div className="md:col-span-2"><Label className="text-xs">Descripción</Label><Textarea value={productForm.descripcion} onChange={(event) => updateProductForm('descripcion', event.target.value)} className="mt-1 min-h-[88px]" /></div>
+                <div><Label className="text-xs">Categoría</Label><Input value={productForm.category} onChange={(event) => updateProductForm('category', event.target.value)} className="mt-1" /></div>
+                <div><Label className="text-xs">SKU</Label><Input value={productForm.sku} onChange={(event) => updateProductForm('sku', event.target.value)} className="mt-1" /></div>
+                <div><Label className="text-xs">Precio de venta</Label><Input type="number" value={productForm.sale_price} onChange={(event) => updateProductForm('sale_price', event.target.value)} className="mt-1" min="0" /></div>
+                <div><Label className="text-xs">Costo unitario</Label><Input type="number" value={productForm.costo_unitario} onChange={(event) => updateProductForm('costo_unitario', event.target.value)} className="mt-1" min="0" /></div>
                 <div>
                   <Label className="text-xs">Estado</Label>
                   <Select value={productForm.status} onValueChange={(value) => updateProductForm('status', value)}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>{STATUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="rounded-xl border bg-muted/20 px-4 py-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Margen calculado</p>
                   {editingMargin.hasCost ? (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-sm font-semibold text-foreground">{formatMoney(editingMargin.marginValue)}</p>
-                      <p className="text-xs text-muted-foreground">{(editingMargin.marginPct || 0).toFixed(1)}%</p>
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-amber-700">Pendiente de costo</p>
-                  )}
+                    <div className="mt-2 space-y-1"><p className="text-sm font-semibold text-foreground">{formatMoney(editingMargin.marginValue)}</p><p className="text-xs text-muted-foreground">{(editingMargin.marginPct || 0).toFixed(1)}%</p></div>
+                  ) : <p className="mt-2 text-sm text-amber-700">Pendiente de costo</p>}
                 </div>
               </div>
 
               {isPhysicalProductType(productForm.product_type) ? (
                 <Card className="p-4 border border-primary/20 bg-primary/5 space-y-4">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <h4 className="font-semibold text-sm text-foreground">Inventario</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Define stock, costo y SKU para que este producto físico quede sincronizado.
-                      </p>
-                    </div>
-                    {editingState.activeInventoryItem ? (
-                      <Badge className="border text-xs font-bold bg-emerald-100 text-emerald-700 border-emerald-200">
-                        En inventario
-                      </Badge>
-                    ) : (
-                      <Badge className="border text-xs font-bold bg-amber-100 text-amber-700 border-amber-200">
-                        Sin inventario
-                      </Badge>
-                    )}
+                    <div><h4 className="font-semibold text-sm text-foreground">Inventario</h4><p className="text-xs text-muted-foreground mt-1">Define stock, costo y SKU para que este producto físico quede sincronizado.</p></div>
+                    {editingState.activeInventoryItem ? <Badge className="border text-xs font-bold bg-emerald-100 text-emerald-700 border-emerald-200">En inventario</Badge> : <Badge className="border text-xs font-bold bg-amber-100 text-amber-700 border-amber-200">Sin inventario</Badge>}
                   </div>
-
                   {!editingState.activeInventoryItem ? (
                     <div className="flex items-start justify-between gap-3 rounded-xl border border-dashed border-primary/30 bg-background/60 px-3 py-3">
-                      <div className="text-xs text-muted-foreground">
-                        {editingState.anyInventoryItem
-                          ? 'Este producto tuvo inventario antes. Puedes reactivarlo al guardar.'
-                          : 'Activa este producto en inventario para registrar stock real y movimientos.'}
-                      </div>
-                      <Button
-                        type="button"
-                        variant={productForm.sync_inventory ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => updateProductForm('sync_inventory', true)}
-                      >
-                        {editingState.anyInventoryItem ? 'Reactivar en inventario' : 'Crear en inventario'}
-                      </Button>
+                      <div className="text-xs text-muted-foreground">{editingState.anyInventoryItem ? 'Este producto tuvo inventario antes. Puedes reactivarlo al guardar.' : 'Activa este producto en inventario para registrar stock real y movimientos.'}</div>
+                      <Button type="button" variant={productForm.sync_inventory ? 'default' : 'outline'} size="sm" onClick={() => updateProductForm('sync_inventory', true)}>{editingState.anyInventoryItem ? 'Reactivar en inventario' : 'Crear en inventario'}</Button>
                     </div>
                   ) : null}
-
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <Label className="text-xs">Stock actual</Label>
-                      <Input type="number" value={productForm.current_stock} onChange={(event) => updateProductForm('current_stock', event.target.value)} className="mt-1" min="0" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Stock mínimo</Label>
-                      <Input type="number" value={productForm.min_stock_alert} onChange={(event) => updateProductForm('min_stock_alert', event.target.value)} className="mt-1" min="0" />
-                    </div>
+                    <div><Label className="text-xs">Stock actual</Label><Input type="number" value={productForm.current_stock} onChange={(event) => updateProductForm('current_stock', event.target.value)} className="mt-1" min="0" /></div>
+                    <div><Label className="text-xs">Stock mínimo</Label><Input type="number" value={productForm.min_stock_alert} onChange={(event) => updateProductForm('min_stock_alert', event.target.value)} className="mt-1" min="0" /></div>
                   </div>
                 </Card>
               ) : editingState.activeInventoryItem ? (
                 <Card className="p-4 border border-amber-300 bg-amber-50">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-amber-800">Este producto tiene inventario activo</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        Si lo cambias a digital o servicio, el inventario se desactivará al guardar. No se eliminará automáticamente.
-                      </p>
-                    </div>
-                  </div>
+                  <div className="flex items-start gap-3"><AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" /><div><p className="text-sm font-semibold text-amber-800">Este producto tiene inventario activo</p><p className="text-xs text-amber-700 mt-1">Si lo cambias a digital o servicio, el inventario se desactivará al guardar. No se eliminará automáticamente.</p></div></div>
                 </Card>
               ) : null}
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setEditingState(null)}>Cancelar</Button>
-                <Button onClick={handleSaveEditedProduct} disabled={saveProductMutation.isPending}>
-                  {saveProductMutation.isPending ? 'Guardando...' : 'Guardar cambios'}
-                </Button>
+                <Button onClick={handleSaveEditedProduct} disabled={saveProductMutation.isPending}>{saveProductMutation.isPending ? 'Guardando...' : 'Guardar cambios'}</Button>
               </div>
             </Card>
           </motion.div>

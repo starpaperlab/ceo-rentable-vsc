@@ -1,4 +1,5 @@
 import { useAuth } from '@/lib/AuthContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 export function useAccessGuard() {
   const {
@@ -9,9 +10,13 @@ export function useAccessGuard() {
     isAdmin,
     hasAccess,
   } = useAuth();
+  const { workspaces, isLoadingWorkspace } = useWorkspace();
 
-  const isLoading = isLoadingAuth || isLoadingProfile;
+  const isLoading = isLoadingAuth || isLoadingProfile || isLoadingWorkspace;
   const isRegistered = !user || Boolean(userProfile);
+  const hasTeamSeat = (workspaces || []).some(
+    (workspace) => !workspace?.legacy && workspace?.status === 'active' && workspace?.role !== 'owner'
+  );
 
   return {
     user,
@@ -19,6 +24,6 @@ export function useAccessGuard() {
     isLoading,
     isRegistered,
     isAdmin: isAdmin(),
-    hasAccess: hasAccess(),
+    hasAccess: hasAccess() || hasTeamSeat,
   };
 }

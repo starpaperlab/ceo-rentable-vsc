@@ -11,8 +11,11 @@ import TemplateDownloader from '@/components/imports/TemplateDownloader';
 import { buildAutoMapping, getImportType } from '@/lib/importTemplates';
 import { parseImportFile } from '@/lib/importParsers';
 import { applyColumnMapping, getValidationSummary, validateMappedRows } from '@/lib/importValidators';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 
 export default function Imports() {
+  const { adminMode, canWrite } = useWorkContextScope();
+  const writable = adminMode || canWrite;
   const [typeKey, setTypeKey] = useState('clients');
   const [file, setFile] = useState(null);
   const [parsedFile, setParsedFile] = useState(null);
@@ -47,7 +50,7 @@ export default function Imports() {
   };
 
   const handleFileSelected = async (nextFile) => {
-    if (!nextFile) return;
+    if (!writable || !nextFile) return;
 
     setFile(nextFile);
     setParsedFile(null);
@@ -76,6 +79,13 @@ export default function Imports() {
         </p>
       </div>
 
+      {!writable ? (
+        <Card className="p-4 border-dashed bg-muted/20">
+          <p className="text-sm font-semibold">Modo solo lectura</p>
+          <p className="text-xs text-muted-foreground mt-1">Puedes consultar el formato de importación y descargar plantillas, pero no cargar ni procesar archivos.</p>
+        </Card>
+      ) : null}
+
       <Card className="p-4 border-primary/30 bg-primary/5">
         <div className="flex items-start gap-3">
           <ShieldCheck className="h-5 w-5 text-primary mt-0.5" />
@@ -93,7 +103,9 @@ export default function Imports() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <TemplateDownloader typeKey={typeKey} />
-          <FileDropzone file={file} onFileSelected={handleFileSelected} isParsing={isParsing} />
+          {writable ? (
+            <FileDropzone file={file} onFileSelected={handleFileSelected} isParsing={isParsing} />
+          ) : null}
         </div>
 
         <Card className="p-4 h-fit">
@@ -145,12 +157,14 @@ export default function Imports() {
             </div>
           </Card>
 
-          <ColumnMapper
-            typeKey={typeKey}
-            columns={parsedFile.columns}
-            mapping={mapping}
-            onChange={setMapping}
-          />
+          {writable ? (
+            <ColumnMapper
+              typeKey={typeKey}
+              columns={parsedFile.columns}
+              mapping={mapping}
+              onChange={setMapping}
+            />
+          ) : null}
 
           <ImportValidationSummary summary={summary} parserErrors={parsedFile.parserErrors || []} />
 

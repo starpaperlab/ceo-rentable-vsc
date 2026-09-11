@@ -10,6 +10,7 @@ const FIELD_MAP = {
   id: 'id',
   userId: 'user_id',
   createdBy: 'created_by',
+  workspaceId: 'workspace_id',
   name: 'name',
   description: 'description',
   category: 'category',
@@ -41,7 +42,7 @@ const REVERSE_FIELD_MAP = Object.entries(FIELD_MAP).reduce((map, [camelKey, snak
   [snakeKey]: camelKey,
 }), {});
 
-const READ_ONLY_FIELDS = new Set(['id', 'userId', 'createdBy', 'createdAt', 'updatedAt']);
+const READ_ONLY_FIELDS = new Set(['id', 'userId', 'createdBy', 'workspaceId', 'createdAt', 'updatedAt']);
 const WRITABLE_FIELDS = Object.keys(FIELD_MAP).filter((field) => !READ_ONLY_FIELDS.has(field));
 const WRITABLE_FIELD_SET = new Set(WRITABLE_FIELDS);
 
@@ -90,6 +91,7 @@ function normalizeDbRecord(record) {
     id: camel.id || null,
     userId: camel.userId || null,
     createdBy: camel.createdBy || null,
+    workspaceId: camel.workspaceId || null,
     createdAt: camel.createdAt || null,
     updatedAt: camel.updatedAt || null,
   };
@@ -166,6 +168,25 @@ function buildInsertPayload(item) {
   return toSnakeCaseRecord(normalized, { includeReadOnly: false });
 }
 
+async function resolveActiveWorkspaceId() {
+  if (typeof window === 'undefined') return null;
+
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user?.id) return null;
+
+  const storageKey = `ceo-rentable-active-workspace:${data.user.id}`;
+  const storedWorkspaceId = window.localStorage.getItem(storageKey);
+  return `${storedWorkspaceId || ''}`.trim() || null;
+}
+
+async function applyWorkspaceScope(query) {
+  const workspaceId = await resolveActiveWorkspaceId();
+  return {
+    query: workspaceId ? query.eq('workspace_id', workspaceId) : query,
+    workspaceId,
+  };
+}
+
 export async function listCostLibraryItems(options = {}) {
   const {
     category,
@@ -183,21 +204,12 @@ export async function listCostLibraryItems(options = {}) {
     .select('*')
     .order(getOrderByField(orderBy), { ascending: ascending !== false });
 
-  if (category) {
-    query = query.eq('category', category);
-  }
+  ({ query } = await applyWorkspaceScope(query));
 
-  if (calculationType) {
-    query = query.eq('calculation_type', calculationType);
-  }
-
-  if (typeof isActive === 'boolean') {
-    query = query.eq('is_active', isActive);
-  }
-
-  if (productType) {
-    query = query.contains('applies_to_product_types', JSON.stringify([productType]));
-  }
+  if (category) query = query.eq('category', category);
+  if (calculationType) query = query.eq('calculation_type', calculationType);
+  if (typeof isActive === 'boolean') query = query.eq('is_active', isActive);
+  if (productType) query = query.contains('applies_to_product_types', JSON.stringify([productType]));
 
   const normalizedSearch = sanitizeSearch(search);
   if (normalizedSearch) {
@@ -218,11 +230,13 @@ export async function listCostLibraryItems(options = {}) {
 export async function getCostLibraryItemById(id) {
   assertId(id);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(COST_LIBRARY_TABLE)
     .select('*')
-    .eq('id', id)
-    .maybeSingle();
+    .eq('id', id);
+
+  ({ query } = await applyWorkspaceScope(query));
+  const { data, error } = await query.maybeSingle();
 
   handleSupabaseError(error, 'consultar el costo reutilizable');
   return data ? normalizeDbRecord(data) : null;
@@ -230,10 +244,12 @@ export async function getCostLibraryItemById(id) {
 
 export async function createCostLibraryItem(item) {
   const payload = buildInsertPayload(item);
+  const workspaceId = await resolveActiveWorkspaceId();
+  const scopedPayload = workspaceId ? { ...payload, workspace_id: workspaceId } : payload;
 
   const { data, error } = await supabase
     .from(COST_LIBRARY_TABLE)
-    .insert(payload)
+    .insert(scopedPayload)
     .select()
     .single();
 
@@ -257,16 +273,15 @@ export async function updateCostLibraryItem(id, changes) {
   assertValidCostLibraryItem(next);
 
   const payload = toSnakeCaseRecord(allowedChanges, { includeReadOnly: false });
-  if (!Object.keys(payload).length) {
-    return current;
-  }
+  if (!Object.keys(payload).length) return current;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(COST_LIBRARY_TABLE)
     .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
+    .eq('id', id);
+
+  ({ query } = await applyWorkspaceScope(query));
+  const { data, error } = await query.select().single();
 
   handleSupabaseError(error, 'actualizar el costo reutilizable');
   return normalizeDbRecord(data);
@@ -281,10 +296,13 @@ export async function setCostLibraryItemActive(id, isActive) {
 export async function deleteCostLibraryItem(id) {
   assertId(id);
 
-  const { error } = await supabase
+  let query = supabase
     .from(COST_LIBRARY_TABLE)
     .delete()
     .eq('id', id);
+
+  ({ query } = await applyWorkspaceScope(query));
+  const { error } = await query;
 
   handleSupabaseError(error, 'eliminar el costo reutilizable');
 
@@ -308,6 +326,7 @@ export async function duplicateCostLibraryItem(id, overrides = {}) {
     id: null,
     userId: null,
     createdBy: null,
+    workspaceId: null,
     createdAt: null,
     updatedAt: null,
     name: `${original.name} - Copia`,
