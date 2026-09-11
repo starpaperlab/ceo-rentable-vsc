@@ -636,7 +636,7 @@ export default function Products() {
       <PageTour pageName="Products" userEmail={ownerEmail} steps={TOUR_STEPS} />
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <h1 className="text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Catálogo de Productos</h1>
+        <h1 className="text-[28px] leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-[34px] sm:leading-[1.04]">Catálogo de Productos</h1>
         <p className="text-sm text-muted-foreground mt-1">Catálogo maestro de productos y servicios conectado con inventario físico.</p>
       </motion.div>
 
@@ -740,7 +740,7 @@ export default function Products() {
       </Card>
 
       {canWrite && inventoryModalProduct ? (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 pt-[env(safe-area-inset-top)] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
             <Card className="p-6 space-y-4">
               <div>
@@ -772,7 +772,7 @@ export default function Products() {
       {canWrite && editingState ? (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-3xl">
-            <Card className="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <Card className="max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-b-none p-4 space-y-5 sm:max-h-[90dvh] sm:rounded-xl sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="font-semibold text-foreground">Editar producto</h3>
