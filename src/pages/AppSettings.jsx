@@ -186,6 +186,13 @@ export default function AppSettings() {
   const [hasUserEdited, setHasUserEdited] = useState(false);
 
   useEffect(() => {
+    setCurrentConfigId(null);
+    setCurrentRemoteUpdatedAt(null);
+    setHasBootstrapped(false);
+    setHasUserEdited(false);
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
     if (isLoading || hasBootstrapped) return;
     setForm(baselineForm);
     setCurrentConfigId(config.id || null);
