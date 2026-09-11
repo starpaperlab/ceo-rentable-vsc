@@ -81,7 +81,7 @@ export default function Projection() {
     <div className="p-4 lg:p-6 max-w-[1020px] mx-auto space-y-5">
       <PageTour pageName="Projection" userEmail={ownerEmail} steps={TOUR_STEPS} />
       <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Proyección 90 Días</h1>
+        <h1 className="text-[28px] leading-[1.08] font-extrabold tracking-tight text-foreground sm:text-[34px] sm:leading-[1.04]">Proyección 90 Días</h1>
         <p className="text-sm text-muted-foreground mt-1">Proyecta cuánto puedes ganar. Simula escenarios y toma mejores decisiones.</p>
       </motion.div>
 
