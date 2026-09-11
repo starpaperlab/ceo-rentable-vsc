@@ -167,6 +167,7 @@ export default function Products() {
   const { formatMoney } = useCurrency()
   const {
     activeBrandId,
+    activeWorkspaceId,
     adminMode,
     canWrite,
     enabled,
@@ -375,6 +376,7 @@ export default function Products() {
       return { mode: isInventoryActive(existingInventory) ? 'updated' : 'reactivated' }
     }
     await insertInventoryRecord({
+      workspace_id: activeWorkspaceId || null,
       user_id: writeOwnerId,
       created_by: writeOwnerEmail || null,
       product_id: product.id,
