@@ -337,6 +337,7 @@ export default function DocumentForm({
   ownerName = '',
   adminMode = false,
   contextBrandProfileId = null,
+  workspaceId = null,
   autoRecoverDraft = false,
 }) {
   const queryClient = useQueryClient();
@@ -510,6 +511,7 @@ export default function DocumentForm({
   };
 
   const getOwnerPayload = () => ({
+    workspace_id: workspaceId || null,
     user_id: ownerId || null,
     created_by: ownerEmail || null,
   });
@@ -589,7 +591,9 @@ export default function DocumentForm({
     throw new Error(`No se pudo actualizar ${tableName} porque Supabase sigue reportando columnas faltantes.`);
   };
 
-  const fetchOwnedInventory = async () => fetchOwnedRows({
+  const fetchOwnedInventory = async () => workspaceId
+    ? supabase.from('inventory_items').select('*').eq('workspace_id', workspaceId).then(({ data, error }) => { if (error) throw error; return data || []; })
+    : fetchOwnedRows({
     table: 'inventory_items',
     ownerId,
     ownerEmail,
