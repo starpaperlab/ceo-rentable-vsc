@@ -136,26 +136,40 @@ begin
 end $$;
 
 -- 3) Reparación por relación padre-hijo. No modifica datos funcionales.
-update public.order_items oi
-   set workspace_id = o.workspace_id
-  from public.orders o
- where oi.workspace_id is null
-   and oi.order_id = o.id
-   and o.workspace_id is not null;
+-- Cada reparación se ejecuta solo cuando existen ambas tablas para que
+-- un entorno parcial/fresco no aborte la migración completa.
+do $
+begin
+  if to_regclass('public.order_items') is not null
+     and to_regclass('public.orders') is not null then
+    update public.order_items oi
+       set workspace_id = o.workspace_id
+      from public.orders o
+     where oi.workspace_id is null
+       and oi.order_id = o.id
+       and o.workspace_id is not null;
+  end if;
 
-update public.invoice_payments p
-   set workspace_id = i.workspace_id
-  from public.invoices i
- where p.workspace_id is null
-   and p.invoice_id = i.id
-   and i.workspace_id is not null;
+  if to_regclass('public.invoice_payments') is not null
+     and to_regclass('public.invoices') is not null then
+    update public.invoice_payments p
+       set workspace_id = i.workspace_id
+      from public.invoices i
+     where p.workspace_id is null
+       and p.invoice_id = i.id
+       and i.workspace_id is not null;
+  end if;
 
-update public.inventory_movements m
-   set workspace_id = ii.workspace_id
-  from public.inventory_items ii
- where m.workspace_id is null
-   and m.inventory_item_id = ii.id
-   and ii.workspace_id is not null;
+  if to_regclass('public.inventory_movements') is not null
+     and to_regclass('public.inventory_items') is not null then
+    update public.inventory_movements m
+       set workspace_id = ii.workspace_id
+      from public.inventory_items ii
+     where m.workspace_id is null
+       and m.inventory_item_id = ii.id
+       and ii.workspace_id is not null;
+  end if;
+end $;
 
 -- 4) Diagnóstico reutilizable. No borra filas y no impone NOT NULL todavía.
 create or replace function public.workspace_backfill_status()
