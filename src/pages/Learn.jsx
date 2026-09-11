@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Calculator, BarChart2, DollarSign, Calendar, Star, BookOpen } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
-import { fetchOwnedRows } from '@/lib/supabaseOwnership';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 
 const TOUR_STEPS = [
   { title: 'Módulo de Aprendizaje 📚', description: 'Aquí encuentras guías prácticas para tomar mejores decisiones financieras en tu negocio.' },
@@ -260,27 +260,23 @@ Ve a **Rentabilidad → Análisis por Producto** y ordena por margen. Identifica
 
 export default function Learn() {
   const [openGuide, setOpenGuide] = useState(null);
-  const { user, userProfile, isAdmin } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
+  const { user, userProfile } = useAuth();
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
 
   const { data: products = [] } = useQuery({
-    queryKey: ['learn-products', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'products', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['learn-products', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'products' }),
+    enabled,
   });
 
   const { data: invoices = [] } = useQuery({
-    queryKey: ['learn-invoices', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({
+    queryKey: ['learn-invoices', ...contextQueryKey],
+    queryFn: () => fetchRows({
       table: 'invoices',
-      ownerId,
-      ownerEmail,
-      adminMode,
       filters: [{ column: 'status', value: 'pending' }],
     }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    enabled,
   });
 
   const avgMargin = products.length
