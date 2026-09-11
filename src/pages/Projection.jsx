@@ -10,7 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Loader2 } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 import { motion } from 'framer-motion';
-import { fetchOwnedRows } from '@/lib/supabaseOwnership';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 
 const TOUR_STEPS = [
   { title: 'Proyeccion 90 Dias', description: 'Proyecta lo que puedes ganar en el proximo trimestre usando tu historial real.' },
@@ -26,26 +26,20 @@ const SCENARIOS = [
 
 export default function Projection() {
   const { formatMoney } = useCurrency();
-  const { user, userProfile, isAdmin } = useAuth();
+  const { user, userProfile } = useAuth();
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const adminMode = isAdmin?.() === true;
+  const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
   const [quarterlyGoal, setQuarterlyGoal] = useState(65000);
   const [activeScenario, setActiveScenario] = useState('realistic');
 
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ['monthly-records', user?.id, ownerEmail, adminMode],
-    queryFn: async () => {
-      const ownerId = user?.id || userProfile?.id;
-      return fetchOwnedRows({
-        table: 'monthly_records',
-        ownerId,
-        ownerEmail,
-        adminMode,
-        orderBy: 'month',
-        ascending: false,
-      });
-    },
-    enabled: adminMode || !!(user?.id || ownerEmail),
+    queryKey: ['monthly-records', ...contextQueryKey],
+    queryFn: () => fetchRows({
+      table: 'monthly_records',
+      orderBy: 'month',
+      ascending: false,
+    }),
+    enabled,
   });
 
   const currentIncome = records.reduce((sum, record) => sum + (record.income || 0), 0);
