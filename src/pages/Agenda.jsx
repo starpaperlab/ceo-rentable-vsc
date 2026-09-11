@@ -62,6 +62,7 @@ export default function Agenda() {
   const { formatMoney } = useCurrency();
   const queryClient = useQueryClient();
   const {
+    activeWorkspaceId,
     adminMode,
     canWrite,
     enabled,
@@ -93,6 +94,7 @@ export default function Agenda() {
 
   const withOwner = (payload) => ({
     ...payload,
+    workspace_id: activeWorkspaceId || null,
     user_id: writeOwnerId,
     created_by: writeOwnerEmail || null,
   });
