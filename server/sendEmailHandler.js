@@ -578,7 +578,7 @@ async function listAllAuthUsers(serviceClient) {
   let page = 1;
   const perPage = 500;
 
-  while (page <= 20) {
+  while (true) {
     const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage });
     if (error) throw error;
 
