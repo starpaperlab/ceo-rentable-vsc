@@ -24,7 +24,7 @@ function getBalanceValue(receipt = {}, key) {
   return Number(metadata[key] ?? 0);
 }
 
-export function ReceiptDetailDialog({ receipt, onClose }) {
+export function ReceiptDetailDialog({ receipt, onClose, canExport = true }) {
   const { formatMoney, symbol } = useCurrency();
   const [isDownloading, setIsDownloading] = useState(false);
   if (!receipt) return null;
@@ -49,6 +49,7 @@ export function ReceiptDetailDialog({ receipt, onClose }) {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
           <DialogTitle>{receipt.receipt_number || 'Recibo'}</DialogTitle>
+{canExport ? (
           <Button
             type="button"
             variant="outline"
@@ -60,6 +61,7 @@ export function ReceiptDetailDialog({ receipt, onClose }) {
             <Download className="h-4 w-4" />
             {isDownloading ? 'Generando...' : 'Descargar PDF'}
           </Button>
+          ) : null}
         </DialogHeader>
 
         <div className="grid gap-4">
@@ -128,7 +130,7 @@ export function ReceiptDetailDialog({ receipt, onClose }) {
   );
 }
 
-export default function ReceiptList({ receipts = [], onViewReceipt }) {
+export default function ReceiptList({ receipts = [], onViewReceipt, canExport = true }) {
   const { formatMoney, symbol } = useCurrency();
   const [downloadingReceiptId, setDownloadingReceiptId] = useState(null);
 
@@ -195,7 +197,7 @@ export default function ReceiptList({ receipts = [], onViewReceipt }) {
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onViewReceipt?.(receipt)} title="Ver recibo">
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
+                        {canExport ? (<Button
                           variant="ghost"
                           size="sm"
                           className="h-8 gap-1 px-2 text-xs"
@@ -205,7 +207,7 @@ export default function ReceiptList({ receipts = [], onViewReceipt }) {
                         >
                           <Download className="h-3.5 w-3.5" />
                           PDF
-                        </Button>
+                        </Button>) : null}
                       </div>
                     </TableCell>
                   </TableRow>
