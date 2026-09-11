@@ -285,7 +285,7 @@ export default function Reports() {
             <Eye className="h-4 w-4 text-muted-foreground mt-0.5" />
             <div>
               <p className="text-sm font-semibold">Modo solo lectura</p>
-              <p className="text-xs text-muted-foreground mt-1">Puedes consultar y exportar reportes, pero no modificar facturas ni datos del negocio.</p>
+              <p className="text-xs text-muted-foreground mt-1">Puedes consultar los reportes, pero no exportar ni modificar información del negocio.</p>
             </div>
           </div>
         </Card>
