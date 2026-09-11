@@ -24,6 +24,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { fetchOwnedRows } from '@/lib/supabaseOwnership';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 
 function monthLabel(dateValue) {
   if (!dateValue) return '—';
@@ -69,6 +70,7 @@ function normalizeInvoiceTotal(invoice) {
 
 export default function Dashboard() {
   const { formatMoney } = useCurrency();
+  const { canWrite } = useWorkspace();
   const { user, userProfile, isAdmin } = useAuth();
   const ownerId = user?.id || userProfile?.id || null;
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
@@ -282,6 +284,7 @@ export default function Dashboard() {
           <h1 className="text-[26px] sm:text-[34px] leading-[1.04] font-extrabold tracking-tight text-foreground">Visión 360°</h1>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
+{canWrite ? (
           <Button
             variant="outline"
             className="h-8 w-8 px-0 text-xs gap-1.5 sm:h-9 sm:w-auto sm:px-3"
@@ -292,6 +295,7 @@ export default function Dashboard() {
             <Download className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Descargar Reporte</span>
           </Button>
+          ) : null}
           <span className={`px-2 h-7 sm:px-2.5 sm:h-8 inline-flex items-center rounded-full text-[11px] sm:text-xs font-semibold border ${
             ceoMetrics.status === 'Saludable'
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
