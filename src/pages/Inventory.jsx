@@ -269,7 +269,7 @@ export default function Inventory() {
       )}
 
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card className="p-4 text-center">
             <p className="text-2xl font-bold">{fisicos.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Productos</p>
@@ -403,9 +403,9 @@ export default function Inventory() {
       </div>
 
       {(canWrite || adminMode) && movementItem && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 pt-[env(safe-area-inset-top)] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
-            <Card className="p-6 space-y-4">
+            <Card className="max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-b-none p-4 sm:max-h-[90dvh] sm:rounded-xl sm:p-6 space-y-4">
               <h3 className="font-semibold">Movimiento: {movementItem.product_name}</h3>
               <div>
                 <Label className="text-xs">Tipo</Label>
