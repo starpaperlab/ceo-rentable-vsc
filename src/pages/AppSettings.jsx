@@ -18,10 +18,9 @@ import { toast } from 'sonner';
 import PageTour from '@/components/shared/PageTour';
 import AutosaveStatus from '@/components/shared/AutosaveStatus';
 import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
-import { useAuth } from '@/lib/AuthContext';
+import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import {
   extractMissingColumnFromError,
-  fetchOwnedRows,
   hasOwnerConstraintIssue,
   isMissingColumnError,
   updateOwnedRowById,
@@ -64,6 +63,7 @@ function buildSettingsForm(config = {}, userProfile, ownerEmail) {
   return {
     business_name: config.business_name || '',
     brand_color: config.brand_color || '#D94F8A',
+    brand_accent_color: config.brand_accent_color || '#111827',
     font_family: config.font_family || 'Inter',
     logo_url: config.logo_url || '',
     fiscal_name: config.fiscal_name || '',
@@ -134,24 +134,35 @@ function isMeaningfulSettingsDraft(payload) {
 
 export default function AppSettings() {
   const { setCurrency } = useCurrency();
-  const { user, userProfile } = useAuth();
-  const ownerId = user?.id || userProfile?.id || null;
-  const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
-  const settingsAdminMode = false;
+  const {
+    adminMode,
+    canWrite,
+    enabled,
+    fetchRows,
+    ownerEmail,
+    ownerId,
+    queryKey: contextQueryKey,
+    scopedAdminMode,
+    scopedOwnerEmail,
+    scopedOwnerId,
+    user,
+    userProfile,
+    writeOwnerEmail,
+    writeOwnerId,
+  } = useWorkContextScope();
+  const writable = adminMode || canWrite;
+  const contextKey = contextQueryKey.join(':');
   const queryClient = useQueryClient();
   const autosaveUserId = ownerId || ownerEmail || 'anon';
 
   const { data: configs = [], isLoading } = useQuery({
-    queryKey: ['business-config', ownerId, ownerEmail, settingsAdminMode],
-    queryFn: () => fetchOwnedRows({
+    queryKey: ['business-config', contextKey],
+    queryFn: () => fetchRows({
       table: 'business_config',
-      ownerId,
-      ownerEmail,
-      adminMode: settingsAdminMode,
       orderBy: 'updated_at',
       ascending: false,
     }),
-    enabled: !!(ownerId || ownerEmail),
+    enabled,
   });
 
   const config = configs[0] || {};
@@ -193,7 +204,11 @@ export default function AppSettings() {
   const persistSettings = useCallback(async (data) => {
     const skippedColumns = new Set();
 
-    if (!settingsAdminMode && !ownerId && !ownerEmail) {
+    if (!writable) {
+      throw new Error('Tu acceso es de solo lectura.');
+    }
+
+    if (!adminMode && !writeOwnerId && !writeOwnerEmail) {
       throw new Error('Tu sesión no está lista. Recarga la página e intenta de nuevo.');
     }
 
@@ -208,8 +223,8 @@ export default function AppSettings() {
     const serialized = serializeSettingsForm(data);
     const payload = {
       ...serialized,
-      user_id: ownerId,
-      created_by: ownerEmail,
+      user_id: writeOwnerId,
+      created_by: writeOwnerEmail,
       updated_at: new Date().toISOString(),
     };
 
@@ -219,9 +234,9 @@ export default function AppSettings() {
           table: 'business_config',
           id: currentConfigId,
           payload: safePayload,
-          ownerId,
-          ownerEmail,
-          adminMode: settingsAdminMode,
+          ownerId: scopedOwnerId,
+          ownerEmail: scopedOwnerEmail,
+          adminMode: scopedAdminMode,
         });
         return {
           id: currentConfigId,
@@ -296,7 +311,7 @@ export default function AppSettings() {
       remoteUpdatedAt: nextUpdatedAt,
       saved: savedRow,
     };
-  }, [currentConfigId, ownerEmail, ownerId, setCurrency, settingsAdminMode, user, userProfile]);
+  }, [adminMode, currentConfigId, ownerEmail, ownerId, scopedAdminMode, scopedOwnerEmail, scopedOwnerId, setCurrency, user, userProfile, writable, writeOwnerEmail, writeOwnerId]);
 
   const autosaveSerializer = useCallback((value) => serializeSettingsForm(value), []);
 
@@ -313,7 +328,7 @@ export default function AppSettings() {
         updated_at: result.remoteUpdatedAt,
       };
     },
-    remoteEnabled: Boolean(ownerId || ownerEmail),
+    remoteEnabled: writable && Boolean(ownerId || ownerEmail),
     remoteUpdatedAt: currentRemoteUpdatedAt,
     enabled: hasBootstrapped && hasUserEdited && draftRecovery.resolved,
     paused: !draftRecovery.resolved,
@@ -340,6 +355,7 @@ export default function AppSettings() {
   });
 
   const update = (field, value) => {
+    if (!writable) return;
     setHasUserEdited(true);
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -354,6 +370,7 @@ export default function AppSettings() {
   };
 
   const handleLogoUpload = async (e) => {
+    if (!writable) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -365,7 +382,7 @@ export default function AppSettings() {
         reader.readAsDataURL(file);
       });
 
-    const ownerRef = ownerId || ownerEmail || 'anon';
+    const ownerRef = writeOwnerId || writeOwnerEmail || ownerId || ownerEmail || 'anon';
     const safeName = file.name.replace(/[^\w.\-]/g, '_');
     const fileName = `logos/${ownerRef}/${Date.now()}-${safeName}`;
     const { error: uploadError } = await supabase.storage
@@ -416,6 +433,13 @@ export default function AppSettings() {
       />
 
       <PageTour pageName="AppSettings" userEmail={ownerEmail} steps={TOUR_STEPS} />
+
+      {!writable ? (
+        <Card className="p-4 border-dashed bg-muted/20">
+          <p className="text-sm font-semibold">Modo solo lectura</p>
+          <p className="text-xs text-muted-foreground mt-1">Puedes consultar la configuración del negocio, pero no modificar datos, branding ni preferencias.</p>
+        </Card>
+      ) : null}
 
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -594,8 +618,8 @@ export default function AppSettings() {
                     <p className="text-xs text-muted-foreground mt-2">PNG o SVG con fondo transparente (Max. 2MB)</p>
                   </div>
                 )}
-                <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" id="logo-upload" />
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => document.getElementById('logo-upload')?.click()}>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" id="logo-upload" disabled={!writable} />
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => document.getElementById('logo-upload')?.click()} disabled={!writable}>
                   Subir Logo
                 </Button>
               </div>
@@ -685,6 +709,29 @@ export default function AppSettings() {
             </div>
 
             <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Color Secundario / Acento</Label>
+              <div className="flex items-center gap-3 mt-3">
+                <input
+                  type="color"
+                  value={form.brand_accent_color}
+                  onChange={(e) => update('brand_accent_color', e.target.value)}
+                  className="w-10 h-10 rounded-lg cursor-pointer border border-border bg-transparent p-0.5"
+                  title="Elegir color secundario"
+                  disabled={!writable}
+                />
+                <Input
+                  value={form.brand_accent_color}
+                  onChange={(e) => update('brand_accent_color', e.target.value)}
+                  placeholder="#111827"
+                  className="font-mono text-sm h-10 w-36"
+                  maxLength={7}
+                  disabled={!writable}
+                />
+                <div className="w-10 h-10 rounded-lg border border-border shrink-0" style={{ backgroundColor: form.brand_accent_color }} />
+              </div>
+            </div>
+
+            <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Tipografía para Documentos</Label>
               <Select value={form.font_family} onValueChange={(value) => update('font_family', value)}>
                 <SelectTrigger className="mt-2">
@@ -730,7 +777,7 @@ export default function AppSettings() {
           autosave.flushLocalDraft();
           saveMutation.mutate({ ...form, logo_width: logoWidth });
         }}
-        disabled={saveMutation.isPending}
+        disabled={saveMutation.isPending || !writable}
       >
         <Save className="h-4 w-4 mr-2" />
         {saveMutation.isPending ? 'Guardando...' : 'Guardar Configuración'}
