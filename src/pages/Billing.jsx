@@ -124,6 +124,7 @@ export default function Billing() {
   const {
     activeBrand,
     activeBrandId,
+    activeWorkspaceId,
     adminMode,
     enabled,
     fetchRows,
@@ -157,6 +158,7 @@ export default function Billing() {
 
   const withOwner = (payload) => ({
     ...payload,
+    workspace_id: payload?.workspace_id || activeWorkspaceId || null,
     user_id: payload?.user_id || writeOwnerId,
     created_by: normalizeEmail(payload?.created_by) || writeOwnerEmail || null,
     brand_profile_id: payload?.brand_profile_id || activeBrandId || null,
@@ -202,9 +204,9 @@ export default function Billing() {
     enabled,
   });
   const { data: invoicePayments = [] } = useQuery({
-    queryKey: ['invoice-payments', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'invoice_payments', ownerId, ownerEmail, adminMode }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['invoice-payments', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoice_payments' }),
+    enabled,
   });
   const { data: quotes = [], isLoading: loadingQuotes } = useQuery({
     queryKey: ['quotes', ...contextQueryKey],
@@ -227,9 +229,9 @@ export default function Billing() {
     enabled,
   });
   const { data: configs = [] } = useQuery({
-    queryKey: ['business-config', ownerId, ownerEmail, adminMode],
-    queryFn: () => fetchOwnedRows({ table: 'business_config', ownerId, ownerEmail, adminMode, orderBy: 'updated_at' }),
-    enabled: adminMode || !!(ownerId || ownerEmail),
+    queryKey: ['business-config', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'business_config', orderBy: 'updated_at' }),
+    enabled,
   });
   const { data: brandProfiles = [] } = useQuery({
     queryKey: ['brand-profiles', ownerId, ownerEmail],
@@ -369,6 +371,7 @@ export default function Billing() {
       assertCanWrite();
       const paymentPayload = {
         ...payload,
+        workspace_id: activeWorkspaceId || invoice.workspace_id || null,
         invoice_id: invoice.id,
         user_id: invoice.user_id || ownerId || null,
         created_by: normalizeEmail(invoice.created_by) || ownerEmail || null,
