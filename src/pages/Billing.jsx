@@ -612,7 +612,7 @@ export default function Billing() {
         </TabsContent>
 
         <TabsContent value="receipts" className="mt-4">
-          <ReceiptList receipts={receiptRows} onViewReceipt={handleViewReceipt} />
+          <ReceiptList receipts={receiptRows} onViewReceipt={handleViewReceipt} canExport={adminMode || canWrite} />
         </TabsContent>
       </Tabs>
 
@@ -621,6 +621,7 @@ export default function Billing() {
           document={previewDoc}
           type={previewDoc._type || (previewDoc.invoice_number ? 'invoice' : 'quote')}
           onClose={() => setPreviewDoc(null)}
+          canExport={adminMode || canWrite}
           payments={previewDoc._type === 'invoice' ? paymentsByInvoiceId[previewDoc.id] || [] : []}
           canManagePayments={canWrite && previewDoc._type === 'invoice' && Boolean(previewDoc.id)}
           isSavingPayment={createInvoicePaymentMutation.isPending || updateInvoicePaymentMutation.isPending || deleteInvoicePaymentMutation.isPending}
@@ -633,7 +634,7 @@ export default function Billing() {
         />
       )}
 
-      <ReceiptDetailDialog receipt={receiptPreview} onClose={() => setReceiptPreview(null)} />
+      <ReceiptDetailDialog receipt={receiptPreview} onClose={() => setReceiptPreview(null)} canExport={adminMode || canWrite} />
     </div>
   );
 }
