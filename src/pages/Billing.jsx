@@ -397,9 +397,9 @@ export default function Billing() {
         table: 'invoice_payments',
         id: payment.id,
         payload: { ...payload, registered_by: ownerId || null, registered_by_email: ownerEmail || null },
-        ownerId,
-        ownerEmail,
-        adminMode,
+        ownerId: scopedOwnerId,
+        ownerEmail: scopedOwnerEmail,
+        adminMode: scopedAdminMode,
       });
     },
     onSuccess: () => {
@@ -413,7 +413,7 @@ export default function Billing() {
   const deleteInvoicePaymentMutation = useMutation({
     mutationFn: async (payment) => {
       assertCanWrite();
-      await deleteOwnedRowById({ table: 'invoice_payments', id: payment.id, ownerId, ownerEmail, adminMode });
+      await deleteOwnedRowById({ table: 'invoice_payments', id: payment.id, ownerId: scopedOwnerId, ownerEmail: scopedOwnerEmail, adminMode: scopedAdminMode });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
