@@ -85,7 +85,7 @@ export default function Projection() {
         <p className="text-sm text-muted-foreground mt-1">Proyecta cuánto puedes ganar. Simula escenarios y toma mejores decisiones.</p>
       </motion.div>
 
-      <Card className="p-5 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.05)]">
+      <Card className="p-5 rounded-2xl border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex-1">
             <p className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-[0.12em]">¿Cuánto quieres ganar este trimestre?</p>
@@ -111,7 +111,7 @@ export default function Projection() {
         </div>
       </Card>
 
-      <div className="inline-flex items-center gap-1.5 p-1 rounded-xl border border-[#E7E1D9] bg-white">
+      <div className="inline-flex items-center gap-1.5 p-1 rounded-xl border border-border/60 bg-white">
         {SCENARIOS.map((scenario) => (
           <button
             key={scenario.key}
@@ -133,7 +133,7 @@ export default function Projection() {
             <Card className={`h-full min-h-[250px] p-4 rounded-2xl border transition-all duration-200 flex flex-col ${
               projection.key === activeScenario
                 ? 'border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.18)]'
-                : 'border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)]'
+                : 'border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)]'
             }`}>
               <Badge className={`mb-2.5 border text-[10px] font-bold ${projection.badgeClass}`}>
                 {projection.badge}
@@ -166,7 +166,7 @@ export default function Projection() {
         ))}
       </div>
 
-      <Card className="p-4 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.05)]">
+      <Card className="p-4 rounded-2xl border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
         <h3 className="text-sm font-bold text-foreground mb-3">Proyección Trimestral</h3>
         <ResponsiveContainer width="100%" height={230}>
           <BarChart data={chartData}>
