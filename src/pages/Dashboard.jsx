@@ -312,14 +312,14 @@ export default function Dashboard() {
           value={formatMoney(stats.ingresos)}
           subtitle={`${stats.invoicesCount} facturas pagadas`}
           growth={growth.revenueGrowth}
-          icon={<TrendingUp className="h-4 w-4 text-[#D45387]" />}
+          icon={<TrendingUp className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="GASTOS"
           value={formatMoney(stats.costos)}
           subtitle="Costo operativo estimado"
           growth={growth.costGrowth}
-          icon={<ArrowDownRight className="h-4 w-4 text-[#D45387]" />}
+          icon={<ArrowDownRight className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="BENEFICIO"
@@ -327,14 +327,14 @@ export default function Dashboard() {
           subtitle="Ingresos − costos"
           growth={growth.benefitGrowth}
           positive={stats.beneficio >= 0}
-          icon={<Target className="h-4 w-4 text-[#D45387]" />}
+          icon={<Target className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="MARGEN"
           value={`${stats.margen.toFixed(1)}%`}
           subtitle="Rentabilidad global"
           growth={growth.marginGrowth}
-          icon={<ArrowUpRight className="h-4 w-4 text-[#D45387]" />}
+          icon={<ArrowUpRight className="h-4 w-4 text-primary" />}
         />
       </div>
 
@@ -408,13 +408,13 @@ export default function Dashboard() {
         <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR PRODUCTO</p>
           <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{bestProduct?.name || 'Sin datos'}</p>
-          <p className="text-[11px] sm:text-xs font-semibold text-[#D45387] mt-1.5 sm:mt-2">{Number(bestProduct?.margin_pct || 0).toFixed(1)}% margen</p>
+          <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{Number(bestProduct?.margin_pct || 0).toFixed(1)}% margen</p>
         </Card>
 
         <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR CLIENTE</p>
           <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{topClient?.client || 'Sin datos'}</p>
-          <p className="text-[11px] sm:text-xs font-semibold text-[#D45387] mt-1.5 sm:mt-2">{formatMoney(topClient?.amount || 0)}</p>
+          <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{formatMoney(topClient?.amount || 0)}</p>
         </Card>
       </div>
 
@@ -508,7 +508,7 @@ export default function Dashboard() {
                       </span>
                       <span className="text-xs font-medium truncate">{client.client}</span>
                     </div>
-                    <span className="text-xs font-bold text-[#D45387]">{formatMoney(client.amount)}</span>
+                    <span className="text-xs font-bold text-primary">{formatMoney(client.amount)}</span>
                   </div>
                 ))
               )}
