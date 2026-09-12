@@ -32,6 +32,7 @@ const DEFAULT_BRANDING = {
   whatsapp_url: '',
   tax_name: 'ITBIS',
   payment_instructions: '',
+  accepted_payment_methods: ['Efectivo', 'Transferencia'],
   bank_name: '',
   bank_account_name: '',
   bank_account_number: '',
@@ -61,6 +62,16 @@ function pickNumber(...values) {
     }
   }
   return null;
+}
+
+function pickStringArray(...values) {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const cleaned = value.map((item) => `${item || ''}`.trim()).filter(Boolean);
+      if (cleaned.length > 0) return Array.from(new Set(cleaned));
+    }
+  }
+  return [];
 }
 
 function pickBoolean(...values) {
@@ -160,6 +171,8 @@ function normalizeBusinessConfigSource(config = {}) {
     whatsapp_url: pickString(config.whatsapp_url),
     tax_name: pickString(config.tax_name),
     payment_instructions: pickString(config.payment_instructions),
+    accepted_payment_methods: pickStringArray(config.accepted_payment_methods),
+    accepted_payment_methods: pickStringArray(config.accepted_payment_methods),
     bank_name: pickString(config.bank_name),
     bank_account_name: pickString(config.bank_account_name),
     bank_account_number: pickString(config.bank_account_number),
@@ -326,6 +339,7 @@ export function resolveDocumentBranding(doc = {}, ownerConfig = null, defaults =
     whatsapp_url: socialLinks.whatsapp,
     tax_name: pickResolvedString(snapshotSource.tax_name, docSource.tax_name, ownerSource.tax_name, defaults.tax_name),
     payment_instructions: pickResolvedString(snapshotSource.payment_instructions, docSource.payment_instructions, ownerSource.payment_instructions, defaults.payment_instructions),
+    accepted_payment_methods: pickStringArray(snapshotSource.accepted_payment_methods, docSource.accepted_payment_methods, ownerSource.accepted_payment_methods, defaults.accepted_payment_methods),
     bank_name: pickResolvedString(snapshotSource.bank_name, docSource.bank_name, ownerSource.bank_name, defaults.bank_name),
     bank_account_name: pickResolvedString(snapshotSource.bank_account_name, docSource.bank_account_name, ownerSource.bank_account_name, defaults.bank_account_name),
     bank_account_number: pickResolvedString(snapshotSource.bank_account_number, docSource.bank_account_number, ownerSource.bank_account_number, defaults.bank_account_number),
@@ -395,6 +409,7 @@ export function buildDocumentBrandingSnapshot(source = {}, { brandProfileId = nu
     font_family: resolved.font_family || DEFAULT_BRANDING.font_family,
     tax_name: resolved.tax_name || DEFAULT_BRANDING.tax_name,
     payment_instructions: resolved.payment_instructions || '',
+    accepted_payment_methods: pickStringArray(resolved.accepted_payment_methods, DEFAULT_BRANDING.accepted_payment_methods),
     bank_name: resolved.bank_name || '',
     bank_account_name: resolved.bank_account_name || '',
     bank_account_number: resolved.bank_account_number || '',
@@ -440,6 +455,7 @@ export function buildDocumentBrandingFields(source = {}, { brandProfileId = null
     whatsapp_url: snapshot.social_links.whatsapp,
     tax_name: snapshot.tax_name,
     payment_instructions: snapshot.payment_instructions,
+    accepted_payment_methods: snapshot.accepted_payment_methods,
     bank_name: snapshot.bank_name,
     bank_account_name: snapshot.bank_account_name,
     bank_account_number: snapshot.bank_account_number,
@@ -490,6 +506,7 @@ export function mapBrandProfileToBusinessConfig(profile = {}, { ownerName = '', 
     whatsapp_url: normalized.whatsapp_url || '',
     tax_name: normalized.tax_name || DEFAULT_BRANDING.tax_name,
     payment_instructions: normalized.payment_instructions || '',
+    accepted_payment_methods: pickStringArray(normalized.accepted_payment_methods, DEFAULT_BRANDING.accepted_payment_methods),
     bank_name: normalized.bank_name || '',
     bank_account_name: normalized.bank_account_name || '',
     bank_account_number: normalized.bank_account_number || '',
