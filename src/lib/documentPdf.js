@@ -456,7 +456,7 @@ function drawTotals(pdf, { doc, type, payments = [], taxAmount, totalFinal, symb
   }
 
   if (doc.tax_enabled) {
-    pdf.text(`ITBIS / IVA (${doc.tax_pct || 0}%)`, x + 5, y + 5);
+    pdf.text(`${doc.tax_name || 'Impuesto'} (${doc.tax_pct || 0}%)`, x + 5, y + 5);
     pdf.text(toMoney(taxAmount, symbol), x + boxWidth - 5, y + 5, { align: 'right' });
     y += 8;
   }
@@ -485,8 +485,14 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
   const note = doc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '');
   const socialDetails = getSocialDetails(doc);
   const width = pdf.internal.pageSize.getWidth() - PAGE.marginX * 2;
-  const signerName = doc.contact_name || doc.company_name || 'Firma autorizada';
-  const signerMeta = [doc.contact_title, doc.contact_email].filter(Boolean).join(' · ');
+  const signerName = doc.signature_name || doc.contact_name || doc.company_name || 'Firma autorizada';
+  const signerMeta = [doc.signature_title || doc.contact_title, doc.contact_email].filter(Boolean).join(' · ');
+  const bankDetails = [
+    doc.bank_name,
+    doc.bank_account_type,
+    doc.bank_account_number,
+    doc.bank_account_name ? `Titular: ${doc.bank_account_name}` : '',
+  ].filter(Boolean);
 
   pdf.setDrawColor(235, 235, 235);
   pdf.line(PAGE.marginX, y, PAGE.marginX + width, y);
@@ -499,6 +505,46 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
     pdf.setTextColor(150, 150, 150);
     pdf.text(lines, PAGE.marginX, y);
     y += lines.length * 4.4 + 4;
+  }
+
+  if (doc.payment_instructions || bankDetails.length > 0) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.text('DATOS DE PAGO', PAGE.marginX, y);
+    y += 4;
+
+    if (bankDetails.length > 0) {
+      const bankLines = pdf.splitTextToSize(bankDetails.join(' · '), width);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(110, 110, 110);
+      pdf.text(bankLines, PAGE.marginX, y);
+      y += bankLines.length * 4 + 2;
+    }
+
+    if (doc.payment_instructions) {
+      const paymentLines = pdf.splitTextToSize(doc.payment_instructions, width);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(110, 110, 110);
+      pdf.text(paymentLines, PAGE.marginX, y);
+      y += paymentLines.length * 4 + 4;
+    }
+  }
+
+  if (doc.terms_text) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+    pdf.text('TÉRMINOS Y CONDICIONES', PAGE.marginX, y);
+    y += 4;
+    const termLines = pdf.splitTextToSize(doc.terms_text, width);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 120, 120);
+    pdf.text(termLines, PAGE.marginX, y);
+    y += termLines.length * 4 + 4;
   }
 
   if (doc.doc_show_signature) {
@@ -797,7 +843,11 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$', paym
   });
 
   const noteLines = (resolvedDoc.notes || type === 'quote') ? 2 : 0;
+  const bankInfoHeight = (resolvedDoc.payment_instructions || resolvedDoc.bank_name || resolvedDoc.bank_account_number) ? 20 : 0;
+  const termsHeight = resolvedDoc.terms_text ? Math.min(44, 8 + Math.ceil(resolvedDoc.terms_text.length / 85) * 4) : 0;
   const footerHeight = noteLines * 5
+    + bankInfoHeight
+    + termsHeight
     + (resolvedDoc.doc_show_signature ? 28 : 0)
     + (getSocialDetails(resolvedDoc).length > 0 ? 12 : 0);
   const hasPdfPayments = type === 'invoice' && getPdfPayments(payments).length > 0;
