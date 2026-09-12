@@ -542,6 +542,15 @@ function drawNotes(pdf, { doc, type, y, brandRgb }) {
       y += bankLines.length * 4 + 2;
     }
 
+    if (Array.isArray(doc.accepted_payment_methods) && doc.accepted_payment_methods.length > 0) {
+      const methodLines = pdf.splitTextToSize(`Aceptamos: ${doc.accepted_payment_methods.join(' · ')}`, width);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(110, 110, 110);
+      pdf.text(methodLines, PAGE.marginX, y);
+      y += methodLines.length * 4 + 2;
+    }
+
     if (doc.payment_instructions) {
       const paymentLines = pdf.splitTextToSize(doc.payment_instructions, width);
       pdf.setFont('helvetica', 'normal');
@@ -862,7 +871,7 @@ export async function generateBillingDocumentPdf({ doc, type, symbol = '$', paym
   });
 
   const noteLines = (resolvedDoc.notes || type === 'quote') ? 2 : 0;
-  const bankInfoHeight = (resolvedDoc.payment_instructions || resolvedDoc.bank_name || resolvedDoc.bank_account_number) ? 20 : 0;
+  const bankInfoHeight = (resolvedDoc.payment_instructions || resolvedDoc.bank_name || resolvedDoc.bank_account_number || (Array.isArray(resolvedDoc.accepted_payment_methods) && resolvedDoc.accepted_payment_methods.length > 0)) ? 24 : 0;
   const termsHeight = resolvedDoc.terms_text ? Math.min(44, 8 + Math.ceil(resolvedDoc.terms_text.length / 85) * 4) : 0;
   const footerHeight = noteLines * 5
     + bankInfoHeight
