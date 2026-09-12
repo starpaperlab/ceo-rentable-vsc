@@ -130,10 +130,16 @@ export default function Client360Dialog({
             <DialogTitle className="pr-8 text-xl">{client.name}</DialogTitle>
             <DialogDescription>Vista 360° del cliente: relación comercial, documentos, pagos y actividad.</DialogDescription>
           </DialogHeader>
-          <div className="mt-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {client.email ? <span>{client.email}</span> : null}
             {client.phone ? <span>· {client.phone}</span> : null}
             <Badge variant="outline">{client.status === 'vip' ? 'VIP' : client.status === 'recurring' ? 'Recurrente' : 'Nuevo'}</Badge>
+            <Badge className={client.crm_stage === 'won' ? 'bg-green-100 text-green-700' : client.crm_stage === 'lost' ? 'bg-red-100 text-red-700' : client.crm_stage === 'negotiation' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}>
+              {client.crm_stage === 'follow_up' ? 'En seguimiento' : client.crm_stage === 'interested' ? 'Interesado' : client.crm_stage === 'quoted' ? 'Cotizado' : client.crm_stage === 'negotiation' ? 'Negociación' : client.crm_stage === 'won' ? 'Ganado' : client.crm_stage === 'lost' ? 'Perdido' : 'Nuevo'}
+            </Badge>
+            <Badge className={client.priority === 'urgent' ? 'bg-red-100 text-red-700' : client.priority === 'high' ? 'bg-orange-100 text-orange-700' : 'bg-muted text-foreground'}>
+              Prioridad {client.priority === 'low' ? 'baja' : client.priority === 'high' ? 'alta' : client.priority === 'urgent' ? 'urgente' : 'normal'}
+            </Badge>
           </div>
         </div>
 
