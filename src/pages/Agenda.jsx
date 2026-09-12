@@ -67,7 +67,7 @@ export default function Agenda() {
   const {
     activeWorkspaceId,
     adminMode,
-    canWrite,
+    canWriteModule,
     enabled,
     fetchRows,
     ownerEmail,
@@ -81,7 +81,7 @@ export default function Agenda() {
     writeOwnerEmail,
     writeOwnerId,
   } = useWorkContextScope();
-  const writable = adminMode || canWrite;
+  const writable = adminMode || canWriteModule('agenda');
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
