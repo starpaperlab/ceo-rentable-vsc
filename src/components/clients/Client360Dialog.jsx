@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { CalendarDays, FileText, Mail, MessageCircle, Phone, Receipt, ShoppingBag, StickyNote, Trash2, Users, WalletCards } from 'lucide-react';
+import { BellRing, CalendarDays, Check, FileText, Mail, MessageCircle, Phone, Receipt, ShoppingBag, StickyNote, Trash2, Users, WalletCards, XCircle } from 'lucide-react';
 
 function sameClient(row = {}, client = {}) {
   if (!row || !client) return false;
@@ -68,9 +68,17 @@ export default function Client360Dialog({
   savingActivity = false,
   onUpdateFollowUp,
   savingFollowUp = false,
+  reminders = [],
+  onCreateReminder,
+  onCompleteReminder,
+  onDismissReminder,
+  onDeleteReminder,
+  savingReminder = false,
 }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityForm, setActivityForm] = useState({ activity_type: 'call', subject: '', notes: '', occurred_at: new Date().toISOString().slice(0,16) });
+  const [reminderForm, setReminderForm] = useState({ title: '', notes: '', due_at: '', priority: 'normal' });
+  const [showReminderForm, setShowReminderForm] = useState(false);
   const [followUpForm, setFollowUpForm] = useState({
     next_follow_up_at: client?.next_follow_up_at ? new Date(new Date(client.next_follow_up_at).getTime() - new Date(client.next_follow_up_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : '',
     next_follow_up_type: client?.next_follow_up_type || 'call',
@@ -98,6 +106,9 @@ export default function Client360Dialog({
     const clientOrders = orders.filter((row) => sameClient(row, client));
     const clientAppointments = appointments.filter((row) => sameClient(row, client));
     const clientActivities = activities.filter((row) => row.client_id === client.id);
+    const clientReminders = reminders
+      .filter((row) => row.client_id === client.id)
+      .sort((a,b)=>new Date(a.due_at||0).getTime()-new Date(b.due_at||0).getTime());
     const invoiceIds = new Set(clientInvoices.map((row) => row.id).filter(Boolean));
     const payments = invoicePayments.filter((row) => invoiceIds.has(row.invoice_id));
     const totalInvoiced = clientInvoices.reduce((sum, row) => sum + money(row.total_final || row.total || row.amount), 0);
@@ -117,8 +128,8 @@ export default function Client360Dialog({
       ...clientActivities.map((row) => ({ id: `crm-${row.id}`, rawId: row.id, type: 'Actividad CRM', date: row.occurred_at || row.created_at, title: row.subject || 'Actividad', detail: row.notes || '', status: row.activity_type, icon: row.activity_type === 'call' ? Phone : row.activity_type === 'whatsapp' ? MessageCircle : row.activity_type === 'email' ? Mail : row.activity_type === 'meeting' ? Users : StickyNote, crm: true })),
     ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
-    return { clientInvoices, clientQuotes, clientOrders, clientAppointments, clientActivities, payments, totalInvoiced, collected, balance, timeline };
-  }, [activities, appointments, client, formatMoney, invoicePayments, invoices, orders, quotes]);
+    return { clientInvoices, clientQuotes, clientOrders, clientAppointments, clientActivities, clientReminders, payments, totalInvoiced, collected, balance, timeline };
+  }, [activities, appointments, client, formatMoney, invoicePayments, invoices, orders, quotes, reminders]);
 
   if (!client || !view) return null;
 
@@ -236,6 +247,78 @@ export default function Client360Dialog({
                     ) : <p className="text-muted-foreground">Sin seguimiento programado.</p>}
                   </div>
                 )}
+              </div>
+            </Card>
+
+          <Card className="p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Recordatorios internos</p>
+                  <p className="text-xs text-muted-foreground">Tareas internas que requieren atención en una fecha concreta.</p>
+                </div>
+                {canWrite ? <Button size="sm" variant="outline" onClick={()=>setShowReminderForm((value)=>!value)}><BellRing className="mr-2 h-4 w-4"/>{showReminderForm?'Cancelar':'Nuevo recordatorio'}</Button> : null}
+              </div>
+
+              {showReminderForm && canWrite ? (
+                <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-muted/15 p-4">
+                  <div>
+                    <Label className="text-xs">Título</Label>
+                    <Input className="mt-1" value={reminderForm.title} onChange={(e)=>setReminderForm((prev)=>({...prev,title:e.target.value}))} placeholder="Ej.: llamar para confirmar pago"/>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-xs">Fecha y hora</Label>
+                      <Input type="datetime-local" className="mt-1" value={reminderForm.due_at} onChange={(e)=>setReminderForm((prev)=>({...prev,due_at:e.target.value}))}/>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Prioridad</Label>
+                      <Select value={reminderForm.priority} onValueChange={(value)=>setReminderForm((prev)=>({...prev,priority:value}))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Baja</SelectItem>
+                          <SelectItem value="normal">Normal</SelectItem>
+                          <SelectItem value="high">Alta</SelectItem>
+                          <SelectItem value="urgent">Urgente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Notas</Label>
+                    <Textarea className="mt-1" value={reminderForm.notes} onChange={(e)=>setReminderForm((prev)=>({...prev,notes:e.target.value}))} placeholder="Detalle opcional"/>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      disabled={savingReminder || !reminderForm.title.trim() || !reminderForm.due_at}
+                      onClick={async()=>{
+                        await onCreateReminder?.({...reminderForm,due_at:new Date(reminderForm.due_at).toISOString()});
+                        setReminderForm({title:'',notes:'',due_at:'',priority:'normal'});
+                        setShowReminderForm(false);
+                      }}
+                    >{savingReminder?'Guardando...':'Guardar recordatorio'}</Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-2">
+                {view.clientReminders.length===0 ? (
+                  <p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">Sin recordatorios para este cliente.</p>
+                ) : view.clientReminders.map((reminder)=>{
+                  const overdue=reminder.status==='pending'&&new Date(reminder.due_at).getTime()<Date.now();
+                  return <div key={reminder.id} className="flex items-start gap-3 rounded-xl border border-border/60 p-3">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${overdue?'bg-red-100 text-red-700':'bg-primary/10 text-primary'}`}><BellRing className="h-4 w-4"/></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`text-sm font-semibold ${reminder.status!=='pending'?'line-through text-muted-foreground':''}`}>{reminder.title}</p>
+                        <Badge variant="outline" className="text-[10px]">{reminder.priority==='urgent'?'Urgente':reminder.priority==='high'?'Alta':reminder.priority==='low'?'Baja':'Normal'}</Badge>
+                        {overdue?<Badge className="border-0 bg-red-100 text-red-700 text-[10px]">Vencido</Badge>:null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(reminder.due_at)} · {reminder.status==='done'?'Completado':reminder.status==='dismissed'?'Descartado':'Pendiente'}</p>
+                      {reminder.notes?<p className="mt-1 text-sm text-muted-foreground">{reminder.notes}</p>:null}
+                    </div>
+                    {canWrite&&reminder.status==='pending'?<div className="flex shrink-0 gap-1"><Button variant="ghost" size="icon" className="h-8 w-8 text-green-600" onClick={()=>onCompleteReminder?.(reminder)} title="Marcar completado"><Check className="h-3.5 w-3.5"/></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={()=>onDismissReminder?.(reminder)} title="Descartar"><XCircle className="h-3.5 w-3.5"/></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={()=>onDeleteReminder?.(reminder.id)} title="Eliminar"><Trash2 className="h-3.5 w-3.5"/></Button></div>:null}
+                  </div>;
+                })}
               </div>
             </Card>
 
