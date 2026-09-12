@@ -12,7 +12,7 @@ create index if not exists idx_appointments_client_id
 with unique_matches as (
   select
     a.id as appointment_id,
-    min(c.id) as client_id
+    min(c.id::text)::uuid as client_id
   from public.appointments a
   join public.clients c
     on c.workspace_id = a.workspace_id
