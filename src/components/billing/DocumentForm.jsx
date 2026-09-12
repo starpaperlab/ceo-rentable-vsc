@@ -206,12 +206,13 @@ function buildDocumentFormState({
   ownerEmail,
   ownerName,
   contextBrandProfileId = null,
+  suggestedNumber = null,
 }) {
   const numberField = type === 'invoice' ? 'invoice_number' : 'quote_number';
   const resolvedBranding = resolveDocumentBranding(doc || {}, config || {});
 
   return {
-    [numberField]: doc?.[numberField] || genNumber(type, totalCount),
+    [numberField]: doc?.[numberField] || suggestedNumber || genNumber(type, totalCount),
     date: doc?.date || new Date().toISOString().split('T')[0],
     client_name: doc?.client_name || '',
     client_email: doc?.client_email || '',
@@ -347,6 +348,7 @@ export default function DocumentForm({
   adminMode = false,
   contextBrandProfileId = null,
   workspaceId = null,
+  suggestedNumber = null,
   autoRecoverDraft = false,
 }) {
   const queryClient = useQueryClient();
@@ -379,7 +381,8 @@ export default function DocumentForm({
     ownerEmail,
     ownerName,
     contextBrandProfileId,
-  }), [config, contextBrandProfileId, doc, ownerEmail, ownerName, totalCount, type]);
+    suggestedNumber,
+  }), [config, contextBrandProfileId, doc, ownerEmail, ownerName, suggestedNumber, totalCount, type]);
 
   const [form, setForm] = useState(initialFormState);
   const draftBrandProfileId = form.brand_profile_id || contextBrandProfileId || config?.brand_profile_id || 'no-brand';
