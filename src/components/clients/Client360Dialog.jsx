@@ -187,8 +187,8 @@ export default function Client360Dialog({
               <div className="mt-5 border-t pt-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold">Próximo seguimiento</p>
-                    <p className="text-xs text-muted-foreground">La próxima acción comercial para este cliente.</p>
+                    <p className="text-sm font-semibold">{client.next_follow_up_at ? 'Seguimiento programado' : 'Próximo seguimiento'}</p>
+                    <p className="text-xs text-muted-foreground">{client.next_follow_up_at ? 'Puedes modificar la fecha, el canal o la nota y guardar los cambios.' : 'Programa la próxima acción comercial para este cliente.'}</p>
                   </div>
                   {client.next_follow_up_at ? <Badge variant="outline">{formatDate(client.next_follow_up_at)}</Badge> : null}
                 </div>
@@ -234,7 +234,7 @@ export default function Client360Dialog({
                             next_follow_up_at:new Date(followUpForm.next_follow_up_at).toISOString(),
                           });
                         }}
-                      >{savingFollowUp?'Guardando...':'Guardar seguimiento'}</Button>
+                      >{savingFollowUp?'Guardando...':client.next_follow_up_at?'Actualizar seguimiento':'Guardar seguimiento'}</Button>
                     </div>
                   </div>
                 ) : (
