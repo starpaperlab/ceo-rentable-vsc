@@ -19,9 +19,9 @@ const TOUR_STEPS = [
 ];
 
 const SCENARIOS = [
-  { key: 'conservative', label: 'Conservador', growth: 0.05, badge: 'Bajo Riesgo', effort: 'Bajo', badgeClass: 'bg-violet-100 text-violet-700 border-violet-200' },
-  { key: 'realistic', label: 'Realista', growth: 0.15, badge: 'Recomendado', effort: 'Moderado', badgeClass: 'bg-violet-100 text-violet-700 border-violet-200' },
-  { key: 'scalable', label: 'Escalable', growth: 0.30, badge: 'Alto Impacto', effort: 'Alto', badgeClass: 'bg-violet-100 text-violet-700 border-violet-200' },
+  { key: 'conservative', label: 'Conservador', growth: 0.05, badge: 'Bajo Riesgo', effort: 'Bajo', badgeClass: 'bg-primary/10 text-primary border-primary/20' },
+  { key: 'realistic', label: 'Realista', growth: 0.15, badge: 'Recomendado', effort: 'Moderado', badgeClass: 'bg-primary/10 text-primary border-primary/20' },
+  { key: 'scalable', label: 'Escalable', growth: 0.30, badge: 'Alto Impacto', effort: 'Alto', badgeClass: 'bg-primary/10 text-primary border-primary/20' },
 ];
 
 export default function Projection() {
@@ -102,12 +102,12 @@ export default function Projection() {
               <span className="text-primary font-semibold"><strong>Faltan:</strong> {formatMoney(Math.max(remaining, 0))}</span>
             </div>
           </div>
-          <div className="w-14 h-14 rounded-full border-[3px] border-[#D45387] flex items-center justify-center shrink-0">
-            <span className="text-xs font-bold text-[#D45387]">{progressPct.toFixed(0)}%</span>
+          <div className="w-14 h-14 rounded-full border-[3px] border-primary flex items-center justify-center shrink-0">
+            <span className="text-xs font-bold text-primary">{progressPct.toFixed(0)}%</span>
           </div>
         </div>
         <div className="mt-3.5 h-2 bg-muted rounded-full overflow-hidden">
-          <div className="h-full bg-[#D45387] rounded-full transition-all duration-700" style={{ width: `${progressPct}%` }} />
+          <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${progressPct}%` }} />
         </div>
       </Card>
 
@@ -118,7 +118,7 @@ export default function Projection() {
             onClick={() => setActiveScenario(scenario.key)}
             className={`px-3.5 h-8 rounded-lg text-xs font-semibold transition-all ${
               activeScenario === scenario.key
-                ? 'bg-[#D45387] text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'text-foreground hover:bg-muted'
             }`}
           >
@@ -132,7 +132,7 @@ export default function Projection() {
           <motion.div key={projection.key} layout className="h-full">
             <Card className={`h-full min-h-[250px] p-4 rounded-2xl border transition-all duration-200 flex flex-col ${
               projection.key === activeScenario
-                ? 'border-[#D45387] shadow-[0_0_0_2px_rgba(212,83,135,0.18)]'
+                ? 'border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.18)]'
                 : 'border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)]'
             }`}>
               <Badge className={`mb-2.5 border text-[10px] font-bold ${projection.badgeClass}`}>
@@ -154,7 +154,7 @@ export default function Projection() {
                 variant="outline"
                 className={`w-full mt-auto h-9 rounded-xl text-xs font-semibold ${
                   projection.key === activeScenario
-                    ? 'bg-[#D45387] text-white border-[#D45387] hover:bg-[#C24578] hover:text-white'
+                    ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:text-white'
                     : 'border-border'
                 }`}
                 onClick={() => setActiveScenario(projection.key)}
@@ -177,7 +177,7 @@ export default function Projection() {
               contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, fontSize: 12 }}
               formatter={(value) => [formatMoney(value), 'Proyección']}
             />
-            <Bar dataKey="monto" fill="#D45387" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="monto" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </Card>
