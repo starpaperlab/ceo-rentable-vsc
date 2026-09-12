@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +43,11 @@ function statusLabel(value = '') {
     confirmado: 'Confirmado',
     en_proceso: 'En proceso',
     cancelado: 'Cancelado',
+    call: 'Llamada',
+    whatsapp: 'WhatsApp',
+    email: 'Email',
+    meeting: 'Reunión',
+    other: 'Otro',
   };
   return labels[value] || value || 'Sin estado';
 }
@@ -72,6 +77,19 @@ export default function Client360Dialog({
     next_follow_up_note: client?.next_follow_up_note || '',
   });
   const { formatMoney } = useCurrency();
+
+  useEffect(() => {
+    if (!client) return;
+    const value = client.next_follow_up_at ? new Date(client.next_follow_up_at) : null;
+    const localValue = value && !Number.isNaN(value.getTime())
+      ? new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0,16)
+      : '';
+    setFollowUpForm({
+      next_follow_up_at: localValue,
+      next_follow_up_type: client.next_follow_up_type || 'call',
+      next_follow_up_note: client.next_follow_up_note || '',
+    });
+  }, [client?.id, client?.next_follow_up_at, client?.next_follow_up_note, client?.next_follow_up_type]);
 
   const view = useMemo(() => {
     if (!client) return null;
