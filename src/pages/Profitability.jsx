@@ -1300,7 +1300,7 @@ export default function Profitability() {
           )}
 
           <Button
-            className="w-full mt-4 h-12 rounded-xl bg-[#D45387] hover:bg-[#C24578] text-white"
+            className="w-full mt-4 h-12 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={saveToAnalysis}
             disabled={isSaving}
           >
@@ -1367,9 +1367,9 @@ export default function Profitability() {
             </Card>
           ) : null}
 
-          <Card className="p-5 rounded-2xl border border-[#F3CBDD] bg-[#FFF5F9] shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+          <Card className="p-5 rounded-2xl border border-primary/20 bg-primary/5 shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-[11px] font-extrabold tracking-[0.06em] text-[#D45387] flex items-center gap-1.5">
+              <p className="text-[11px] font-extrabold tracking-[0.06em] text-primary flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4" />
                 PRECIO PREMIUM RECOMENDADO
               </p>
@@ -1407,7 +1407,7 @@ export default function Profitability() {
           }`}>
             <div className="flex gap-2.5">
               {verdict.tone === 'neutral' ? (
-                <Sparkles className="h-4 w-4 mt-0.5 text-[#D45387]" />
+                <Sparkles className="h-4 w-4 mt-0.5 text-primary" />
               ) : (
                 <AlertTriangle className={`h-4 w-4 mt-0.5 ${
                   verdict.tone === 'danger' ? 'text-red-500' : verdict.tone === 'warning' ? 'text-amber-500' : 'text-emerald-500'
@@ -1484,7 +1484,7 @@ export default function Profitability() {
                 )}
 
                 {(analysisSource === 'products' || item.status === 'approved') && (
-                  <Button size="sm" variant="outline" className="border-pink-200 text-[#D45387] hover:bg-pink-50" onClick={() => syncItem(item)}>
+                  <Button size="sm" variant="outline" className="border-pink-200 text-primary hover:bg-pink-50" onClick={() => syncItem(item)}>
                     <RefreshCw className="h-4 w-4 mr-1.5" />
                     Sincronizar
                   </Button>
@@ -1584,7 +1584,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === MANUAL_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === MANUAL_MODE ? 'bg-[#D45387] hover:bg-[#C24578] text-white' : ''}`}
+        className={`min-h-11 rounded-xl ${mode === MANUAL_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, MANUAL_MODE)}
       >
         Ingresar total manual
@@ -1592,7 +1592,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === LIBRARY_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === LIBRARY_MODE ? 'bg-[#D45387] hover:bg-[#C24578] text-white' : ''}`}
+        className={`min-h-11 rounded-xl ${mode === LIBRARY_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, LIBRARY_MODE)}
       >
         Seleccionar de mi biblioteca
@@ -1600,7 +1600,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === MIXED_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === MIXED_MODE ? 'bg-[#D45387] hover:bg-[#C24578] text-white' : ''}`}
+        className={`min-h-11 rounded-xl ${mode === MIXED_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, MIXED_MODE)}
       >
         Manual + biblioteca
@@ -1653,7 +1653,7 @@ function PhysicalCostSection({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 w-full rounded-xl border-pink-200 text-[#D45387] hover:bg-pink-50"
+            className="min-h-11 w-full rounded-xl border-pink-200 text-primary hover:bg-pink-50"
             onClick={() => onOpenSelector(section)}
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -1887,13 +1887,13 @@ function CostLibrarySelectorDialog({
                     {item.provider ? (
                       <p className="text-xs text-muted-foreground break-words">{item.provider}</p>
                     ) : null}
-                    <p className="text-sm font-semibold text-[#D45387] mt-1">
+                    <p className="text-sm font-semibold text-primary mt-1">
                       {getReferenceCost(item, formatMoney)}
                     </p>
                   </div>
                   <Button
                     type="button"
-                    className="min-h-11 shrink-0 rounded-xl bg-[#D45387] hover:bg-[#C24578] text-white"
+                    className="min-h-11 shrink-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
                     disabled={selected}
                     onClick={() => onAdd(item)}
                   >
