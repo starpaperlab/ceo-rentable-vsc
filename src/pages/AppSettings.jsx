@@ -7,6 +7,7 @@ import { useDraftRecovery } from '@/hooks/useDraftRecovery';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
