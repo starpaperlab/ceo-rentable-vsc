@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, CalendarClock, CheckCircle2, UserRound } from 'lucide-react';
+import { Bell, CalendarClock, CheckCircle2, CircleDollarSign, FileText, Megaphone, ShieldAlert, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { createPageUrl } from '@/utils';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import { supabase } from '@/lib/supabase';
 
 function formatWhen(value) {
   if (!value) return 'Sin fecha';
@@ -33,7 +34,7 @@ function withinDays(value, days) {
 }
 
 export default function NotificationBell() {
-  const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
+  const { activeWorkspaceId, enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
 
   const { data: reminders = [] } = useQuery({
     queryKey: ['notification-bell-reminders', ...contextQueryKey],
@@ -52,6 +53,30 @@ export default function NotificationBell() {
   const { data: appointments = [] } = useQuery({
     queryKey: ['notification-bell-appointments', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'appointments', orderBy: 'date', ascending: true }),
+    enabled,
+    refetchInterval: 60000,
+  });
+
+  const { data: storedNotifications = [] } = useQuery({
+    queryKey: ['notification-bell-stored', ...contextQueryKey],
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      let query = supabase
+        .from('app_notifications')
+        .select('*')
+        .eq('is_active', true)
+        .lte('published_at', now)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .order('published_at', { ascending: false });
+
+      query = activeWorkspaceId
+        ? query.or(`workspace_id.eq.${activeWorkspaceId},workspace_id.is.null`)
+        : query.is('workspace_id', null);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
     enabled,
     refetchInterval: 60000,
   });
@@ -97,13 +122,37 @@ export default function NotificationBell() {
         to: createPageUrl('Agenda'),
       }));
 
-    return [...pendingReminders, ...followUps, ...todayAppointments]
+    const persisted = storedNotifications.map((item) => {
+      const meta = {
+        reminder: { icon: Bell, fallback: createPageUrl('Clients') },
+        follow_up: { icon: UserRound, fallback: createPageUrl('Clients') },
+        appointment: { icon: CalendarClock, fallback: createPageUrl('Agenda') },
+        receivable: { icon: CircleDollarSign, fallback: createPageUrl('Receivables') },
+        quote: { icon: FileText, fallback: createPageUrl('Billing') },
+        product_update: { icon: Megaphone, fallback: createPageUrl('Dashboard') },
+        system: { icon: ShieldAlert, fallback: createPageUrl('Dashboard') },
+      }[item.notification_type] || { icon: Bell, fallback: createPageUrl('Dashboard') };
+
+      return {
+        id: `stored-${item.id}`,
+        kind: item.notification_type,
+        title: item.title || 'Notificación',
+        subtitle: item.message || 'Tienes una nueva notificación.',
+        when: item.published_at || item.created_at,
+        urgent: item.severity === 'critical',
+        severity: item.severity || 'info',
+        icon: meta.icon,
+        to: item.action_path || meta.fallback,
+      };
+    });
+
+    return [...pendingReminders, ...followUps, ...todayAppointments, ...persisted]
       .sort((a, b) => {
         if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
         return new Date(a.when || 0).getTime() - new Date(b.when || 0).getTime();
       })
       .slice(0, 12);
-  }, [appointments, clients, reminders]);
+  }, [appointments, clients, reminders, storedNotifications]);
 
   const count = feed.length;
 
@@ -125,7 +174,7 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Centro de notificaciones</p>
-              <p className="text-xs text-muted-foreground">Recordatorios, seguimientos y actividades de hoy.</p>
+              <p className="text-xs text-muted-foreground">CRM, cobros, cotizaciones, novedades y alertas del sistema.</p>
             </div>
             {count > 0 ? <Badge variant="outline">{count} pendiente{count === 1 ? '' : 's'}</Badge> : null}
           </div>
