@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2, Eye } from 'lucide-react';
+import AgendaCalendar from '@/components/agenda/AgendaCalendar';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -23,6 +24,7 @@ import {
 } from '@/lib/supabaseOwnership';
 
 const INITIAL_FORM = {
+  client_id: '',
   client_name: '',
   client_phone: '',
   service_type: '',
@@ -39,6 +41,7 @@ function toNumber(value) {
 
 function normalizeAppointmentPayload(raw) {
   return {
+    client_id: raw.client_id || null,
     client_name: (raw.client_name || '').trim(),
     client_phone: (raw.client_phone || '').trim() || null,
     service_type: (raw.service_type || '').trim(),
@@ -226,6 +229,12 @@ export default function Agenda() {
     }));
   };
 
+  const { data: clients = [] } = useQuery({
+    queryKey: ['agenda-clients', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'clients', orderBy: 'name', ascending: true }),
+    enabled,
+  });
+
   const { data: appointments = [], isLoading } = useQuery({
     queryKey: ['appointments', ...contextQueryKey],
     queryFn: async () => sortAppointments(await fetchRows({
@@ -322,6 +331,7 @@ export default function Agenda() {
     if (!writable) return;
     setEditingId(appointment.id);
     setFormData({
+      client_id: appointment.client_id || '',
       client_name: appointment.client_name || '',
       client_phone: appointment.client_phone || '',
       service_type: appointment.service_type || '',
@@ -399,6 +409,31 @@ export default function Agenda() {
           <h3 className="font-bold text-lg">{editingId ? 'Editar Cita' : 'Nueva Cita'}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
+              <Label className="text-xs">Cliente CRM</Label>
+              <Select
+                value={formData.client_id || 'manual'}
+                onValueChange={(value) => {
+                  if (value === 'manual') {
+                    setFormData({ ...formData, client_id: '' });
+                    return;
+                  }
+                  const client = clients.find((item) => item.id === value);
+                  setFormData({
+                    ...formData,
+                    client_id: value,
+                    client_name: client?.name || formData.client_name,
+                    client_phone: client?.phone || formData.client_phone,
+                  });
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecciona cliente" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Escribir manualmente</SelectItem>
+                  {clients.map((client)=><SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label className="text-xs">Nombre del Cliente *</Label>
               <Input value={formData.client_name} onChange={(event) => setFormData({ ...formData, client_name: event.target.value })} placeholder="Nombre completo" className="mt-1" />
             </div>
@@ -455,6 +490,8 @@ export default function Agenda() {
           </div>
         </Card>
       ) : null}
+
+      <AgendaCalendar appointments={appointments} onEdit={writable ? handleEdit : undefined} />
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
