@@ -255,14 +255,14 @@ export default function NotificationBell() {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[min(92vw,380px)] p-0">
+      <PopoverContent align="end" className="w-[calc(100vw-1rem)] max-w-[380px] p-0 sm:w-[380px]">
         <div className="border-b px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div>
               <p className="text-sm font-semibold">Centro de notificaciones</p>
               <p className="text-xs text-muted-foreground">CRM, cobros, cotizaciones, novedades y alertas del sistema.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {unreadCount > 0 ? <Badge variant="outline">{unreadCount} no leída{unreadCount === 1 ? '' : 's'}</Badge> : null}
               {unreadCount > 0 ? (
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={markAllRead}>
