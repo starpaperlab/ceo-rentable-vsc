@@ -61,9 +61,16 @@ export default function Client360Dialog({
   onCreateActivity,
   onDeleteActivity,
   savingActivity = false,
+  onUpdateFollowUp,
+  savingFollowUp = false,
 }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityForm, setActivityForm] = useState({ activity_type: 'call', subject: '', notes: '', occurred_at: new Date().toISOString().slice(0,16) });
+  const [followUpForm, setFollowUpForm] = useState({
+    next_follow_up_at: client?.next_follow_up_at ? new Date(new Date(client.next_follow_up_at).getTime() - new Date(client.next_follow_up_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : '',
+    next_follow_up_type: client?.next_follow_up_type || 'call',
+    next_follow_up_note: client?.next_follow_up_note || '',
+  });
   const { formatMoney } = useCurrency();
 
   const view = useMemo(() => {
@@ -140,6 +147,71 @@ export default function Client360Dialog({
                 <div><p className="text-xs text-muted-foreground">Email</p><p>{client.email || 'No registrado'}</p></div>
                 <div><p className="text-xs text-muted-foreground">Teléfono / WhatsApp</p><p>{client.phone || 'No registrado'}</p></div>
                 <div><p className="text-xs text-muted-foreground">Notas</p><p className="whitespace-pre-wrap">{client.notes || 'Sin notas'}</p></div>
+              </div>
+
+              <div className="mt-5 border-t pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Próximo seguimiento</p>
+                    <p className="text-xs text-muted-foreground">La próxima acción comercial para este cliente.</p>
+                  </div>
+                  {client.next_follow_up_at ? <Badge variant="outline">{formatDate(client.next_follow_up_at)}</Badge> : null}
+                </div>
+
+                {canWrite ? (
+                  <div className="mt-3 grid gap-3">
+                    <Input
+                      type="datetime-local"
+                      value={followUpForm.next_follow_up_at || ''}
+                      onChange={(e)=>setFollowUpForm((prev)=>({...prev,next_follow_up_at:e.target.value}))}
+                    />
+                    <Select value={followUpForm.next_follow_up_type || 'call'} onValueChange={(value)=>setFollowUpForm((prev)=>({...prev,next_follow_up_type:value}))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="call">Llamada</SelectItem>
+                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="meeting">Reunión</SelectItem>
+                        <SelectItem value="other">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={followUpForm.next_follow_up_note || ''}
+                      onChange={(e)=>setFollowUpForm((prev)=>({...prev,next_follow_up_note:e.target.value}))}
+                      placeholder="Ej.: confirmar decisión sobre cotización"
+                    />
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {client.next_follow_up_at ? (
+                        <Button
+                          variant="outline"
+                          disabled={savingFollowUp}
+                          onClick={async()=>{
+                            await onUpdateFollowUp?.({next_follow_up_at:null,next_follow_up_type:null,next_follow_up_note:null});
+                            setFollowUpForm((prev)=>({...prev,next_follow_up_at:'',next_follow_up_note:''}));
+                          }}
+                        >Quitar seguimiento</Button>
+                      ) : null}
+                      <Button
+                        disabled={savingFollowUp || !followUpForm.next_follow_up_at}
+                        onClick={async()=>{
+                          await onUpdateFollowUp?.({
+                            ...followUpForm,
+                            next_follow_up_at:new Date(followUpForm.next_follow_up_at).toISOString(),
+                          });
+                        }}
+                      >{savingFollowUp?'Guardando...':'Guardar seguimiento'}</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-sm">
+                    {client.next_follow_up_at ? (
+                      <>
+                        <p className="font-medium">{client.next_follow_up_note || 'Seguimiento programado'}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{statusLabel(client.next_follow_up_type)} · {formatDate(client.next_follow_up_at)}</p>
+                      </>
+                    ) : <p className="text-muted-foreground">Sin seguimiento programado.</p>}
+                  </div>
+                )}
               </div>
             </Card>
 
