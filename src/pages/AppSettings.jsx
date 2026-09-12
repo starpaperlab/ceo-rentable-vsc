@@ -771,9 +771,28 @@ export default function AppSettings() {
           </Card>
 
           <Card className="p-6 space-y-5">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Branding de documentos</h2>
-              <p className="text-xs text-muted-foreground mt-1">Controla la identidad visual de cotizaciones, facturas y PDFs sin alterar el tema de la interfaz.</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Branding de documentos</h2>
+                <p className="text-xs text-muted-foreground mt-1">Controla la identidad visual de cotizaciones, facturas y PDFs sin alterar el tema de la interfaz.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!writable || (!activeWorkspace?.brand_primary_color && !activeWorkspace?.logo_url)}
+                onClick={() => {
+                  setHasUserEdited(true);
+                  setForm((prev) => ({
+                    ...prev,
+                    brand_color: activeWorkspace?.brand_primary_color || prev.brand_color,
+                    brand_accent_color: activeWorkspace?.brand_accent_color || prev.brand_accent_color,
+                    logo_url: activeWorkspace?.logo_url || prev.logo_url,
+                  }));
+                }}
+              >
+                Usar identidad de la interfaz
+              </Button>
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Logotipo del Negocio</Label>
