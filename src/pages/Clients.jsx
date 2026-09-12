@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 const TOUR_STEPS=[{title:'Gestión de Clientes 👥',description:'Tu base de clientes es uno de tus activos más valiosos. Aquí registras cada cliente, cuánto te ha comprado y su categoría.'},{title:'Ticket promedio 💰',description:'El ticket promedio te dice cuánto gasta un cliente en promedio. Entre más alto, mejor. Trabaja para subir este número con upsells.'},{title:'Clientes VIP ⭐',description:'Clasifica tus mejores clientes como VIP. Son los que más ingresos te generan y a quienes debes dar prioridad y atención especial.'}];
-function normalizeClientPayload(raw={}){return{name:(raw.name||'').trim(),email:(raw.email||'').trim()||null,phone:(raw.phone||'').trim()||null,status:raw.status||'new',total_billed:Number(raw.total_billed||0),notes:(raw.notes||'').trim()||null}}
+function normalizeClientPayload(raw={}){return{name:(raw.name||'').trim(),email:(raw.email||'').trim()||null,phone:(raw.phone||'').trim()||null,status:raw.status||'new',total_billed:Number(raw.total_billed||0),notes:(raw.notes||'').trim()||null,next_follow_up_at:raw.next_follow_up_at||null,next_follow_up_type:raw.next_follow_up_at?(raw.next_follow_up_type||'call'):null,next_follow_up_note:raw.next_follow_up_at?((raw.next_follow_up_note||'').trim()||null):null}}
 function sortByCreatedDesc(rows=[]){return[...rows].sort((a,b)=>new Date(b.created_at||b.created_date||0).getTime()-new Date(a.created_at||a.created_date||0).getTime())}
 
 export default function Clients(){
@@ -63,6 +63,24 @@ export default function Clients(){
   onSuccess:()=>{queryClient.invalidateQueries({queryKey:['client-activities']});toast.success('Actividad eliminada')},
   onError:error=>toast.error(`No se pudo eliminar la actividad: ${error.message}`)
  });
+ const updateFollowUpMutation=useMutation({
+  mutationFn:async({client,payload})=>{
+   assertCanWrite();
+   const cleanPayload={
+    next_follow_up_at:payload.next_follow_up_at||null,
+    next_follow_up_type:payload.next_follow_up_at?(payload.next_follow_up_type||'call'):null,
+    next_follow_up_note:payload.next_follow_up_at?((payload.next_follow_up_note||'').trim()||null):null,
+   };
+   await updateOwnedRowById({table:'clients',id:client.id,payload:cleanPayload,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode});
+   return cleanPayload;
+  },
+  onSuccess:(payload)=>{
+   queryClient.invalidateQueries({queryKey:['clients']});
+   setSelectedClient((prev)=>prev?{...prev,...payload}:prev);
+   toast.success(payload.next_follow_up_at?'Seguimiento programado':'Seguimiento eliminado');
+  },
+  onError:error=>toast.error(`No se pudo actualizar el seguimiento: ${error.message}`)
+ });
  const handleSubmit=async data=>{const result=await saveClientMutation.mutateAsync(data);queryClient.invalidateQueries({queryKey:['clients']});return result};
  const handleEdit=client=>{if(!canWrite)return;setEditingClient(client);setShowForm(true)};
  const filtered=clients.filter(c=>(c.name?.toLowerCase().includes(search.toLowerCase())||c.email?.toLowerCase().includes(search.toLowerCase()))&&(statusFilter==='all'||c.status===statusFilter));const totalBilled=clients.reduce((s,c)=>s+(c.total_billed||0),0),avgTicket=clients.length?totalBilled/clients.length:0,vipCount=clients.filter(c=>c.status==='vip').length;
@@ -88,6 +106,8 @@ export default function Clients(){
   onCreateActivity={(payload)=>createActivityMutation.mutateAsync({client:selectedClient,payload})}
   onDeleteActivity={(id)=>deleteActivityMutation.mutate(id)}
   savingActivity={createActivityMutation.isPending}
+  onUpdateFollowUp={(payload)=>updateFollowUpMutation.mutateAsync({client:selectedClient,payload})}
+  savingFollowUp={updateFollowUpMutation.isPending}
  />
  </div>
 }
