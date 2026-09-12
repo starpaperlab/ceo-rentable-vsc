@@ -250,6 +250,7 @@ function buildDocumentFormState({
     whatsapp_url: resolvedBranding.whatsapp_url || '',
     tax_name: resolvedBranding.tax_name || config?.tax_name || 'ITBIS',
     payment_instructions: resolvedBranding.payment_instructions || config?.payment_instructions || '',
+    accepted_payment_methods: Array.isArray(resolvedBranding.accepted_payment_methods) && resolvedBranding.accepted_payment_methods.length > 0 ? resolvedBranding.accepted_payment_methods : (Array.isArray(config?.accepted_payment_methods) && config.accepted_payment_methods.length > 0 ? config.accepted_payment_methods : ['Efectivo', 'Transferencia']),
     bank_name: resolvedBranding.bank_name || config?.bank_name || '',
     bank_account_name: resolvedBranding.bank_account_name || config?.bank_account_name || '',
     bank_account_number: resolvedBranding.bank_account_number || config?.bank_account_number || '',
@@ -664,6 +665,16 @@ export default function DocumentForm({
     safeData.commercial_attachments_layout = sanitizeCommercialAttachmentLayout(
       data?.commercial_attachments_layout || data?.visual_attachments_layout
     );
+
+    if (!doc?.id && workspaceId) {
+      const { data: reservedNumber, error: reserveError } = await supabase.rpc('reserve_document_number', {
+        target_workspace_id: workspaceId,
+        document_type: type,
+      });
+      if (reserveError) throw reserveError;
+      if (!reservedNumber) throw new Error('No se pudo reservar la numeración del documento.');
+      safeData[numberField] = reservedNumber;
+    }
     const documentData = doc?.id
       ? safeData
       : {
