@@ -24,6 +24,7 @@ import {
   updateOwnedRowById,
 } from '@/lib/supabaseOwnership';
 import { buildDocumentBrandingFields, mapBrandProfileToBusinessConfig, resolveDocumentBranding } from '@/lib/documentBranding';
+import { getFiscalDocumentLabel, getFiscalDocumentOptions, getFiscalNumberLabel } from '@/lib/fiscalDocuments';
 import {
   COMMERCIAL_ATTACHMENT_LAYOUTS,
   DEFAULT_COMMERCIAL_ATTACHMENT_LAYOUT,
@@ -256,6 +257,12 @@ function buildDocumentFormState({
     signature_name: resolvedBranding.signature_name || config?.signature_name || '',
     signature_title: resolvedBranding.signature_title || config?.signature_title || '',
     terms_text: resolvedBranding.terms_text || config?.terms_text || '',
+    fiscal_country_code: doc?.fiscal_country_code || config?.country_code || 'DO',
+    fiscal_document_type: doc?.fiscal_document_type || 'none',
+    fiscal_document_label: doc?.fiscal_document_label || '',
+    fiscal_document_number: doc?.fiscal_document_number || '',
+    fiscal_document_series: doc?.fiscal_document_series || '',
+    fiscal_authority_reference: doc?.fiscal_authority_reference || '',
     logo_position: resolvedBranding.logo_position || 'left',
     doc_show_socials: resolvedBranding.doc_show_socials ?? DEFAULT_DOCUMENT_PREFS.doc_show_socials,
     doc_show_fiscal_id: resolvedBranding.doc_show_fiscal_id ?? DEFAULT_DOCUMENT_PREFS.doc_show_fiscal_id,
@@ -443,6 +450,22 @@ export default function DocumentForm({
       setHasUserEdited(true);
     }
     setForm(nextForm);
+  };
+
+  const fiscalCountryCode = form.fiscal_country_code || config?.country_code || 'DO';
+  const fiscalDocumentOptions = getFiscalDocumentOptions(fiscalCountryCode);
+  const fiscalNumberLabel = getFiscalNumberLabel(fiscalCountryCode, form.fiscal_document_type);
+
+  const handleFiscalTypeChange = (value) => {
+    markEdited();
+    setForm((prev) => ({
+      ...prev,
+      fiscal_document_type: value,
+      fiscal_document_label: value === 'none' ? '' : getFiscalDocumentLabel(fiscalCountryCode, value),
+      fiscal_document_number: value === 'none' ? '' : prev.fiscal_document_number,
+      fiscal_document_series: value === 'none' ? '' : prev.fiscal_document_series,
+      fiscal_authority_reference: value === 'none' ? '' : prev.fiscal_authority_reference,
+    }));
   };
 
   const handleClientSelect = (clientId) => {
@@ -1160,6 +1183,56 @@ export default function DocumentForm({
               </Select>
             </div>
           </div>
+
+          {type === 'invoice' && (
+            <div className="space-y-3 rounded-2xl border border-primary/15 bg-primary/[0.03] p-4">
+              <div>
+                <p className="text-sm font-semibold">Comprobante fiscal</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Opcional. Registra el comprobante o referencia fiscal asignado por la autoridad tributaria de tu país.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label className="text-xs">Tipo de comprobante</Label>
+                  <Select value={form.fiscal_document_type || 'none'} onValueChange={handleFiscalTypeChange}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {fiscalDocumentOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.fiscal_document_type !== 'none' && (
+                  <div>
+                    <Label className="text-xs">{fiscalNumberLabel}</Label>
+                    <Input
+                      value={form.fiscal_document_number || ''}
+                      onChange={(e) => update('fiscal_document_number', e.target.value.toUpperCase())}
+                      className="mt-1 font-mono"
+                      placeholder={fiscalCountryCode === 'DO' ? 'B0100000001 / E310000000000' : ''}
+                    />
+                  </div>
+                )}
+                {form.fiscal_document_type === 'custom' && (
+                  <div className="sm:col-span-2">
+                    <Label className="text-xs">Nombre del comprobante / referencia</Label>
+                    <Input
+                      value={form.fiscal_document_label || ''}
+                      onChange={(e) => update('fiscal_document_label', e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+              </div>
+              {fiscalCountryCode === 'DO' && form.fiscal_document_type !== 'none' && (
+                <p className="text-[11px] text-muted-foreground">
+                  CEO Rentable registra y muestra el NCF/e-NCF que ya te corresponde; no crea ni autoriza secuencias de la DGII.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
