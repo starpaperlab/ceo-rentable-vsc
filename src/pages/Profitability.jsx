@@ -1114,7 +1114,7 @@ export default function Profitability() {
 
       {writable ? (
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-y-5 lg:gap-x-7 xl:gap-x-8 items-start">
-        <Card className="order-1 rounded-2xl border border-[#E7E1D9] p-4 shadow-[0_1px_3px_rgba(16,24,40,0.06)] sm:p-6 lg:order-1 lg:p-7">
+        <Card className="order-1 rounded-2xl border border-border/60 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:p-6 lg:order-1 lg:p-7">
           <p className="text-[11px] font-extrabold tracking-[0.12em] text-muted-foreground mb-5">DATOS DE AUDITORÍA</p>
 
           <div className="space-y-1.5 mb-4">
@@ -1310,7 +1310,7 @@ export default function Profitability() {
         </Card>
 
         <div className="order-2 lg:order-2 space-y-4">
-          <Card className="p-5 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+          <Card className="p-5 rounded-2xl border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
             <p className="text-[11px] font-extrabold tracking-[0.12em] text-muted-foreground mb-4">SIMULACIÓN EN TIEMPO REAL</p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1338,7 +1338,7 @@ export default function Profitability() {
           </Card>
 
           {isPhysical ? (
-            <Card className="p-5 rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+            <Card className="p-5 rounded-2xl border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
               <p className="text-[11px] font-extrabold tracking-[0.12em] text-muted-foreground mb-4">DESGLOSE COSTO FÍSICO</p>
               <div className="space-y-2 text-sm">
                 <CostBreakdownRow label="Materiales antes de merma" value={formatMoney(
@@ -1367,7 +1367,7 @@ export default function Profitability() {
             </Card>
           ) : null}
 
-          <Card className="p-5 rounded-2xl border border-primary/20 bg-primary/5 shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+          <Card className="p-5 rounded-2xl border border-primary/20 bg-primary/5 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3 mb-2">
               <p className="text-[11px] font-extrabold tracking-[0.06em] text-primary flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4" />
@@ -1396,9 +1396,9 @@ export default function Profitability() {
             </p>
           </Card>
 
-          <Card className={`p-5 rounded-2xl border shadow-[0_1px_3px_rgba(16,24,40,0.06)] ${
+          <Card className={`p-5 rounded-2xl border shadow-[0_10px_28px_rgba(15,23,42,0.05)] ${
             verdict.tone === 'neutral'
-              ? 'bg-white border-[#E7E1D9]'
+              ? 'bg-white border-border/60'
               : verdict.tone === 'danger'
               ? 'bg-red-50 border-red-200'
               : verdict.tone === 'warning'
@@ -1453,7 +1453,7 @@ export default function Profitability() {
           </Card>
         ) : (
           analysisRows.map((item) => (
-            <Card key={item.id} className="p-4 rounded-xl border border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <Card key={item.id} className="p-4 rounded-xl border border-border/60 shadow-[0_1px_2px_rgba(16,24,40,0.04)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-lg font-bold text-foreground">{item.name}</p>
@@ -1629,7 +1629,7 @@ function PhysicalCostSection({
   const hasLines = lines.length > 0;
 
   return (
-    <div className="rounded-2xl border border-[#E7E1D9] bg-white p-4 space-y-4">
+    <div className="rounded-2xl border border-border/60 bg-white p-4 space-y-4">
       <div className="space-y-1">
         <h3 className="text-sm font-extrabold text-foreground">{title}</h3>
         <p className="text-xs text-muted-foreground">{hint}</p>
@@ -1641,7 +1641,7 @@ function PhysicalCostSection({
         <div className="space-y-3">
           {manualField}
           {hasLines ? (
-            <div className="rounded-xl border border-[#E7E1D9] bg-muted/40 p-3 text-xs text-muted-foreground">
+            <div className="rounded-xl border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
               {lines.length} {lines.length === 1 ? 'línea de biblioteca conservada' : 'líneas de biblioteca conservadas'}.
               No suman mientras esta sección esté en modo manual.
             </div>
@@ -1661,7 +1661,7 @@ function PhysicalCostSection({
           </Button>
 
           {hasLines ? (
-            <div className="flex flex-col gap-2 rounded-xl border border-[#E7E1D9] bg-[#FFFCFA] p-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+            <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-white p-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-foreground">Desglose seleccionado</p>
                 <p className="text-xs text-muted-foreground">
@@ -1682,7 +1682,7 @@ function PhysicalCostSection({
           ) : null}
 
           {!hasLines ? (
-            <div className="rounded-xl border border-dashed border-[#E7E1D9] p-4 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
               {PHYSICAL_LIBRARY_SECTIONS[section].emptyText}
             </div>
           ) : detailsOpen ? (
@@ -1730,7 +1730,7 @@ function CostLineCard({ line, section, formatMoney, onUpdateLine, onRequestRemov
   const appliedWastePercentage = getLineWastePercentage(line);
 
   return (
-    <div className="rounded-xl border border-[#E7E1D9] bg-[#FFFCFA] p-3 space-y-3">
+    <div className="rounded-xl border border-border/60 bg-white p-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-bold text-foreground break-words">{item.name}</p>
@@ -1872,7 +1872,7 @@ function CostLibrarySelectorDialog({
           ) : null}
 
           {!isLoading && !error && items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#E7E1D9] p-5 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border/60 p-5 text-sm text-muted-foreground">
               No hay costos activos para esta sección.
             </div>
           ) : null}
@@ -1880,7 +1880,7 @@ function CostLibrarySelectorDialog({
           {!isLoading && !error ? items.map((item) => {
             const selected = selectedIds.has(item.id);
             return (
-              <div key={item.id} className="rounded-xl border border-[#E7E1D9] bg-white p-4">
+              <div key={item.id} className="rounded-xl border border-border/60 bg-white p-4">
                 <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
                   <div className="min-w-0">
                     <p className="font-bold text-foreground break-words">{item.name}</p>
