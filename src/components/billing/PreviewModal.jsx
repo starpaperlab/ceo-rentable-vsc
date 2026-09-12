@@ -410,6 +410,11 @@ export default function PreviewModal({
                     {bankDetails.join(' · ')}
                   </p>
                 )}
+                {Array.isArray(resolvedDoc.accepted_payment_methods) && resolvedDoc.accepted_payment_methods.length > 0 && (
+                  <p style={{ fontSize: '11px', color: '#666', margin: '7px 0 0 0', lineHeight: 1.5 }}>
+                    Aceptamos: {resolvedDoc.accepted_payment_methods.join(' · ')}
+                  </p>
+                )}
                 {resolvedDoc.payment_instructions && (
                   <p style={{ fontSize: '11px', color: '#666', margin: '7px 0 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                     {resolvedDoc.payment_instructions}
