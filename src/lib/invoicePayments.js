@@ -1,6 +1,6 @@
 const MONEY_EPSILON = 0.005;
 
-export const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'PayPal', 'Otro'];
+export const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Cheque', 'PayPal', 'Otro'];
 
 export const PAYMENT_STATUS_META = {
   pending: {
