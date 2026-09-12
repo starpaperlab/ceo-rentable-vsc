@@ -524,7 +524,7 @@ function KpiCard({ label, value, subtitle, growth, icon, positive = true }) {
   const isUp = growth >= 0;
 
   return (
-    <Card className="p-2.5 sm:p-4 border border-[#E7E1D9] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+    <Card className="p-2.5 sm:p-4 border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
       <div className="flex items-start justify-between gap-1">
         <p className="text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
         <span className="hidden min-[390px]:inline-flex sm:inline-flex">{icon}</span>
