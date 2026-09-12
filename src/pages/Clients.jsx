@@ -34,6 +34,7 @@ export default function Clients(){
  const{data:appointments=[]}=useQuery({queryKey:['clients-360-appointments',...contextQueryKey],queryFn:()=>fetchRows({table:'appointments'}),enabled});
  const{data:invoicePayments=[]}=useQuery({queryKey:['clients-360-payments',...contextQueryKey],queryFn:()=>fetchRows({table:'invoice_payments'}),enabled});
  const{data:clientActivities=[]}=useQuery({queryKey:['client-activities',...contextQueryKey],queryFn:()=>fetchRows({table:'client_activities',orderBy:'occurred_at',ascending:false}),enabled});
+ const{data:reminders=[]}=useQuery({queryKey:['reminders',...contextQueryKey],queryFn:()=>fetchRows({table:'reminders',orderBy:'due_at',ascending:true}),enabled});
  const persistClient=async(data,{targetClient=null}={})=>{assertCanWrite();const now=new Date().toISOString(),basePayload=normalizeClientPayload(data);if(targetClient?.id){await updateOwnedRowById({table:'clients',id:targetClient.id,payload:basePayload,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode});return{payload:basePayload,remoteUpdatedAt:now}}if(ownerId){try{await ensureDbUserRecord({user,userProfile})}catch(e){console.warn('No se pudo asegurar perfil antes de crear cliente:',e?.message||e)}}const payload={...basePayload,workspace_id:activeWorkspaceId||null,user_id:writeOwnerId,created_by:writeOwnerEmail||null,brand_profile_id:activeBrandId||null,created_at:now,created_date:now};const tryInsert=async candidate=>{const{data,error}=await supabase.from('clients').insert(candidate).select().single();if(!error)return data;for(const col of['workspace_id','user_id','created_by','created_date','created_at','brand_profile_id'])if(isMissingColumnError(error,`clients.${col}`)||isMissingColumnError(error,col)){const next={...candidate};delete next[col];return tryInsert(next)}if(hasOwnerConstraintIssue(error,'clients')){const next={...candidate};delete next.user_id;return tryInsert(next)}throw error};const saved=await tryInsert(payload);return{payload:basePayload,remoteUpdatedAt:saved?.updated_at||now,saved}};
  const saveClientMutation=useMutation({mutationFn:async data=>persistClient(data,{targetClient:editingClient}),onError:error=>toast.error(`No se pudo guardar el cliente: ${error.message}`)});
  const deleteMutation=useMutation({mutationFn:async id=>{assertCanWrite();await deleteOwnedRowById({table:'clients',id,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode})},onSuccess:()=>{queryClient.invalidateQueries({queryKey:['clients']});toast.success('Cliente eliminado')},onError:error=>toast.error(`No se pudo eliminar el cliente: ${error.message}`)});
@@ -81,6 +82,47 @@ export default function Clients(){
   },
   onError:error=>toast.error(`No se pudo actualizar el seguimiento: ${error.message}`)
  });
+ const createReminderMutation=useMutation({
+  mutationFn:async({client,payload})=>{
+   assertCanWrite();
+   const row={
+    workspace_id:activeWorkspaceId||null,
+    client_id:client?.id||null,
+    user_id:writeOwnerId||ownerId||null,
+    created_by:writeOwnerEmail||ownerEmail||null,
+    title:(payload.title||'').trim(),
+    notes:(payload.notes||'').trim()||null,
+    due_at:payload.due_at,
+    priority:payload.priority||'normal',
+    status:'pending',
+    source_type:'client',
+    source_id:client?.id||null,
+   };
+   if(!row.title)throw new Error('Escribe un título para el recordatorio.');
+   if(!row.due_at)throw new Error('Selecciona fecha y hora.');
+   const{data,error}=await supabase.from('reminders').insert(row).select().single();
+   if(error)throw error;
+   return data;
+  },
+  onSuccess:()=>{queryClient.invalidateQueries({queryKey:['reminders']});toast.success('Recordatorio creado')},
+  onError:error=>toast.error(`No se pudo crear el recordatorio: ${error.message}`)
+ });
+ const updateReminderMutation=useMutation({
+  mutationFn:async({reminder,payload})=>{
+   assertCanWrite();
+   const next={...payload,updated_at:new Date().toISOString()};
+   if(payload.status==='done'&&!reminder.completed_at)next.completed_at=new Date().toISOString();
+   await updateOwnedRowById({table:'reminders',id:reminder.id,payload:next,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode});
+   return next;
+  },
+  onSuccess:()=>{queryClient.invalidateQueries({queryKey:['reminders']});toast.success('Recordatorio actualizado')},
+  onError:error=>toast.error(`No se pudo actualizar el recordatorio: ${error.message}`)
+ });
+ const deleteReminderMutation=useMutation({
+  mutationFn:async(id)=>{assertCanWrite();await deleteOwnedRowById({table:'reminders',id,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode})},
+  onSuccess:()=>{queryClient.invalidateQueries({queryKey:['reminders']});toast.success('Recordatorio eliminado')},
+  onError:error=>toast.error(`No se pudo eliminar el recordatorio: ${error.message}`)
+ });
  const handleSubmit=async data=>{const result=await saveClientMutation.mutateAsync(data);queryClient.invalidateQueries({queryKey:['clients']});return result};
  const handleEdit=client=>{if(!canWrite)return;setEditingClient(client);setShowForm(true)};
  const filtered=clients.filter(c=>(c.name?.toLowerCase().includes(search.toLowerCase())||c.email?.toLowerCase().includes(search.toLowerCase()))&&(statusFilter==='all'||c.status===statusFilter)&&(stageFilter==='all'||c.crm_stage===stageFilter)&&(priorityFilter==='all'||c.priority===priorityFilter));const totalBilled=clients.reduce((s,c)=>s+(c.total_billed||0),0),avgTicket=clients.length?totalBilled/clients.length:0,vipCount=clients.filter(c=>c.status==='vip').length;
@@ -108,6 +150,12 @@ export default function Clients(){
   savingActivity={createActivityMutation.isPending}
   onUpdateFollowUp={(payload)=>updateFollowUpMutation.mutateAsync({client:selectedClient,payload})}
   savingFollowUp={updateFollowUpMutation.isPending}
+  reminders={reminders}
+  onCreateReminder={(payload)=>createReminderMutation.mutateAsync({client:selectedClient,payload})}
+  onCompleteReminder={(reminder)=>updateReminderMutation.mutateAsync({reminder,payload:{status:'done'}})}
+  onDismissReminder={(reminder)=>updateReminderMutation.mutateAsync({reminder,payload:{status:'dismissed'}})}
+  onDeleteReminder={(id)=>deleteReminderMutation.mutate(id)}
+  savingReminder={createReminderMutation.isPending||updateReminderMutation.isPending}
  />
  </div>
 }
