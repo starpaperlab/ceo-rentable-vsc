@@ -37,7 +37,7 @@ function sortRows(rows = [], orderBy = 'created_at', ascending = false) {
 export function useWorkContextScope() {
   const { user, userProfile, isAdmin } = useAuth();
   const { activeBrand, activeBrandId, activeView, activeUserId, activeUser } = useWorkContext();
-  const { activeWorkspace, activeWorkspaceId, isLegacyWorkspaceMode, canWrite } = useWorkspace();
+  const { activeWorkspace, activeWorkspaceId, isLegacyWorkspaceMode, canWrite, canWriteModule } = useWorkspace();
 
   const authenticatedUserId = user?.id || userProfile?.id || null;
   const authenticatedEmail = normalizeEmail(userProfile?.email || user?.email || '');
@@ -147,6 +147,7 @@ export function useWorkContextScope() {
     activeWorkspaceId,
     adminMode,
     canWrite,
+    canWriteModule,
     enabled,
     fetchRows,
     ownerEmail: authenticatedEmail,
