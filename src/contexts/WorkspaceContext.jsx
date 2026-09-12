@@ -24,7 +24,15 @@ export function WorkspaceProvider({ children }) {
   const activeWorkspace=useMemo(()=>activeWorkspaceId?workspaces.find(w=>w.id===activeWorkspaceId)||workspaces[0]||null:workspaces[0]||null,[activeWorkspaceId,workspaces]);
   const hasModuleAccess=useCallback((moduleKey)=>{if(!moduleKey)return true;if(!activeWorkspace)return false;if(activeWorkspace.legacy||activeWorkspace.role==='owner')return true;return Boolean(activeWorkspace.module_permissions?.[moduleKey]);},[activeWorkspace]);
   const canWrite=Boolean(activeWorkspace&&(activeWorkspace.legacy||activeWorkspace.role!=='viewer'));
-  const value=useMemo(()=>({workspaces,activeWorkspace,activeWorkspaceId:activeWorkspace?.id||null,isLegacyWorkspaceMode:Boolean(activeWorkspace?.legacy),isLoadingWorkspace,workspaceError,setActiveWorkspaceId,refreshWorkspaces:loadWorkspaces,hasModuleAccess,canWrite}),[activeWorkspace,isLoadingWorkspace,loadWorkspaces,setActiveWorkspaceId,workspaceError,workspaces,hasModuleAccess,canWrite]);
+  const canWriteModule=useCallback((moduleKey)=>{
+    if(!moduleKey)return canWrite;
+    if(userProfile?.role==='admin')return true;
+    if(!activeWorkspace)return false;
+    if(activeWorkspace.legacy||activeWorkspace.role==='owner')return true;
+    if(activeWorkspace.role==='viewer')return false;
+    return Boolean(activeWorkspace.module_permissions?.[moduleKey]);
+  },[activeWorkspace,canWrite,userProfile?.role]);
+  const value=useMemo(()=>({workspaces,activeWorkspace,activeWorkspaceId:activeWorkspace?.id||null,isLegacyWorkspaceMode:Boolean(activeWorkspace?.legacy),isLoadingWorkspace,workspaceError,setActiveWorkspaceId,refreshWorkspaces:loadWorkspaces,hasModuleAccess,canWrite,canWriteModule}),[activeWorkspace,isLoadingWorkspace,loadWorkspaces,setActiveWorkspaceId,workspaceError,workspaces,hasModuleAccess,canWrite,canWriteModule]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 export function useWorkspace(){const context=useContext(WorkspaceContext);if(!context)throw new Error('useWorkspace debe usarse dentro de WorkspaceProvider');return context;}
