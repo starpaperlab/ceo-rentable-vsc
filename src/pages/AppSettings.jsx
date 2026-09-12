@@ -20,6 +20,7 @@ import PageTour from '@/components/shared/PageTour';
 import AutosaveStatus from '@/components/shared/AutosaveStatus';
 import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import { BUSINESS_COUNTRIES, BUSINESS_CURRENCIES, getBusinessCountry } from '@/lib/countrySettings';
 import {
   extractMissingColumnFromError,
   hasOwnerConstraintIssue,
@@ -652,14 +653,24 @@ export default function AppSettings() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <Label className="text-xs">País</Label>
-                <Select value={form.country_code} onValueChange={(value) => update('country_code', value)}>
+                <Select
+                  value={form.country_code}
+                  onValueChange={(value) => {
+                    const country = getBusinessCountry(value);
+                    setHasUserEdited(true);
+                    setForm((prev) => ({
+                      ...prev,
+                      country_code: value,
+                      currency: country.currency || prev.currency,
+                      timezone: country.timezone || prev.timezone,
+                    }));
+                  }}
+                >
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="DO">República Dominicana</SelectItem>
-                    <SelectItem value="US">Estados Unidos</SelectItem>
-                    <SelectItem value="ES">España</SelectItem>
-                    <SelectItem value="MX">México</SelectItem>
-                    <SelectItem value="CO">Colombia</SelectItem>
+                    {BUSINESS_COUNTRIES.map((country) => (
+                      <SelectItem key={country.code} value={country.code}>{country.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -668,7 +679,7 @@ export default function AppSettings() {
                 <Select value={form.currency} onValueChange={(value) => update('currency', value)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {['DOP', 'USD', 'EUR', 'MXN', 'COP'].map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}
+                    {BUSINESS_CURRENCIES.map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -677,11 +688,9 @@ export default function AppSettings() {
                 <Select value={form.timezone} onValueChange={(value) => update('timezone', value)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="America/Santo_Domingo">Santo Domingo</SelectItem>
-                    <SelectItem value="America/New_York">Nueva York / Este</SelectItem>
-                    <SelectItem value="America/Mexico_City">Ciudad de México</SelectItem>
-                    <SelectItem value="America/Bogota">Bogotá</SelectItem>
-                    <SelectItem value="Europe/Madrid">Madrid</SelectItem>
+                    {Array.from(new Map(BUSINESS_COUNTRIES.map((country) => [country.timezone, country])).values()).map((country) => (
+                      <SelectItem key={country.timezone} value={country.timezone}>{country.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
