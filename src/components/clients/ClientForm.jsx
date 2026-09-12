@@ -28,6 +28,8 @@ function buildClientFormState(client = null) {
     phone: client?.phone || '',
     total_billed: Number(client?.total_billed || 0),
     status: client?.status || 'new',
+    crm_stage: client?.crm_stage || (Number(client?.total_billed || 0) > 0 ? 'won' : 'new'),
+    priority: client?.priority || (client?.status === 'vip' ? 'high' : 'normal'),
     notes: client?.notes || '',
     next_follow_up_at: toLocalDateTimeInput(client?.next_follow_up_at),
     next_follow_up_type: client?.next_follow_up_type || 'call',
@@ -42,6 +44,8 @@ function serializeClientForm(raw = {}) {
     phone: `${raw.phone || ''}`.trim() || null,
     total_billed: Number(raw.total_billed || 0),
     status: raw.status || 'new',
+    crm_stage: raw.crm_stage || 'new',
+    priority: raw.priority || 'normal',
     notes: `${raw.notes || ''}`.trim() || null,
     next_follow_up_at: raw.next_follow_up_at ? new Date(raw.next_follow_up_at).toISOString() : null,
     next_follow_up_type: raw.next_follow_up_at ? (raw.next_follow_up_type || 'call') : null,
@@ -58,6 +62,8 @@ function restoreClientForm(raw, fallbackState) {
     phone: raw?.phone || '',
     total_billed: Number(raw?.total_billed || 0),
     status: raw?.status || 'new',
+    crm_stage: raw?.crm_stage || 'new',
+    priority: raw?.priority || 'normal',
     notes: raw?.notes || '',
     next_follow_up_at: raw?.next_follow_up_at ? toLocalDateTimeInput(raw.next_follow_up_at) : '',
     next_follow_up_type: raw?.next_follow_up_type || 'call',
@@ -73,7 +79,9 @@ function isMeaningfulClientDraft(payload) {
     Boolean(`${payload?.notes || ''}`.trim()) ||
     Boolean(payload?.next_follow_up_at) ||
     Number(payload?.total_billed || 0) > 0 ||
-    payload?.status !== 'new'
+    payload?.status !== 'new' ||
+    payload?.crm_stage !== 'new' ||
+    payload?.priority !== 'normal'
   );
 }
 
@@ -194,13 +202,40 @@ export default function ClientForm({
             <Input type="number" value={form.total_billed || ''} onChange={(e) => update('total_billed', parseFloat(e.target.value) || 0)} className="mt-1" />
           </div>
           <div>
-            <Label className="text-xs">Estado</Label>
+            <Label className="text-xs">Categoría del cliente</Label>
             <Select value={form.status || 'new'} onValueChange={(value) => update('status', value)}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="new">Nuevo</SelectItem>
                 <SelectItem value="recurring">Recurrente</SelectItem>
                 <SelectItem value="vip">VIP</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Etapa comercial</Label>
+            <Select value={form.crm_stage || 'new'} onValueChange={(value) => update('crm_stage', value)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">Nuevo</SelectItem>
+                <SelectItem value="follow_up">En seguimiento</SelectItem>
+                <SelectItem value="interested">Interesado</SelectItem>
+                <SelectItem value="quoted">Cotizado</SelectItem>
+                <SelectItem value="negotiation">Negociación</SelectItem>
+                <SelectItem value="won">Ganado</SelectItem>
+                <SelectItem value="lost">Perdido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Prioridad</Label>
+            <Select value={form.priority || 'normal'} onValueChange={(value) => update('priority', value)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Baja</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="high">Alta</SelectItem>
+                <SelectItem value="urgent">Urgente</SelectItem>
               </SelectContent>
             </Select>
           </div>
