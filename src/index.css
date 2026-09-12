@@ -108,3 +108,10 @@
     justify-content: center;
   }
 }
+
+
+/* Workspace header: keep themed light header, but force readable dark chrome in dark mode. */
+.dark .workspace-header {
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground));
+}
