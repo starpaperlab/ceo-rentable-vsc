@@ -6,7 +6,8 @@
 
 @layer base {
   :root {
-    --background: 30 33% 95%;
+    --background: 0 0% 100%;
+    --workspace-canvas: 0 0% 100%;
     --foreground: 0 0% 12%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 12%;
@@ -43,6 +44,7 @@
 
   .dark {
     --background: 330 15% 8%;
+    --workspace-canvas: 330 15% 8%;
     --foreground: 30 20% 92%;
     --card: 330 12% 12%;
     --card-foreground: 30 20% 92%;
