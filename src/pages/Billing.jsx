@@ -40,6 +40,22 @@ function normalizeEmail(value = '') {
   return `${value || ''}`.trim().toLowerCase();
 }
 
+function buildSuggestedDocumentNumber(type, documents = [], config = {}) {
+  const isInvoice = type === 'invoice';
+  const prefix = `${isInvoice ? (config?.invoice_prefix || 'FAC') : (config?.quote_prefix || 'COT')}`
+    .trim()
+    .toUpperCase() || (isInvoice ? 'FAC' : 'COT');
+  const configuredNext = Math.max(1, Number(isInvoice ? config?.next_invoice_number : config?.next_quote_number) || 1);
+  const field = isInvoice ? 'invoice_number' : 'quote_number';
+  const highestExisting = documents.reduce((max, document) => {
+    const match = `${document?.[field] || ''}`.match(/(\d+)\s*$/);
+    const numeric = match ? Number(match[1]) : 0;
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  const next = Math.max(configuredNext, highestExisting + 1);
+  return `${prefix}-${String(next).padStart(4, '0')}`;
+}
+
 function calculateDraftTotal(payload = {}) {
   const lineItems = Array.isArray(payload.line_items) ? payload.line_items : [];
   const subtotal = lineItems.reduce(
@@ -486,6 +502,9 @@ export default function Billing() {
   const partialInvoices = invoicesWithPayments.filter((invoice) => invoice.payment_summary?.paymentStatus === 'partial').length;
   const pendingQuotes = quotes.filter((quote) => quote.status === 'pending').length;
   const activeNewDocumentType = activeTab === 'quotes' ? 'quote' : 'invoice';
+  const suggestedDocumentNumber = editDoc?.type === 'quote'
+    ? buildSuggestedDocumentNumber('quote', quotes, newDocumentConfig || {})
+    : buildSuggestedDocumentNumber('invoice', invoices, newDocumentConfig || {});
   const handleViewReceipt = (payment) => setReceiptPreview(enrichReceiptPayment(payment, { invoicesById, brandById }));
 
   if (isLoading) {
@@ -516,6 +535,7 @@ export default function Billing() {
           contextBrandProfileId={editDoc.doc?.brand_profile_id || activeBrandId || null}
           workspaceId={activeWorkspaceId}
           totalCount={editDoc.type === 'invoice' ? invoices.length : quotes.length}
+          suggestedNumber={editDoc.doc ? null : suggestedDocumentNumber}
           autoRecoverDraft={Boolean(editDoc.autoRecoverDraft)}
         />
       </div>
