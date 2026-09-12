@@ -193,8 +193,14 @@ export default function PreviewModal({
     resolvedDoc.linkedin_url,
     resolvedDoc.whatsapp_url,
   ].filter(Boolean);
-  const signerName = resolvedDoc.contact_name || resolvedDoc.company_name || 'Firma autorizada';
-  const signerMeta = [resolvedDoc.contact_title, resolvedDoc.contact_email].filter(Boolean).join(' · ');
+  const signerName = resolvedDoc.signature_name || resolvedDoc.contact_name || resolvedDoc.company_name || 'Firma autorizada';
+  const signerMeta = [resolvedDoc.signature_title || resolvedDoc.contact_title, resolvedDoc.contact_email].filter(Boolean).join(' · ');
+  const bankDetails = [
+    resolvedDoc.bank_name,
+    resolvedDoc.bank_account_type,
+    resolvedDoc.bank_account_number,
+    resolvedDoc.bank_account_name ? `Titular: ${resolvedDoc.bank_account_name}` : '',
+  ].filter(Boolean);
   const visualAttachments = useMemo(
     () => sanitizeVisualAttachments(resolvedDoc.visual_attachments || []).filter((attachment) => attachment.include_in_pdf !== false),
     [resolvedDoc.visual_attachments]
@@ -366,7 +372,7 @@ export default function PreviewModal({
               )}
               {resolvedDoc.tax_enabled && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px', color: '#666' }}>
-                  <span>ITBIS / IVA ({resolvedDoc.tax_pct}%)</span>
+                  <span>{resolvedDoc.tax_name || 'Impuesto'} ({resolvedDoc.tax_pct}%)</span>
                   <span>{symbol}{taxAmount.toLocaleString()}</span>
                 </div>
               )}
@@ -381,6 +387,33 @@ export default function PreviewModal({
             <p style={{ fontSize: '11px', color: '#aaa', margin: 0 }}>
               {resolvedDoc.notes || (type === 'quote' ? 'Esta cotización es válida por 30 días.' : '')}
             </p>
+            {(resolvedDoc.payment_instructions || bankDetails.length > 0) && (
+              <div style={{ marginTop: '18px', padding: '14px 16px', borderRadius: '10px', backgroundColor: `${brandColor}08`, border: `1px solid ${brandColor}18` }}>
+                <p style={{ fontSize: '10px', fontWeight: '700', color: brandColor, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
+                  Datos de pago
+                </p>
+                {bankDetails.length > 0 && (
+                  <p style={{ fontSize: '11px', color: '#666', margin: '7px 0 0 0', lineHeight: 1.5 }}>
+                    {bankDetails.join(' · ')}
+                  </p>
+                )}
+                {resolvedDoc.payment_instructions && (
+                  <p style={{ fontSize: '11px', color: '#666', margin: '7px 0 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {resolvedDoc.payment_instructions}
+                  </p>
+                )}
+              </div>
+            )}
+            {resolvedDoc.terms_text && (
+              <div style={{ marginTop: '18px' }}>
+                <p style={{ fontSize: '10px', fontWeight: '700', color: brandColor, textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
+                  Términos y condiciones
+                </p>
+                <p style={{ fontSize: '10px', color: '#777', margin: '6px 0 0 0', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                  {resolvedDoc.terms_text}
+                </p>
+              </div>
+            )}
             {resolvedDoc.doc_show_signature && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '28px' }}>
                 <div style={{ borderTop: `1px solid ${brandColor}`, paddingTop: '6px', fontSize: '10px', color: '#777' }}>
