@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { createPageUrl } from '@/utils';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { supabase } from '@/lib/supabase';
 
 function formatWhen(value) {
@@ -35,26 +36,32 @@ function withinDays(value, days) {
 
 export default function NotificationBell() {
   const queryClient = useQueryClient();
+  const { hasModuleAccess } = useWorkspace();
   const { activeWorkspaceId, enabled, fetchRows, ownerId, queryKey: contextQueryKey } = useWorkContextScope();
+  const canSeeClients = hasModuleAccess('clients');
+  const canSeeAgenda = hasModuleAccess('agenda');
+  const canSeeDashboard = hasModuleAccess('dashboard');
+  const canSeeReceivables = hasModuleAccess('receivables');
+  const canSeeBilling = hasModuleAccess('billing');
 
   const { data: reminders = [] } = useQuery({
     queryKey: ['notification-bell-reminders', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'reminders', orderBy: 'due_at', ascending: true }),
-    enabled,
+    enabled: enabled && (canSeeDashboard || canSeeClients || canSeeAgenda),
     refetchInterval: 60000,
   });
 
   const { data: clients = [] } = useQuery({
     queryKey: ['notification-bell-clients', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'clients', orderBy: 'next_follow_up_at', ascending: true }),
-    enabled,
+    enabled: enabled && canSeeClients,
     refetchInterval: 60000,
   });
 
   const { data: appointments = [] } = useQuery({
     queryKey: ['notification-bell-appointments', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'appointments', orderBy: 'date', ascending: true }),
-    enabled,
+    enabled: enabled && canSeeAgenda,
     refetchInterval: 60000,
   });
 
@@ -137,7 +144,17 @@ export default function NotificationBell() {
         to: createPageUrl('Agenda'),
       }));
 
-    const persisted = storedNotifications.map((item) => {
+    const persisted = storedNotifications
+      .filter((item) => {
+        if (item.workspace_id == null) return true;
+        if (item.notification_type === 'reminder' || item.notification_type === 'follow_up') return canSeeClients;
+        if (item.notification_type === 'appointment') return canSeeAgenda;
+        if (item.notification_type === 'receivable') return canSeeReceivables;
+        if (item.notification_type === 'quote') return canSeeBilling;
+        if (item.notification_type === 'product_update' || item.notification_type === 'system') return canSeeDashboard;
+        return false;
+      })
+      .map((item) => {
       const meta = {
         reminder: { icon: Bell, fallback: createPageUrl('Clients') },
         follow_up: { icon: UserRound, fallback: createPageUrl('Clients') },
@@ -167,7 +184,7 @@ export default function NotificationBell() {
         return new Date(a.when || 0).getTime() - new Date(b.when || 0).getTime();
       })
       .slice(0, 12);
-  }, [appointments, clients, reminders, storedNotifications]);
+  }, [appointments, canSeeAgenda, canSeeBilling, canSeeClients, canSeeDashboard, canSeeReceivables, clients, reminders, storedNotifications]);
 
   const stateByKey = useMemo(
     () => notificationStates.reduce((map, row) => {
