@@ -135,7 +135,7 @@ export default function Client360Dialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] max-w-4xl overflow-y-auto p-0">
+      <DialogContent className="h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none p-0 sm:h-auto sm:max-h-[88vh] sm:w-auto sm:max-w-4xl sm:rounded-lg">
         <div className="border-b px-5 py-5 sm:px-6">
           <DialogHeader>
             <DialogTitle className="pr-8 text-xl">{client.name}</DialogTitle>
@@ -155,27 +155,27 @@ export default function Client360Dialog({
         </div>
 
         <div className="space-y-5 p-5 sm:p-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card className="p-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+            <Card className="p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Facturado</p>
               <p className="mt-1 text-xl font-bold">{formatMoney(view.totalInvoiced)}</p>
             </Card>
-            <Card className="p-4">
+            <Card className="p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Cobrado</p>
               <p className="mt-1 text-xl font-bold text-green-600">{formatMoney(view.collected)}</p>
             </Card>
-            <Card className="p-4">
+            <Card className="p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Saldo pendiente</p>
               <p className="mt-1 text-xl font-bold text-red-600">{formatMoney(view.balance)}</p>
             </Card>
-            <Card className="p-4">
+            <Card className="p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Cotizaciones</p>
               <p className="mt-1 text-xl font-bold">{view.clientQuotes.length}</p>
             </Card>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[0.9fr_1.6fr]">
-            <Card className="p-4">
+            <Card className="p-3 sm:p-4">
               <p className="text-sm font-semibold">Ficha del cliente</p>
               <div className="mt-4 space-y-3 text-sm">
                 <div><p className="text-xs text-muted-foreground">Nombre</p><p className="font-medium">{client.name}</p></div>
@@ -250,7 +250,7 @@ export default function Client360Dialog({
               </div>
             </Card>
 
-          <Card className="p-4">
+          <Card className="p-3 sm:p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold">Recordatorios internos</p>
@@ -322,7 +322,7 @@ export default function Client360Dialog({
               </div>
             </Card>
 
-          <Card className="p-4">
+          <Card className="p-3 sm:p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold">Actividades CRM</p>
@@ -392,7 +392,7 @@ export default function Client360Dialog({
               </div>
             </Card>
 
-            <Card className="p-4">
+            <Card className="p-3 sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">Historial comercial</p>
