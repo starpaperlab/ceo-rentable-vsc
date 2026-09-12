@@ -668,7 +668,7 @@ export default function Products() {
         </Select>
       </div>
 
-      <Card className="overflow-hidden rounded-2xl border border-[#E7E1D9] shadow-[0_1px_3px_rgba(16,24,40,0.05)]">
+      <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted/45">
