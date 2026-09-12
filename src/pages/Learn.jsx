@@ -310,7 +310,7 @@ export default function Learn() {
             const cfg = {
               warning: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 text-amber-700',
               info:    'bg-blue-50 dark:bg-blue-950/20 border-blue-200 text-blue-700',
-              tip:     'bg-purple-50 dark:bg-purple-950/20 border-purple-200 text-purple-700',
+              tip:     'bg-primary/5 border-primary/20 text-primary',
               ok:      'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 text-emerald-700',
             }[ins.type];
             const emoji = { warning: '⚠️', info: '📋', tip: '💡', ok: '✅' }[ins.type];
