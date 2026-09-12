@@ -466,9 +466,18 @@ export default function Billing() {
         }
       }
       const { id: _id, quote_number: _quoteNumber, created_at: _createdAt, updated_at: _updatedAt, ...rest } = quote;
+      let invoiceNumber = buildSuggestedDocumentNumber('invoice', invoices, ownConfig || {});
+      if (activeWorkspaceId) {
+        const { data: reservedNumber, error: reserveError } = await supabase.rpc('reserve_document_number', {
+          target_workspace_id: activeWorkspaceId,
+          document_type: 'invoice',
+        });
+        if (reserveError) throw reserveError;
+        if (reservedNumber) invoiceNumber = reservedNumber;
+      }
       const payload = withOwner({
         ...rest,
-        invoice_number: `FAC-${String(invoices.length + 1).padStart(4, '0')}`,
+        invoice_number: invoiceNumber,
         status: 'pending',
         user_id: quote.user_id || writeOwnerId,
         created_by: normalizeEmail(quote.created_by) || writeOwnerEmail || null,
