@@ -13,6 +13,10 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Target,
+  BellRing,
+  CalendarClock,
+  CircleDollarSign,
+  Users,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -84,6 +88,24 @@ export default function Dashboard() {
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['dashboard-invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
+    enabled,
+  });
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ['dashboard-clients', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'clients' }),
+    enabled,
+  });
+
+  const { data: reminders = [] } = useQuery({
+    queryKey: ['dashboard-reminders', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'reminders', orderBy: 'due_at', ascending: true }),
+    enabled,
+  });
+
+  const { data: appointments = [] } = useQuery({
+    queryKey: ['dashboard-appointments', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'appointments', orderBy: 'date', ascending: true }),
     enabled,
   });
 
@@ -212,6 +234,76 @@ export default function Dashboard() {
       totalCount: items.length,
     };
   }, [products, invoices, pendingInvoices, fugaProducts]);
+
+  const dailySummary = useMemo(() => {
+    const now = new Date();
+    const start = startOfDay(now);
+    const end = endOfDay(now);
+
+    const dueFollowUps = clients
+      .filter((client) => client.next_follow_up_at)
+      .filter((client) => {
+        const date = new Date(client.next_follow_up_at);
+        return date <= end;
+      })
+      .sort((a, b) => new Date(a.next_follow_up_at) - new Date(b.next_follow_up_at));
+
+    const pendingReminders = reminders
+      .filter((item) => item.status === 'pending')
+      .filter((item) => {
+        const date = new Date(item.due_at);
+        return date <= end;
+      })
+      .sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
+
+    const todayKey = now.toISOString().slice(0, 10);
+    const todayAppointments = appointments
+      .filter((item) => item.date === todayKey && item.status !== 'cancelado')
+      .sort((a, b) => `${a.time || '99:99'}`.localeCompare(`${b.time || '99:99'}`));
+
+    const overdueInvoices = pendingInvoices
+      .filter((invoice) => invoice.due_date)
+      .filter((invoice) => new Date(invoice.due_date) < start);
+
+    const actionItems = [
+      ...pendingReminders.map((item) => ({
+        id: `reminder-${item.id}`,
+        icon: BellRing,
+        title: item.title || 'Recordatorio pendiente',
+        detail: item.notes || 'Requiere atención',
+        tone: new Date(item.due_at) < start ? 'critical' : 'warning',
+      })),
+      ...dueFollowUps.map((client) => ({
+        id: `followup-${client.id}`,
+        icon: Users,
+        title: client.name || 'Cliente',
+        detail: client.next_follow_up_note || 'Seguimiento comercial',
+        tone: new Date(client.next_follow_up_at) < start ? 'critical' : 'warning',
+      })),
+      ...todayAppointments.map((item) => ({
+        id: `appointment-${item.id}`,
+        icon: CalendarClock,
+        title: item.client_name || item.service_type || 'Actividad',
+        detail: item.time ? `${item.service_type || 'Actividad'} · ${item.time}` : (item.service_type || 'Actividad de hoy'),
+        tone: 'info',
+      })),
+      ...overdueInvoices.map((invoice) => ({
+        id: `invoice-${invoice.id}`,
+        icon: CircleDollarSign,
+        title: invoice.client_name || invoice.invoice_number || 'Factura vencida',
+        detail: `${invoice.invoice_number || 'Factura'} · ${formatMoney(normalizeInvoiceTotal(invoice))}`,
+        tone: 'critical',
+      })),
+    ].slice(0, 8);
+
+    return {
+      followUps: dueFollowUps.length,
+      reminders: pendingReminders.length,
+      appointments: todayAppointments.length,
+      overdueInvoices: overdueInvoices.length,
+      actionItems,
+    };
+  }, [appointments, clients, formatMoney, pendingInvoices, reminders]);
 
   const chartData = useMemo(() => {
     const monthlyMap = {};
@@ -417,6 +509,52 @@ export default function Dashboard() {
           <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{formatMoney(topClient?.amount || 0)}</p>
         </Card>
       </div>
+
+      <Card className="p-3 sm:p-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-base sm:text-lg font-bold text-foreground">Resumen diario</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Lo que requiere tu atención hoy.</p>
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground">
+            {dailySummary.actionItems.length} pendiente{dailySummary.actionItems.length===1?'':'s'}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl border border-border/60 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Seguimientos</p>
+            <p className="mt-1 text-xl font-bold">{dailySummary.followUps}</p>
+          </div>
+          <div className="rounded-xl border border-border/60 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recordatorios</p>
+            <p className="mt-1 text-xl font-bold">{dailySummary.reminders}</p>
+          </div>
+          <div className="rounded-xl border border-border/60 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Agenda hoy</p>
+            <p className="mt-1 text-xl font-bold">{dailySummary.appointments}</p>
+          </div>
+          <div className="rounded-xl border border-border/60 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Facturas vencidas</p>
+            <p className={`mt-1 text-xl font-bold ${dailySummary.overdueInvoices>0?'text-red-600':''}`}>{dailySummary.overdueInvoices}</p>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {dailySummary.actionItems.length===0 ? (
+            <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">No tienes pendientes urgentes para hoy.</div>
+          ) : dailySummary.actionItems.map((item)=>{
+            const Icon=item.icon;
+            return <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/60 p-3">
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone==='critical'?'bg-red-100 text-red-700':item.tone==='warning'?'bg-amber-100 text-amber-700':'bg-primary/10 text-primary'}`}><Icon className="h-4 w-4"/></div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+              </div>
+            </div>;
+          })}
+        </div>
+      </Card>
 
       <Card className="p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
