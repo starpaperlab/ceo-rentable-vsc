@@ -316,6 +316,18 @@ export default function PreviewModal({
             <div style={{ textAlign: 'right', minWidth: '150px' }}>
               <p style={{ fontSize: '28px', fontWeight: 'bold', color: brandColor, margin: '0 0 4px 0' }}>{headerDocLabel}</p>
               <p style={{ fontSize: '13px', color: '#666', margin: '0 0 2px 0' }}>N° {docNumber}</p>
+              {type === 'invoice' && resolvedDoc.fiscal_document_type && resolvedDoc.fiscal_document_type !== 'none' && (
+                <>
+                  <p style={{ fontSize: '10px', color: brandColor, fontWeight: '700', margin: '5px 0 1px 0' }}>
+                    {resolvedDoc.fiscal_document_label || 'Comprobante fiscal'}
+                  </p>
+                  {resolvedDoc.fiscal_document_number && (
+                    <p style={{ fontSize: '11px', color: '#555', margin: '0 0 2px 0', fontFamily: 'monospace' }}>
+                      {resolvedDoc.fiscal_document_number}
+                    </p>
+                  )}
+                </>
+              )}
               <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>Fecha: {resolvedDoc.date}</p>
             </div>
           </div>
