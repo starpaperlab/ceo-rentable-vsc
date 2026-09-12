@@ -149,6 +149,7 @@ export default function PreviewModal({
   onGenerateReceipt,
   onViewReceipt,
   generatingReceiptId = null,
+  canExport = false,
 }) {
   const { symbol } = useCurrency();
   const previewRef = useRef(null);
