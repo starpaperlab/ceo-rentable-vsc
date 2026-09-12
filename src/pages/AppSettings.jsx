@@ -90,6 +90,23 @@ function buildSettingsForm(config = {}, userProfile, ownerEmail) {
     doc_show_contact: config.doc_show_contact ?? DEFAULT_DOCUMENT_PREFS.doc_show_contact,
     doc_show_signature: config.doc_show_signature ?? DEFAULT_DOCUMENT_PREFS.doc_show_signature,
     currency: config.currency || 'USD',
+    country_code: config.country_code || 'DO',
+    timezone: config.timezone || 'America/Santo_Domingo',
+    tax_enabled: config.tax_enabled ?? false,
+    tax_name: config.tax_name || 'ITBIS',
+    tax_rate: Number(config.tax_rate || 0),
+    bank_name: config.bank_name || '',
+    bank_account_name: config.bank_account_name || '',
+    bank_account_number: config.bank_account_number || '',
+    bank_account_type: config.bank_account_type || '',
+    payment_instructions: config.payment_instructions || '',
+    signature_name: config.signature_name || '',
+    signature_title: config.signature_title || '',
+    terms_text: config.terms_text || '',
+    invoice_prefix: config.invoice_prefix || 'FAC',
+    quote_prefix: config.quote_prefix || 'COT',
+    next_invoice_number: Number(config.next_invoice_number || 1),
+    next_quote_number: Number(config.next_quote_number || 1),
     quarterly_goal: Number(config.quarterly_goal || 0),
     target_margin_pct: Number(config.target_margin_pct || 40),
     logo_size: config.logo_size || 'medium',
@@ -111,6 +128,9 @@ function serializeSettingsForm(raw) {
     fiscal_address: raw.fiscal_address || raw.address || '',
     quarterly_goal: Number(raw.quarterly_goal || 0),
     target_margin_pct: Number(raw.target_margin_pct || 0),
+    tax_rate: Number(raw.tax_rate || 0),
+    next_invoice_number: Math.max(1, Number(raw.next_invoice_number || 1)),
+    next_quote_number: Math.max(1, Number(raw.next_quote_number || 1)),
     logo_width: getLogoWidth({ logoSize: raw.logo_size, logoWidth: raw.logo_width }),
   };
 }
@@ -175,8 +195,10 @@ export default function AppSettings() {
       brand_color: config.brand_color || activeWorkspace?.brand_primary_color || '#D94F8A',
       brand_accent_color: config.brand_accent_color || activeWorkspace?.brand_accent_color || '#111827',
       currency: config.currency || activeWorkspace?.currency_code || 'USD',
+      country_code: config.country_code || activeWorkspace?.country_code || 'DO',
+      timezone: config.timezone || activeWorkspace?.timezone || 'America/Santo_Domingo',
     }, userProfile, ownerEmail),
-    [activeWorkspace?.brand_accent_color, activeWorkspace?.brand_primary_color, activeWorkspace?.currency_code, activeWorkspace?.logo_url, activeWorkspace?.name, config, ownerEmail, userProfile]
+    [activeWorkspace?.brand_accent_color, activeWorkspace?.brand_primary_color, activeWorkspace?.country_code, activeWorkspace?.currency_code, activeWorkspace?.logo_url, activeWorkspace?.name, activeWorkspace?.timezone, config, ownerEmail, userProfile]
   );
 
   const [form, setForm] = useState(() => buildSettingsForm({}, userProfile, ownerEmail));
@@ -326,6 +348,8 @@ export default function AppSettings() {
           brand_primary_color: serialized.brand_color || null,
           brand_accent_color: serialized.brand_accent_color || null,
           currency_code: serialized.currency || activeWorkspace?.currency_code || 'DOP',
+          country_code: serialized.country_code || activeWorkspace?.country_code || null,
+          timezone: serialized.timezone || activeWorkspace?.timezone || 'America/Santo_Domingo',
           updated_at: new Date().toISOString(),
         })
         .eq('id', activeWorkspaceId);
@@ -483,9 +507,11 @@ export default function AppSettings() {
       </motion.div>
 
       <Tabs defaultValue="business">
-        <TabsList>
+        <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="business">Mi Negocio</TabsTrigger>
-          <TabsTrigger value="branding">Branding de Exportación</TabsTrigger>
+          <TabsTrigger value="operations">Operación y Fiscal</TabsTrigger>
+          <TabsTrigger value="payments">Pagos y Documentos</TabsTrigger>
+          <TabsTrigger value="branding">Branding</TabsTrigger>
         </TabsList>
 
         <TabsContent value="business" className="space-y-4 mt-4">
@@ -618,12 +644,129 @@ export default function AppSettings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="operations" className="space-y-4 mt-4">
+          <Card className="space-y-5 p-4 sm:p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">País, moneda y zona horaria</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Define cómo opera este negocio y cómo se preparan fechas e importes.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <Label className="text-xs">País</Label>
+                <Select value={form.country_code} onValueChange={(value) => update('country_code', value)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DO">República Dominicana</SelectItem>
+                    <SelectItem value="US">Estados Unidos</SelectItem>
+                    <SelectItem value="ES">España</SelectItem>
+                    <SelectItem value="MX">México</SelectItem>
+                    <SelectItem value="CO">Colombia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Moneda</Label>
+                <Select value={form.currency} onValueChange={(value) => update('currency', value)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['DOP', 'USD', 'EUR', 'MXN', 'COP'].map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Zona horaria</Label>
+                <Select value={form.timezone} onValueChange={(value) => update('timezone', value)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="America/Santo_Domingo">Santo Domingo</SelectItem>
+                    <SelectItem value="America/New_York">Nueva York / Este</SelectItem>
+                    <SelectItem value="America/Mexico_City">Ciudad de México</SelectItem>
+                    <SelectItem value="America/Bogota">Bogotá</SelectItem>
+                    <SelectItem value="Europe/Madrid">Madrid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="space-y-5 p-4 sm:p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Impuestos</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Configura el impuesto habitual del negocio. Más adelante podrá aplicarse por documento.</p>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
+              <div>
+                <p className="text-sm font-medium">Usar impuesto por defecto</p>
+                <p className="text-xs text-muted-foreground">Actívalo si normalmente facturas con impuesto.</p>
+              </div>
+              <Switch checked={form.tax_enabled} onCheckedChange={(checked) => update('tax_enabled', checked)} />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs">Nombre del impuesto</Label>
+                <Input value={form.tax_name} onChange={(e) => update('tax_name', e.target.value)} className="mt-1" placeholder="ITBIS" />
+              </div>
+              <div>
+                <Label className="text-xs">Tasa (%)</Label>
+                <Input type="number" min="0" max="100" step="0.001" value={form.tax_rate || ''} onChange={(e) => update('tax_rate', Number(e.target.value || 0))} className="mt-1" />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payments" className="space-y-4 mt-4">
+          <Card className="space-y-5 p-4 sm:p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Datos de pago</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Guarda los datos que podrás mostrar luego en cotizaciones, facturas y recibos.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div><Label className="text-xs">Banco</Label><Input value={form.bank_name} onChange={(e) => update('bank_name', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-xs">Titular de la cuenta</Label><Input value={form.bank_account_name} onChange={(e) => update('bank_account_name', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-xs">Número de cuenta</Label><Input value={form.bank_account_number} onChange={(e) => update('bank_account_number', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-xs">Tipo de cuenta</Label><Input value={form.bank_account_type} onChange={(e) => update('bank_account_type', e.target.value)} className="mt-1" placeholder="Ahorros / Corriente" /></div>
+            </div>
+            <div>
+              <Label className="text-xs">Instrucciones de pago</Label>
+              <Textarea value={form.payment_instructions} onChange={(e) => update('payment_instructions', e.target.value)} className="mt-1 min-h-24" placeholder="Ej.: Transferir y enviar comprobante por WhatsApp..." />
+            </div>
+          </Card>
+
+          <Card className="space-y-5 p-4 sm:p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Firma y términos</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Define la firma comercial y las condiciones que acompañarán los documentos.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div><Label className="text-xs">Nombre para firma</Label><Input value={form.signature_name} onChange={(e) => update('signature_name', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-xs">Cargo</Label><Input value={form.signature_title} onChange={(e) => update('signature_title', e.target.value)} className="mt-1" /></div>
+            </div>
+            <div>
+              <Label className="text-xs">Términos y condiciones</Label>
+              <Textarea value={form.terms_text} onChange={(e) => update('terms_text', e.target.value)} className="mt-1 min-h-32" placeholder="Condiciones de pago, vigencia de cotización, políticas..." />
+            </div>
+          </Card>
+
+          <Card className="space-y-5 p-4 sm:p-6">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Numeración de documentos</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Deja preparada la secuencia que usará cada tipo de documento.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div><Label className="text-xs">Prefijo de factura</Label><Input value={form.invoice_prefix} onChange={(e) => update('invoice_prefix', e.target.value.toUpperCase())} className="mt-1" placeholder="FAC" /></div>
+              <div><Label className="text-xs">Próximo número de factura</Label><Input type="number" min="1" value={form.next_invoice_number || 1} onChange={(e) => update('next_invoice_number', Math.max(1, Number(e.target.value || 1)))} className="mt-1" /></div>
+              <div><Label className="text-xs">Prefijo de cotización</Label><Input value={form.quote_prefix} onChange={(e) => update('quote_prefix', e.target.value.toUpperCase())} className="mt-1" placeholder="COT" /></div>
+              <div><Label className="text-xs">Próximo número de cotización</Label><Input type="number" min="1" value={form.next_quote_number || 1} onChange={(e) => update('next_quote_number', Math.max(1, Number(e.target.value || 1)))} className="mt-1" /></div>
+            </div>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="branding" className="space-y-4 mt-4">
           <Card className="p-5 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
             <div className="flex items-start gap-3">
               <Info className="h-4 w-4 text-blue-600 mt-0.5" />
               <p className="text-xs text-blue-700 dark:text-blue-400">
-                El panel principal mantiene el branding de CEO Rentable OS™ para protección de identidad. Estos cambios solo afectan a documentos exportables.
+                La identidad visual del negocio se aplica a la interfaz y también queda preparada para documentos exportables.
               </p>
             </div>
           </Card>
