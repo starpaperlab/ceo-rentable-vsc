@@ -35,6 +35,7 @@ const TOUR_STEPS = [
 ];
 
 const BRAND_COLORS = ['#D94F8A', '#B57EDC', '#C9A227', '#4CAF50', '#2196F3'];
+const PAYMENT_METHOD_OPTIONS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Cheque', 'PayPal', 'Otro'];
 const LOGO_SIZE_OPTIONS = {
   small: 18,
   medium: 24,
@@ -102,6 +103,7 @@ function buildSettingsForm(config = {}, userProfile, ownerEmail) {
     bank_account_number: config.bank_account_number || '',
     bank_account_type: config.bank_account_type || '',
     payment_instructions: config.payment_instructions || '',
+    accepted_payment_methods: Array.isArray(config.accepted_payment_methods) && config.accepted_payment_methods.length > 0 ? config.accepted_payment_methods : ['Efectivo', 'Transferencia'],
     signature_name: config.signature_name || '',
     signature_title: config.signature_title || '',
     terms_text: config.terms_text || '',
@@ -733,6 +735,34 @@ export default function AppSettings() {
               <div><Label className="text-xs">Titular de la cuenta</Label><Input value={form.bank_account_name} onChange={(e) => update('bank_account_name', e.target.value)} className="mt-1" /></div>
               <div><Label className="text-xs">Número de cuenta</Label><Input value={form.bank_account_number} onChange={(e) => update('bank_account_number', e.target.value)} className="mt-1" /></div>
               <div><Label className="text-xs">Tipo de cuenta</Label><Input value={form.bank_account_type} onChange={(e) => update('bank_account_type', e.target.value)} className="mt-1" placeholder="Ahorros / Corriente" /></div>
+            </div>
+            <div>
+              <Label className="text-xs">Métodos de pago aceptados</Label>
+              <p className="mt-1 text-xs text-muted-foreground">Selecciona únicamente las formas de pago que tu negocio acepta.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {PAYMENT_METHOD_OPTIONS.map((method) => {
+                  const checked = form.accepted_payment_methods?.includes(method);
+                  return (
+                    <label key={method} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-white px-3 py-2.5">
+                      <span className="text-sm font-medium">{method}</span>
+                      <Switch
+                        checked={Boolean(checked)}
+                        onCheckedChange={(enabled) => {
+                          const current = Array.isArray(form.accepted_payment_methods) ? form.accepted_payment_methods : [];
+                          const next = enabled
+                            ? Array.from(new Set([...current, method]))
+                            : current.filter((item) => item !== method);
+                          if (next.length === 0) {
+                            toast.error('Selecciona al menos un método de pago.');
+                            return;
+                          }
+                          update('accepted_payment_methods', next);
+                        }}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <Label className="text-xs">Instrucciones de pago</Label>
