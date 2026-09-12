@@ -13,6 +13,14 @@ import { toast } from 'sonner';
 import AutosaveStatus from '@/components/shared/AutosaveStatus';
 import DraftRecoveryDialog from '@/components/shared/DraftRecoveryDialog';
 
+function toLocalDateTimeInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+}
+
 function buildClientFormState(client = null) {
   return {
     name: client?.name || '',
@@ -21,6 +29,9 @@ function buildClientFormState(client = null) {
     total_billed: Number(client?.total_billed || 0),
     status: client?.status || 'new',
     notes: client?.notes || '',
+    next_follow_up_at: toLocalDateTimeInput(client?.next_follow_up_at),
+    next_follow_up_type: client?.next_follow_up_type || 'call',
+    next_follow_up_note: client?.next_follow_up_note || '',
   };
 }
 
@@ -32,6 +43,9 @@ function serializeClientForm(raw = {}) {
     total_billed: Number(raw.total_billed || 0),
     status: raw.status || 'new',
     notes: `${raw.notes || ''}`.trim() || null,
+    next_follow_up_at: raw.next_follow_up_at ? new Date(raw.next_follow_up_at).toISOString() : null,
+    next_follow_up_type: raw.next_follow_up_at ? (raw.next_follow_up_type || 'call') : null,
+    next_follow_up_note: raw.next_follow_up_at ? (`${raw.next_follow_up_note || ''}`.trim() || null) : null,
   };
 }
 
@@ -45,6 +59,9 @@ function restoreClientForm(raw, fallbackState) {
     total_billed: Number(raw?.total_billed || 0),
     status: raw?.status || 'new',
     notes: raw?.notes || '',
+    next_follow_up_at: raw?.next_follow_up_at ? toLocalDateTimeInput(raw.next_follow_up_at) : '',
+    next_follow_up_type: raw?.next_follow_up_type || 'call',
+    next_follow_up_note: raw?.next_follow_up_note || '',
   };
 }
 
@@ -54,6 +71,7 @@ function isMeaningfulClientDraft(payload) {
     Boolean(`${payload?.email || ''}`.trim()) ||
     Boolean(`${payload?.phone || ''}`.trim()) ||
     Boolean(`${payload?.notes || ''}`.trim()) ||
+    Boolean(payload?.next_follow_up_at) ||
     Number(payload?.total_billed || 0) > 0 ||
     payload?.status !== 'new'
   );
@@ -185,6 +203,36 @@ export default function ClientForm({
                 <SelectItem value="vip">VIP</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border/60 p-4">
+          <div>
+            <p className="text-sm font-semibold">Próximo seguimiento</p>
+            <p className="text-xs text-muted-foreground">Déjalo vacío si este cliente no necesita seguimiento programado.</p>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-xs">Fecha y hora</Label>
+              <Input type="datetime-local" value={form.next_follow_up_at || ''} onChange={(e) => update('next_follow_up_at', e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Canal</Label>
+              <Select value={form.next_follow_up_type || 'call'} onValueChange={(value) => update('next_follow_up_type', value)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">Llamada</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="meeting">Reunión</SelectItem>
+                  <SelectItem value="other">Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs">Qué debo hacer</Label>
+              <Input value={form.next_follow_up_note || ''} onChange={(e) => update('next_follow_up_note', e.target.value)} className="mt-1" placeholder="Ej.: Llamar para confirmar la cotización" />
+            </div>
           </div>
         </div>
 
