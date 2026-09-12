@@ -1,9 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { CalendarDays, FileText, Receipt, ShoppingBag, WalletCards } from 'lucide-react';
+import { CalendarDays, FileText, Mail, MessageCircle, Phone, Receipt, ShoppingBag, StickyNote, Trash2, Users, WalletCards } from 'lucide-react';
 
 function sameClient(row = {}, client = {}) {
   if (!row || !client) return false;
@@ -51,7 +56,14 @@ export default function Client360Dialog({
   orders = [],
   appointments = [],
   invoicePayments = [],
+  activities = [],
+  canWrite = false,
+  onCreateActivity,
+  onDeleteActivity,
+  savingActivity = false,
 }) {
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [activityForm, setActivityForm] = useState({ activity_type: 'call', subject: '', notes: '', occurred_at: new Date().toISOString().slice(0,16) });
   const { formatMoney } = useCurrency();
 
   const view = useMemo(() => {
@@ -60,6 +72,7 @@ export default function Client360Dialog({
     const clientQuotes = quotes.filter((row) => sameClient(row, client));
     const clientOrders = orders.filter((row) => sameClient(row, client));
     const clientAppointments = appointments.filter((row) => sameClient(row, client));
+    const clientActivities = activities.filter((row) => row.client_id === client.id);
     const invoiceIds = new Set(clientInvoices.map((row) => row.id).filter(Boolean));
     const payments = invoicePayments.filter((row) => invoiceIds.has(row.invoice_id));
     const totalInvoiced = clientInvoices.reduce((sum, row) => sum + money(row.total_final || row.total || row.amount), 0);
@@ -76,10 +89,11 @@ export default function Client360Dialog({
       ...clientOrders.map((row) => ({ id: `order-${row.id}`, type: 'Pedido', date: row.date || row.created_at, title: row.order_number || row.title || 'Pedido', detail: row.total ? formatMoney(row.total) : '', status: row.status, icon: ShoppingBag })),
       ...clientAppointments.map((row) => ({ id: `appointment-${row.id}`, type: 'Actividad', date: row.date || row.created_at, title: row.service_type || 'Actividad / cita', detail: row.time || '', status: row.status, icon: CalendarDays })),
       ...payments.map((row) => ({ id: `payment-${row.id}`, type: 'Pago', date: row.payment_date || row.created_at, title: row.payment_method || 'Pago recibido', detail: formatMoney(row.amount), status: 'paid', icon: WalletCards })),
+      ...clientActivities.map((row) => ({ id: `crm-${row.id}`, rawId: row.id, type: 'Actividad CRM', date: row.occurred_at || row.created_at, title: row.subject || 'Actividad', detail: row.notes || '', status: row.activity_type, icon: row.activity_type === 'call' ? Phone : row.activity_type === 'whatsapp' ? MessageCircle : row.activity_type === 'email' ? Mail : row.activity_type === 'meeting' ? Users : StickyNote, crm: true })),
     ].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
-    return { clientInvoices, clientQuotes, clientOrders, clientAppointments, payments, totalInvoiced, collected, balance, timeline };
-  }, [appointments, client, formatMoney, invoicePayments, invoices, orders, quotes]);
+    return { clientInvoices, clientQuotes, clientOrders, clientAppointments, clientActivities, payments, totalInvoiced, collected, balance, timeline };
+  }, [activities, appointments, client, formatMoney, invoicePayments, invoices, orders, quotes]);
 
   if (!client || !view) return null;
 
@@ -126,6 +140,76 @@ export default function Client360Dialog({
                 <div><p className="text-xs text-muted-foreground">Email</p><p>{client.email || 'No registrado'}</p></div>
                 <div><p className="text-xs text-muted-foreground">Teléfono / WhatsApp</p><p>{client.phone || 'No registrado'}</p></div>
                 <div><p className="text-xs text-muted-foreground">Notas</p><p className="whitespace-pre-wrap">{client.notes || 'Sin notas'}</p></div>
+              </div>
+            </Card>
+
+          <Card className="p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Actividades CRM</p>
+                  <p className="text-xs text-muted-foreground">Llamadas, WhatsApp, emails, reuniones y notas comerciales.</p>
+                </div>
+                {canWrite ? <Button size="sm" onClick={()=>setShowActivityForm((value)=>!value)}>{showActivityForm ? 'Cancelar' : 'Registrar actividad'}</Button> : null}
+              </div>
+
+              {showActivityForm && canWrite ? (
+                <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-muted/15 p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label className="text-xs">Tipo</Label>
+                      <Select value={activityForm.activity_type} onValueChange={(value)=>setActivityForm((prev)=>({...prev,activity_type:value}))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="call">Llamada</SelectItem>
+                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="meeting">Reunión</SelectItem>
+                          <SelectItem value="note">Nota</SelectItem>
+                          <SelectItem value="other">Otro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Fecha y hora</Label>
+                      <Input type="datetime-local" className="mt-1" value={activityForm.occurred_at} onChange={(e)=>setActivityForm((prev)=>({...prev,occurred_at:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Asunto</Label>
+                    <Input className="mt-1" value={activityForm.subject} onChange={(e)=>setActivityForm((prev)=>({...prev,subject:e.target.value}))} placeholder="Ej.: Seguimiento de cotización"/>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Notas</Label>
+                    <Textarea className="mt-1" value={activityForm.notes} onChange={(e)=>setActivityForm((prev)=>({...prev,notes:e.target.value}))} placeholder="Resumen de la conversación o siguiente paso"/>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      disabled={savingActivity || !activityForm.subject.trim()}
+                      onClick={async()=>{
+                        await onCreateActivity?.({...activityForm,occurred_at:activityForm.occurred_at ? new Date(activityForm.occurred_at).toISOString() : new Date().toISOString()});
+                        setActivityForm({ activity_type:'call', subject:'', notes:'', occurred_at:new Date().toISOString().slice(0,16) });
+                        setShowActivityForm(false);
+                      }}
+                    >{savingActivity ? 'Guardando...' : 'Guardar actividad'}</Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-2">
+                {view.clientActivities.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">Sin actividades CRM registradas.</p> : view.clientActivities.map((activity)=>{
+                  const Icon = activity.activity_type === 'call' ? Phone : activity.activity_type === 'whatsapp' ? MessageCircle : activity.activity_type === 'email' ? Mail : activity.activity_type === 'meeting' ? Users : StickyNote;
+                  return <div key={activity.id} className="flex items-start gap-3 rounded-xl border border-border/60 p-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-4 w-4"/></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{activity.subject}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(activity.occurred_at || activity.created_at)}</p>
+                      </div>
+                      {activity.notes ? <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{activity.notes}</p> : null}
+                    </div>
+                    {canWrite ? <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" onClick={()=>onDeleteActivity?.(activity.id)} title="Eliminar actividad"><Trash2 className="h-3.5 w-3.5"/></Button> : null}
+                  </div>;
+                })}
               </div>
             </Card>
 
