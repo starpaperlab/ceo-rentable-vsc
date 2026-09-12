@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import ClientTable from '@/components/clients/ClientTable';
 import ClientForm from '@/components/clients/ClientForm';
+import Client360Dialog from '@/components/clients/Client360Dialog';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,9 +25,14 @@ function sortByCreatedDesc(rows=[]){return[...rows].sort((a,b)=>new Date(b.creat
 export default function Clients(){
  const{formatMoney}=useCurrency();const{canWrite}=useWorkspace();
  const{activeBrandId,activeWorkspaceId,adminMode,enabled,fetchRows,ownerEmail,ownerId,queryKey:contextQueryKey,scopedAdminMode,scopedOwnerEmail,scopedOwnerId,user,userProfile,writeOwnerEmail,writeOwnerId}=useWorkContextScope();
- const queryClient=useQueryClient();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);
+ const queryClient=useQueryClient();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);const[selectedClient,setSelectedClient]=useState(null);
  const assertCanWrite=()=>{if(!canWrite)throw new Error('Tu perfil es de solo lectura. No puedes crear, editar ni eliminar información.')};
  const{data:clients=[],isLoading}=useQuery({queryKey:['clients',...contextQueryKey],queryFn:async()=>sortByCreatedDesc(await fetchRows({table:'clients',orderBy:'created_at',ascending:false})),enabled});
+ const{data:invoices=[]}=useQuery({queryKey:['clients-360-invoices',...contextQueryKey],queryFn:()=>fetchRows({table:'invoices'}),enabled});
+ const{data:quotes=[]}=useQuery({queryKey:['clients-360-quotes',...contextQueryKey],queryFn:()=>fetchRows({table:'quotes'}),enabled});
+ const{data:orders=[]}=useQuery({queryKey:['clients-360-orders',...contextQueryKey],queryFn:()=>fetchRows({table:'orders'}),enabled});
+ const{data:appointments=[]}=useQuery({queryKey:['clients-360-appointments',...contextQueryKey],queryFn:()=>fetchRows({table:'appointments'}),enabled});
+ const{data:invoicePayments=[]}=useQuery({queryKey:['clients-360-payments',...contextQueryKey],queryFn:()=>fetchRows({table:'invoice_payments'}),enabled});
  const persistClient=async(data,{targetClient=null}={})=>{assertCanWrite();const now=new Date().toISOString(),basePayload=normalizeClientPayload(data);if(targetClient?.id){await updateOwnedRowById({table:'clients',id:targetClient.id,payload:basePayload,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode});return{payload:basePayload,remoteUpdatedAt:now}}if(ownerId){try{await ensureDbUserRecord({user,userProfile})}catch(e){console.warn('No se pudo asegurar perfil antes de crear cliente:',e?.message||e)}}const payload={...basePayload,workspace_id:activeWorkspaceId||null,user_id:writeOwnerId,created_by:writeOwnerEmail||null,brand_profile_id:activeBrandId||null,created_at:now,created_date:now};const tryInsert=async candidate=>{const{data,error}=await supabase.from('clients').insert(candidate).select().single();if(!error)return data;for(const col of['workspace_id','user_id','created_by','created_date','created_at','brand_profile_id'])if(isMissingColumnError(error,`clients.${col}`)||isMissingColumnError(error,col)){const next={...candidate};delete next[col];return tryInsert(next)}if(hasOwnerConstraintIssue(error,'clients')){const next={...candidate};delete next.user_id;return tryInsert(next)}throw error};const saved=await tryInsert(payload);return{payload:basePayload,remoteUpdatedAt:saved?.updated_at||now,saved}};
  const saveClientMutation=useMutation({mutationFn:async data=>persistClient(data,{targetClient:editingClient}),onError:error=>toast.error(`No se pudo guardar el cliente: ${error.message}`)});
  const deleteMutation=useMutation({mutationFn:async id=>{assertCanWrite();await deleteOwnedRowById({table:'clients',id,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode})},onSuccess:()=>{queryClient.invalidateQueries({queryKey:['clients']});toast.success('Cliente eliminado')},onError:error=>toast.error(`No se pudo eliminar el cliente: ${error.message}`)});
@@ -40,5 +46,16 @@ export default function Clients(){
  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4"><Card className="p-4 text-center"><p className="text-[10px] font-semibold text-muted-foreground uppercase">Total Clientes</p><p className="text-2xl font-bold text-primary mt-1">{clients.length}</p></Card><Card className="p-4 text-center"><p className="text-[10px] font-semibold text-muted-foreground uppercase">Ticket Prom.</p><p className="text-2xl font-bold text-foreground mt-1">{formatMoney(avgTicket)}</p></Card><Card className="p-4 text-center"><p className="text-[10px] font-semibold text-muted-foreground uppercase">VIP</p><p className="text-2xl font-bold text-secondary mt-1">{vipCount}</p></Card></div>
  <div className="flex flex-col sm:flex-row gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/><Input placeholder="Buscar cliente..." value={search} onChange={e=>setSearch(e.target.value)} className="pl-10"/></div><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Estado"/></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="new">Nuevos</SelectItem><SelectItem value="recurring">Recurrentes</SelectItem><SelectItem value="vip">VIP</SelectItem></SelectContent></Select></div>
  <AnimatePresence>{showForm&&canWrite&&<ClientForm key={editingClient?.id||'new-client'} client={editingClient} onSubmit={handleSubmit} onRemoteSave={data=>persistClient(data,{targetClient:editingClient})} onSaved={()=>{setShowForm(false);setEditingClient(null);toast.success(editingClient?.id?'Cliente actualizado':'Cliente creado')}} onCancel={()=>{setShowForm(false);setEditingClient(null)}} isLoading={saveClientMutation.isPending} autosaveUserId={ownerId||ownerEmail||'anon'} remoteUpdatedAt={editingClient?.updated_at||null}/>}</AnimatePresence>
- <ClientTable clients={filtered} onEdit={handleEdit} onDelete={id=>deleteMutation.mutate(id)} readOnly={!canWrite}/></div>
+ <ClientTable clients={filtered} onView={setSelectedClient} onEdit={handleEdit} onDelete={id=>deleteMutation.mutate(id)} readOnly={!canWrite}/>
+ <Client360Dialog
+  client={selectedClient}
+  open={Boolean(selectedClient)}
+  onOpenChange={(open)=>{if(!open)setSelectedClient(null)}}
+  invoices={invoices}
+  quotes={quotes}
+  orders={orders}
+  appointments={appointments}
+  invoicePayments={invoicePayments}
+ />
+ </div>
 }
