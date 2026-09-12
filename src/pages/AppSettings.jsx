@@ -346,8 +346,6 @@ export default function AppSettings() {
         .update({
           name: serialized.business_name?.trim() || activeWorkspace?.name || 'Mi empresa',
           logo_url: serialized.logo_url || null,
-          brand_primary_color: serialized.brand_color || null,
-          brand_accent_color: serialized.brand_accent_color || null,
           currency_code: serialized.currency || activeWorkspace?.currency_code || 'DOP',
           country_code: serialized.country_code || activeWorkspace?.country_code || null,
           timezone: serialized.timezone || activeWorkspace?.timezone || 'America/Santo_Domingo',
@@ -512,7 +510,7 @@ export default function AppSettings() {
           <TabsTrigger value="business">Mi Negocio</TabsTrigger>
           <TabsTrigger value="operations">Operación y Fiscal</TabsTrigger>
           <TabsTrigger value="payments">Pagos y Documentos</TabsTrigger>
-          <TabsTrigger value="branding">Branding</TabsTrigger>
+          <TabsTrigger value="branding">Branding de documentos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="business" className="space-y-4 mt-4">
@@ -767,15 +765,15 @@ export default function AppSettings() {
             <div className="flex items-start gap-3">
               <Info className="h-4 w-4 text-blue-600 mt-0.5" />
               <p className="text-xs text-blue-700 dark:text-blue-400">
-                La identidad visual del negocio se aplica a la interfaz y también queda preparada para documentos exportables.
+                El tema de la interfaz se administra en Mi negocio. Aquí puedes mantener el mismo estilo o personalizar únicamente facturas, cotizaciones y PDFs.
               </p>
             </div>
           </Card>
 
           <Card className="p-6 space-y-5">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Branding visual</h2>
-              <p className="text-xs text-muted-foreground mt-1">Controla la identidad visual de cotizaciones, facturas y PDFs.</p>
+              <h2 className="text-sm font-semibold text-foreground">Branding de documentos</h2>
+              <p className="text-xs text-muted-foreground mt-1">Controla la identidad visual de cotizaciones, facturas y PDFs sin alterar el tema de la interfaz.</p>
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Logotipo del Negocio</Label>
