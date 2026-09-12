@@ -33,9 +33,36 @@ export default function Clients(){
  const{data:orders=[]}=useQuery({queryKey:['clients-360-orders',...contextQueryKey],queryFn:()=>fetchRows({table:'orders'}),enabled});
  const{data:appointments=[]}=useQuery({queryKey:['clients-360-appointments',...contextQueryKey],queryFn:()=>fetchRows({table:'appointments'}),enabled});
  const{data:invoicePayments=[]}=useQuery({queryKey:['clients-360-payments',...contextQueryKey],queryFn:()=>fetchRows({table:'invoice_payments'}),enabled});
+ const{data:clientActivities=[]}=useQuery({queryKey:['client-activities',...contextQueryKey],queryFn:()=>fetchRows({table:'client_activities',orderBy:'occurred_at',ascending:false}),enabled});
  const persistClient=async(data,{targetClient=null}={})=>{assertCanWrite();const now=new Date().toISOString(),basePayload=normalizeClientPayload(data);if(targetClient?.id){await updateOwnedRowById({table:'clients',id:targetClient.id,payload:basePayload,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode});return{payload:basePayload,remoteUpdatedAt:now}}if(ownerId){try{await ensureDbUserRecord({user,userProfile})}catch(e){console.warn('No se pudo asegurar perfil antes de crear cliente:',e?.message||e)}}const payload={...basePayload,workspace_id:activeWorkspaceId||null,user_id:writeOwnerId,created_by:writeOwnerEmail||null,brand_profile_id:activeBrandId||null,created_at:now,created_date:now};const tryInsert=async candidate=>{const{data,error}=await supabase.from('clients').insert(candidate).select().single();if(!error)return data;for(const col of['workspace_id','user_id','created_by','created_date','created_at','brand_profile_id'])if(isMissingColumnError(error,`clients.${col}`)||isMissingColumnError(error,col)){const next={...candidate};delete next[col];return tryInsert(next)}if(hasOwnerConstraintIssue(error,'clients')){const next={...candidate};delete next.user_id;return tryInsert(next)}throw error};const saved=await tryInsert(payload);return{payload:basePayload,remoteUpdatedAt:saved?.updated_at||now,saved}};
  const saveClientMutation=useMutation({mutationFn:async data=>persistClient(data,{targetClient:editingClient}),onError:error=>toast.error(`No se pudo guardar el cliente: ${error.message}`)});
  const deleteMutation=useMutation({mutationFn:async id=>{assertCanWrite();await deleteOwnedRowById({table:'clients',id,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode})},onSuccess:()=>{queryClient.invalidateQueries({queryKey:['clients']});toast.success('Cliente eliminado')},onError:error=>toast.error(`No se pudo eliminar el cliente: ${error.message}`)});
+ const createActivityMutation=useMutation({
+  mutationFn:async({client,payload})=>{
+   assertCanWrite();
+   const row={
+    workspace_id:activeWorkspaceId||null,
+    client_id:client.id,
+    user_id:writeOwnerId||ownerId||null,
+    created_by:writeOwnerEmail||ownerEmail||null,
+    activity_type:payload.activity_type||'note',
+    subject:(payload.subject||'').trim(),
+    notes:(payload.notes||'').trim()||null,
+    occurred_at:payload.occurred_at||new Date().toISOString(),
+   };
+   if(!row.subject)throw new Error('Escribe un asunto para la actividad.');
+   const{data,error}=await supabase.from('client_activities').insert(row).select().single();
+   if(error)throw error;
+   return data;
+  },
+  onSuccess:()=>{queryClient.invalidateQueries({queryKey:['client-activities']});toast.success('Actividad registrada')},
+  onError:error=>toast.error(`No se pudo registrar la actividad: ${error.message}`)
+ });
+ const deleteActivityMutation=useMutation({
+  mutationFn:async(id)=>{assertCanWrite();await deleteOwnedRowById({table:'client_activities',id,ownerId:scopedOwnerId,ownerEmail:scopedOwnerEmail,adminMode:scopedAdminMode})},
+  onSuccess:()=>{queryClient.invalidateQueries({queryKey:['client-activities']});toast.success('Actividad eliminada')},
+  onError:error=>toast.error(`No se pudo eliminar la actividad: ${error.message}`)
+ });
  const handleSubmit=async data=>{const result=await saveClientMutation.mutateAsync(data);queryClient.invalidateQueries({queryKey:['clients']});return result};
  const handleEdit=client=>{if(!canWrite)return;setEditingClient(client);setShowForm(true)};
  const filtered=clients.filter(c=>(c.name?.toLowerCase().includes(search.toLowerCase())||c.email?.toLowerCase().includes(search.toLowerCase()))&&(statusFilter==='all'||c.status===statusFilter));const totalBilled=clients.reduce((s,c)=>s+(c.total_billed||0),0),avgTicket=clients.length?totalBilled/clients.length:0,vipCount=clients.filter(c=>c.status==='vip').length;
@@ -56,6 +83,11 @@ export default function Clients(){
   orders={orders}
   appointments={appointments}
   invoicePayments={invoicePayments}
+  activities={clientActivities}
+  canWrite={canWrite}
+  onCreateActivity={(payload)=>createActivityMutation.mutateAsync({client:selectedClient,payload})}
+  onDeleteActivity={(id)=>deleteActivityMutation.mutate(id)}
+  savingActivity={createActivityMutation.isPending}
  />
  </div>
 }
