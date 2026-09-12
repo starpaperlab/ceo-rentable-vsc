@@ -276,9 +276,28 @@ function drawDocumentHeader(pdf, { doc, meta, brandColor, brandRgb, logoImage, i
     pdf.setFontSize(11);
     pdf.setTextColor(95, 95, 95);
     pdf.text(`N° ${meta.number || '-'}`, pageWidth - PAGE.marginX, y + 18, { align: 'right' });
+
+    let dateY = y + 25;
+    if (doc.fiscal_document_type && doc.fiscal_document_type !== 'none') {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(brandRgb.r, brandRgb.g, brandRgb.b);
+      pdf.text(doc.fiscal_document_label || 'Comprobante fiscal', pageWidth - PAGE.marginX, y + 23, { align: 'right' });
+      if (doc.fiscal_document_number) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(85, 85, 85);
+        pdf.text(doc.fiscal_document_number, pageWidth - PAGE.marginX, y + 28, { align: 'right' });
+        dateY = y + 34;
+      } else {
+        dateY = y + 29;
+      }
+    }
+
+    pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
     pdf.setTextColor(140, 140, 140);
-    pdf.text(`Fecha: ${doc.date || '-'}`, pageWidth - PAGE.marginX, y + 25, { align: 'right' });
+    pdf.text(`Fecha: ${doc.date || '-'}`, pageWidth - PAGE.marginX, dateY, { align: 'right' });
 
     y = Math.max(y + 40, companyY + 6);
 
