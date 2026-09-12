@@ -45,7 +45,7 @@ export default function AgendaCalendar({ appointments = [], onEdit }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[1.6fr_0.9fr]">
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex flex-col gap-3 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <div>
             <p className="text-sm font-semibold capitalize">{format(cursor, 'MMMM yyyy', { locale: es })}</p>
             <p className="text-xs text-muted-foreground">Vista mensual de citas y actividades programadas.</p>
@@ -71,13 +71,13 @@ export default function AgendaCalendar({ appointments = [], onEdit }) {
                 key={key}
                 type="button"
                 onClick={()=>setSelectedDate(day)}
-                className={`min-h-[92px] border-b border-r p-1.5 text-left transition hover:bg-muted/25 sm:min-h-[108px] ${!isSameMonth(day,cursor)?'bg-muted/10 text-muted-foreground/45':''} ${selected?'ring-2 ring-inset ring-primary/40':''}`}
+                className={`min-h-[64px] border-b border-r p-1 text-left transition hover:bg-muted/25 sm:min-h-[108px] sm:p-1.5 ${!isSameMonth(day,cursor)?'bg-muted/10 text-muted-foreground/45':''} ${selected?'ring-2 ring-inset ring-primary/40':''}`}
               >
                 <div className="flex items-center justify-between">
                   <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${isSameDay(day,new Date())?'bg-primary text-primary-foreground':''}`}>{format(day,'d')}</span>
                   {items.length>0?<span className="text-[10px] font-semibold text-primary">{items.length}</span>:null}
                 </div>
-                <div className="mt-1 space-y-1">
+                <div className="mt-1 hidden space-y-1 sm:block">
                   {items.slice(0,2).map((item)=>(
                     <div key={item.id} className="truncate rounded-md bg-primary/8 px-1.5 py-1 text-[10px] font-medium text-foreground">
                       {item.time ? `${item.time} · ` : ''}{item.client_name || item.service_type || 'Actividad'}
