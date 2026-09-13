@@ -32,6 +32,24 @@ import {
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 
+function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo') {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(value).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  } catch {
+    const d = new Date(value);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+}
+
 function monthLabel(dateValue) {
   if (!dateValue) return '—';
   const date = new Date(dateValue);
@@ -78,7 +96,7 @@ export default function Dashboard() {
   const { formatMoney } = useCurrency();
   const { canWrite } = useWorkspace();
   const { user, userProfile } = useAuth();
-  const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
+  const { activeWorkspace, enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
   const userName = (userProfile?.full_name || user?.email || 'CEO').split(' ')[0];
 
   const { data: products = [], isLoading: loadingProducts } = useQuery({
@@ -258,7 +276,7 @@ export default function Dashboard() {
       })
       .sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
 
-    const todayKey = now.toISOString().slice(0, 10);
+    const todayKey = dateKeyInTimeZone(now, activeWorkspace?.timezone || 'America/Santo_Domingo');
     const todayAppointments = appointments
       .filter((item) => item.date === todayKey && item.status !== 'cancelado')
       .sort((a, b) => `${a.time || '99:99'}`.localeCompare(`${b.time || '99:99'}`));
@@ -309,7 +327,7 @@ export default function Dashboard() {
       overdueInvoices: overdueInvoices.length,
       actionItems,
     };
-  }, [appointments, clients, formatMoney, pendingInvoices, reminders]);
+  }, [activeWorkspace?.timezone, appointments, clients, formatMoney, pendingInvoices, reminders]);
 
   const chartData = useMemo(() => {
     const monthlyMap = {};
