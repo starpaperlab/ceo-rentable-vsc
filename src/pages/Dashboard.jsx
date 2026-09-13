@@ -1,4 +1,6 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import { useAuth } from '@/lib/AuthContext';
@@ -272,6 +274,7 @@ export default function Dashboard() {
         title: item.title || 'Recordatorio pendiente',
         detail: item.notes || 'Requiere atención',
         tone: new Date(item.due_at) < start ? 'critical' : 'warning',
+        to: item.client_id ? `${createPageUrl('Clients')}?client=${encodeURIComponent(item.client_id)}` : createPageUrl('Clients'),
       })),
       ...dueFollowUps.map((client) => ({
         id: `followup-${client.id}`,
@@ -279,6 +282,7 @@ export default function Dashboard() {
         title: client.name || 'Cliente',
         detail: client.next_follow_up_note || 'Seguimiento comercial',
         tone: new Date(client.next_follow_up_at) < start ? 'critical' : 'warning',
+        to: `${createPageUrl('Clients')}?client=${encodeURIComponent(client.id)}`,
       })),
       ...todayAppointments.map((item) => ({
         id: `appointment-${item.id}`,
@@ -286,6 +290,7 @@ export default function Dashboard() {
         title: item.client_name || item.service_type || 'Actividad',
         detail: item.time ? `${item.service_type || 'Actividad'} · ${item.time}` : (item.service_type || 'Actividad de hoy'),
         tone: 'info',
+        to: createPageUrl('Agenda'),
       })),
       ...overdueInvoices.map((invoice) => ({
         id: `invoice-${invoice.id}`,
@@ -293,6 +298,7 @@ export default function Dashboard() {
         title: invoice.client_name || invoice.invoice_number || 'Factura vencida',
         detail: `${invoice.invoice_number || 'Factura'} · ${formatMoney(normalizeInvoiceTotal(invoice))}`,
         tone: 'critical',
+        to: createPageUrl('Billing'),
       })),
     ].slice(0, 8);
 
@@ -522,22 +528,22 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-border/60 p-3">
+          <Link to={createPageUrl('Clients')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Seguimientos</p>
             <p className="mt-1 text-xl font-bold">{dailySummary.followUps}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 p-3">
+          </Link>
+          <Link to={createPageUrl('Clients')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recordatorios</p>
             <p className="mt-1 text-xl font-bold">{dailySummary.reminders}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 p-3">
+          </Link>
+          <Link to={createPageUrl('Agenda')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Agenda hoy</p>
             <p className="mt-1 text-xl font-bold">{dailySummary.appointments}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 p-3">
+          </Link>
+          <Link to={createPageUrl('Billing')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Facturas vencidas</p>
             <p className={`mt-1 text-xl font-bold ${dailySummary.overdueInvoices>0?'text-red-600':''}`}>{dailySummary.overdueInvoices}</p>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-3 space-y-2">
@@ -545,13 +551,14 @@ export default function Dashboard() {
             <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">No tienes pendientes urgentes para hoy.</div>
           ) : dailySummary.actionItems.map((item)=>{
             const Icon=item.icon;
-            return <div key={item.id} className="flex items-start gap-3 rounded-xl border border-border/60 p-3">
+            return <Link key={item.id} to={item.to || createPageUrl('Dashboard')} className="flex items-start gap-3 rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
               <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone==='critical'?'bg-red-100 text-red-700':item.tone==='warning'?'bg-amber-100 text-amber-700':'bg-primary/10 text-primary'}`}><Icon className="h-4 w-4"/></div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{item.title}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
               </div>
-            </div>;
+              <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+            </Link>;
           })}
         </div>
       </Card>
