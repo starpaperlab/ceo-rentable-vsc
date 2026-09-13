@@ -174,8 +174,8 @@ export default function Client360Dialog({
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.6fr]">
-            <Card className="p-3 sm:p-4">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[0.9fr_1.6fr]">
+            <Card className="min-w-0 overflow-hidden p-3 sm:p-4">
               <p className="text-sm font-semibold">Ficha del cliente</p>
               <div className="mt-4 space-y-3 text-sm">
                 <div><p className="text-xs text-muted-foreground">Nombre</p><p className="font-medium">{client.name}</p></div>
@@ -197,9 +197,10 @@ export default function Client360Dialog({
                 </div>
 
                 {canWrite ? (
-                  <div className="mt-3 grid min-w-0 gap-3 overflow-hidden rounded-2xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                  <div className="mt-3 grid w-full min-w-0 max-w-full gap-3 overflow-hidden rounded-2xl border border-border/60 bg-muted/10 p-3 sm:p-4">
                     <Input
-                      className="w-full min-w-0 max-w-full"
+                      className="box-border block w-full min-w-0 max-w-full"
+                      style={{ minWidth: 0, width: '100%', maxWidth: '100%' }}
                       type="datetime-local"
                       value={followUpForm.next_follow_up_at || ''}
                       onChange={(e)=>setFollowUpForm((prev)=>({...prev,next_follow_up_at:e.target.value}))}
