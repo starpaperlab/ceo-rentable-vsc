@@ -186,9 +186,21 @@ export default async function handler(req, res) {
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f7f3f5;padding:28px;color:#211a1e;">
         <div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #eadfe5;">
+          <div style="background:#ffffff;padding:20px 28px;border-bottom:1px solid #f0e7eb;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td style="vertical-align:middle;padding-right:12px;">
+                  <img src="${appUrl}/brand/isotipo.png" alt="CEO Rentable" width="46" height="46" style="display:block;width:46px;height:46px;object-fit:contain;border:0;" />
+                </td>
+                <td style="vertical-align:middle;">
+                  <div style="font-size:17px;font-weight:800;color:#2a2025;line-height:1.2;">CEO Rentable OS™</div>
+                  <div style="font-size:12px;color:#8a7f85;line-height:1.4;margin-top:3px;">Tu sistema financiero inteligente</div>
+                </td>
+              </tr>
+            </table>
+          </div>
           <div style="background:#D45387;color:#ffffff;padding:24px 28px;">
-            <div style="font-size:13px;opacity:.9;">CEO Rentable OS™</div>
-            <h1 style="font-size:22px;line-height:1.25;margin:6px 0 0;">Recordatorio de seguimiento</h1>
+            <h1 style="font-size:22px;line-height:1.25;margin:0;">Recordatorio de seguimiento</h1>
           </div>
           <div style="padding:28px;">
             <p style="margin-top:0;">Hola <strong>${escapeHtml(recipient.full_name || recipient.email)}</strong>,</p>
