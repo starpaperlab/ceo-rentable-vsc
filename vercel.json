@@ -5,5 +5,11 @@
       "source": "/((?!api/|assets/|brand/|.*\\..*).*)",
       "destination": "/"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/follow-up-reminders",
+      "schedule": "* * * * *"
+    }
   ]
 }
