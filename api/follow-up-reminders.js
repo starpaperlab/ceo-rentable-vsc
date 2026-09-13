@@ -84,7 +84,11 @@ export default async function handler(req, res) {
 
   const cronSecret = `${process.env.CRON_SECRET || ''}`.trim();
   const authHeader = `${req.headers?.authorization || ''}`.trim();
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  const cronScheduleHeader = `${req.headers?.['x-vercel-cron-schedule'] || ''}`.trim();
+  const authorizedBySecret = Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+  const authorizedVercelCronFallback = !cronSecret && cronScheduleHeader === '* * * * *';
+
+  if (!authorizedBySecret && !authorizedVercelCronFallback) {
     return res.status(401).json({ success: false });
   }
 
