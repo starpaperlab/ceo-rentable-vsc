@@ -515,8 +515,8 @@ export default function Dashboard() {
         <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">PUNTO DE EQUILIBRIO</p>
           <p className="text-lg sm:text-[32px] leading-none font-extrabold mt-1.5 sm:mt-2 text-foreground">{formatMoney(breakEven)}</p>
-          <div className="mt-2 sm:mt-3 h-1.5 rounded-full bg-[#EED4DF]">
-            <div className="h-full rounded-full bg-[#D45387]" style={{ width: '100%' }} />
+          <div className="mt-2 sm:mt-3 h-1.5 rounded-full bg-primary/15">
+            <div className="h-full rounded-full bg-primary" style={{ width: '100%' }} />
           </div>
           <p className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs font-semibold text-emerald-600">✓ Superaste el equilibrio</p>
         </Card>
@@ -588,9 +588,9 @@ export default function Dashboard() {
             {todayChecklist.doneCount} de {todayChecklist.totalCount} tareas
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-[#EED4DF] mt-2 sm:mt-3">
+        <div className="h-1.5 rounded-full bg-primary/15 mt-2 sm:mt-3">
           <div
-            className="h-full rounded-full bg-[#D45387]"
+            className="h-full rounded-full bg-primary"
             style={{ width: `${(todayChecklist.doneCount / todayChecklist.totalCount) * 100}%` }}
           />
         </div>
@@ -620,18 +620,19 @@ export default function Dashboard() {
                   contentStyle={{
                     borderRadius: 12,
                     border: '1px solid hsl(var(--border))',
-                    background: 'white',
+                    background: 'hsl(var(--popover))',
+                    color: 'hsl(var(--popover-foreground))',
                     fontSize: 12,
                   }}
                 />
-                <Line type="monotone" dataKey="ingresos" stroke="#D45387" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="gastos" stroke="#A06BCF" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="ingresos" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--primary))' }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
+                <Line type="monotone" dataKey="gastos" stroke="hsl(var(--accent))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--accent))' }} activeDot={{ r: 5, fill: 'hsl(var(--accent))' }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <div className="mt-2 flex gap-4 text-xs">
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-[#D45387]" />Ingresos</span>
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-[#A06BCF]" />Gastos</span>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-primary" />Ingresos</span>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-accent" />Gastos</span>
           </div>
         </Card>
 
@@ -666,7 +667,7 @@ export default function Dashboard() {
                 topClients.map((client) => (
                   <div key={client.client} className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-7 h-7 rounded-full bg-[#D45387] text-white text-xs font-bold flex items-center justify-center">
+                      <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
                         {(client.client || 'C').trim().charAt(0).toUpperCase()}
                       </span>
                       <span className="text-xs font-medium truncate">{client.client}</span>
