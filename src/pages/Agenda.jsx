@@ -177,8 +177,18 @@ export default function Agenda() {
       }));
     }
 
+    let invoiceNumber = `FAC-${Date.now()}`;
+    if (activeWorkspaceId) {
+      const { data: reservedNumber, error: reserveError } = await supabase.rpc('reserve_document_number', {
+        target_workspace_id: activeWorkspaceId,
+        document_type: 'invoice',
+      });
+      if (reserveError) throw reserveError;
+      if (reservedNumber) invoiceNumber = reservedNumber;
+    }
+
     await safeInsert('invoices', withOwner({
-      invoice_number: `AGD-${Date.now()}`,
+      invoice_number: invoiceNumber,
       date: appointment.date,
       due_date: appointment.date,
       client_id: client?.id || null,
