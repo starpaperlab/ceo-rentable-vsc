@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCurrency } from '@/components/shared/CurrencyContext';
@@ -28,6 +28,12 @@ export default function Clients(){
  const queryClient=useQueryClient();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[stageFilter,setStageFilter]=useState('all');const[priorityFilter,setPriorityFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);const[selectedClient,setSelectedClient]=useState(null);
  const assertCanWrite=()=>{if(!canWriteClients)throw new Error('No tienes permiso para modificar clientes.')};
  const{data:clients=[],isLoading}=useQuery({queryKey:['clients',...contextQueryKey],queryFn:async()=>sortByCreatedDesc(await fetchRows({table:'clients',orderBy:'created_at',ascending:false})),enabled});
+ useEffect(()=>{
+  const clientId=new URLSearchParams(window.location.search).get('client');
+  if(!clientId||clients.length===0)return;
+  const target=clients.find((item)=>item.id===clientId);
+  if(target)setSelectedClient(target);
+ },[clients]);
  const{data:invoices=[]}=useQuery({queryKey:['clients-360-invoices',...contextQueryKey],queryFn:()=>fetchRows({table:'invoices'}),enabled});
  const{data:quotes=[]}=useQuery({queryKey:['clients-360-quotes',...contextQueryKey],queryFn:()=>fetchRows({table:'quotes'}),enabled});
  const{data:orders=[]}=useQuery({queryKey:['clients-360-orders',...contextQueryKey],queryFn:()=>fetchRows({table:'orders'}),enabled});
