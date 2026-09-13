@@ -135,7 +135,7 @@ export default function Client360Dialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none p-0 sm:h-auto sm:max-h-[88vh] sm:w-auto sm:max-w-4xl sm:rounded-lg">
+      <DialogContent className="top-[env(safe-area-inset-top)] h-[calc(100dvh-env(safe-area-inset-top))] max-h-[calc(100dvh-env(safe-area-inset-top))] w-screen max-w-none translate-y-0 overflow-y-auto rounded-none p-0 sm:top-[50%] sm:h-auto sm:max-h-[88vh] sm:w-auto sm:max-w-4xl sm:translate-y-[-50%] sm:rounded-lg">
         <div className="border-b px-5 py-5 sm:px-6">
           <DialogHeader>
             <DialogTitle className="pr-8 text-xl">{client.name}</DialogTitle>
