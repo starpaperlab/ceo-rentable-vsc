@@ -156,7 +156,7 @@ export default function Client360Dialog({
 
         <div className="space-y-5 p-5 sm:p-6">
           <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-            <Card className="p-3 sm:p-4">
+            <Card className="min-w-0 overflow-hidden p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Facturado</p>
               <p className="mt-1 text-xl font-bold">{formatMoney(view.totalInvoiced)}</p>
             </Card>
@@ -184,24 +184,28 @@ export default function Client360Dialog({
                 <div><p className="text-xs text-muted-foreground">Notas</p><p className="whitespace-pre-wrap">{client.notes || 'Sin notas'}</p></div>
               </div>
 
-              <div className="mt-5 border-t pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">{client.next_follow_up_at ? 'Seguimiento programado' : 'Próximo seguimiento'}</p>
-                    <p className="text-xs text-muted-foreground">{client.next_follow_up_at ? 'Puedes modificar la fecha, el canal o la nota y guardar los cambios.' : 'Programa la próxima acción comercial para este cliente.'}</p>
+              <div className="mt-5 min-w-0 border-t pt-4">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{client.next_follow_up_at ? 'Seguimiento programado' : 'Próximo seguimiento'}</p>
+                      {client.next_follow_up_at ? <Badge className="border-0 bg-primary/10 text-primary">Activo</Badge> : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{client.next_follow_up_at ? 'Permanece abierto para que puedas actualizar fecha, canal o nota en cualquier momento.' : 'Programa la próxima acción comercial para este cliente.'}</p>
                   </div>
-                  {client.next_follow_up_at ? <Badge variant="outline">{formatDate(client.next_follow_up_at)}</Badge> : null}
+                  {client.next_follow_up_at ? <Badge variant="outline" className="shrink-0 max-w-[44%] whitespace-normal text-center">{formatDate(client.next_follow_up_at)}</Badge> : null}
                 </div>
 
                 {canWrite ? (
-                  <div className="mt-3 grid gap-3">
+                  <div className="mt-3 grid min-w-0 gap-3 overflow-hidden rounded-2xl border border-border/60 bg-muted/10 p-3 sm:p-4">
                     <Input
+                      className="w-full min-w-0 max-w-full"
                       type="datetime-local"
                       value={followUpForm.next_follow_up_at || ''}
                       onChange={(e)=>setFollowUpForm((prev)=>({...prev,next_follow_up_at:e.target.value}))}
                     />
                     <Select value={followUpForm.next_follow_up_type || 'call'} onValueChange={(value)=>setFollowUpForm((prev)=>({...prev,next_follow_up_type:value}))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full min-w-0 max-w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="call">Llamada</SelectItem>
                         <SelectItem value="whatsapp">WhatsApp</SelectItem>
@@ -211,6 +215,7 @@ export default function Client360Dialog({
                       </SelectContent>
                     </Select>
                     <Input
+                      className="w-full min-w-0 max-w-full"
                       value={followUpForm.next_follow_up_note || ''}
                       onChange={(e)=>setFollowUpForm((prev)=>({...prev,next_follow_up_note:e.target.value}))}
                       placeholder="Ej.: confirmar decisión sobre cotización"
