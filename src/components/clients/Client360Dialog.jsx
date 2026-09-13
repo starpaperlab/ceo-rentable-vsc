@@ -415,7 +415,7 @@ export default function Client360Dialog({
                     const Icon = item.icon;
                     return (
                       <div key={item.id} className="relative flex gap-3 rounded-xl px-2 py-3 transition hover:bg-muted/35">
-                        <div className={`z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${item.type==='Pago'?'border-emerald-200 bg-emerald-50 text-emerald-700':item.type==='Factura'?'border-pink-200 bg-pink-50 text-pink-700':item.type==='Pedido'?'border-violet-200 bg-violet-50 text-violet-700':item.type==='Cotización'?'border-amber-200 bg-amber-50 text-amber-700':'border-primary/20 bg-primary/10 text-primary'}`}><Icon className="h-4 w-4" /></div>
+                        <div className={`z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${item.type==='Pago'?'border-emerald-200 bg-emerald-50 text-emerald-700':item.type==='Factura'?'border-primary/20 bg-primary/10 text-primary':item.type==='Pedido'?'border-violet-200 bg-violet-50 text-violet-700':item.type==='Cotización'?'border-amber-200 bg-amber-50 text-amber-700':'border-primary/20 bg-primary/10 text-primary'}`}><Icon className="h-4 w-4" /></div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="truncate text-sm font-semibold">{item.title}</p>
