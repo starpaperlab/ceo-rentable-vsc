@@ -34,10 +34,28 @@ function withinDays(value, days) {
   return time >= now && time <= now + (days * 24 * 60 * 60 * 1000);
 }
 
+function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo') {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(value).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  } catch {
+    const d = new Date(value);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+}
+
 export default function NotificationBell() {
   const queryClient = useQueryClient();
   const { hasModuleAccess } = useWorkspace();
-  const { activeWorkspaceId, enabled, fetchRows, ownerId, queryKey: contextQueryKey } = useWorkContextScope();
+  const { activeWorkspace, activeWorkspaceId, enabled, fetchRows, ownerId, queryKey: contextQueryKey } = useWorkContextScope();
   const canSeeClients = hasModuleAccess('clients');
   const canSeeAgenda = hasModuleAccess('agenda');
   const canSeeDashboard = hasModuleAccess('dashboard');
@@ -130,7 +148,7 @@ export default function NotificationBell() {
         to: createPageUrl('Clients'),
       }));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateKeyInTimeZone(new Date(), activeWorkspace?.timezone || 'America/Santo_Domingo');
     const todayAppointments = appointments
       .filter((item) => item.date === today && item.status !== 'cancelado' && item.status !== 'completado')
       .map((item) => ({
@@ -184,7 +202,7 @@ export default function NotificationBell() {
         return new Date(a.when || 0).getTime() - new Date(b.when || 0).getTime();
       })
       .slice(0, 12);
-  }, [appointments, canSeeAgenda, canSeeBilling, canSeeClients, canSeeDashboard, canSeeReceivables, clients, reminders, storedNotifications]);
+  }, [activeWorkspace?.timezone, appointments, canSeeAgenda, canSeeBilling, canSeeClients, canSeeDashboard, canSeeReceivables, clients, reminders, storedNotifications]);
 
   const stateByKey = useMemo(
     () => notificationStates.reduce((map, row) => {
