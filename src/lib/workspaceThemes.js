@@ -8,6 +8,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#FFF7FA',
     sidebarAccent: '#FCE7F1',
     header: '#FFFDFE',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#F1E4EA',
+    muted: '#FBF5F8',
     preview: ['#D45387', '#7C3AED', '#FCE7F1', '#FFF7FA'],
   },
   esteric_nude: {
@@ -19,6 +23,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#F8F1EC',
     sidebarAccent: '#EFE2D8',
     header: '#FCF8F5',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#E9DDD5',
+    muted: '#F7F0EB',
     preview: ['#A67C6B', '#D7B7A3', '#EFE2D8', '#FCF8F5'],
   },
   business_blue: {
@@ -30,6 +38,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#F2F6FC',
     sidebarAccent: '#DDEAF8',
     header: '#F8FAFD',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#DFE7F1',
+    muted: '#F3F6FA',
     preview: ['#2457A6', '#6EA8E6', '#DDEAF8', '#F8FAFD'],
   },
   classic_neutral: {
@@ -41,6 +53,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#F5F5F4',
     sidebarAccent: '#E7E5E4',
     header: '#FAFAF9',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#E7E5E4',
+    muted: '#F5F5F4',
     preview: ['#3F4650', '#8A9099', '#E7E5E4', '#FAFAF9'],
   },
   baby_pink: {
@@ -52,6 +68,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#FFF4F8',
     sidebarAccent: '#F9DFEA',
     header: '#FFF9FB',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#F0E1E8',
+    muted: '#FBF2F6',
     preview: ['#E47AA8', '#B99AE8', '#F9DFEA', '#FFF9FB'],
   },
   sage_natural: {
@@ -63,6 +83,10 @@ export const WORKSPACE_THEMES = {
     sidebar: '#F3F5EF',
     sidebarAccent: '#E2E8DA',
     header: '#FAFBF7',
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#E3E8DF',
+    muted: '#F3F5EF',
     preview: ['#71866B', '#B8A98C', '#E2E8DA', '#FAFBF7'],
   },
 };
@@ -76,6 +100,10 @@ export const CUSTOM_WORKSPACE_THEME = {
   sidebar: '#FFF7FA',
   sidebarAccent: '#FCE7F1',
   header: '#FFFDFE',
+  canvas: '#FFFFFF',
+  card: '#FFFFFF',
+  border: '#E9E5E7',
+  muted: '#F7F4F5',
   preview: ['#D45387', '#7C3AED', '#FFFFFF', '#E5E7EB'],
   custom: true,
 };
@@ -111,5 +139,9 @@ export function resolveWorkspaceTheme(key, primaryOverride, accentOverride) {
     sidebar: mixWithWhite(primary, 0.93),
     sidebarAccent: mixWithWhite(primary, 0.82),
     header: mixWithWhite(accent, 0.96),
+    canvas: '#FFFFFF',
+    card: '#FFFFFF',
+    border: mixWithWhite(primary, 0.88),
+    muted: mixWithWhite(primary, 0.95),
   };
 }
