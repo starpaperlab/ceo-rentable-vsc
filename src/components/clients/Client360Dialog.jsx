@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { BellRing, CalendarDays, Check, FileText, Mail, MessageCircle, Phone, Receipt, ShoppingBag, StickyNote, Trash2, Users, WalletCards, XCircle } from 'lucide-react';
+import { BellRing, CalendarClock, CalendarDays, Check, FileText, Mail, MessageCircle, Phone, Receipt, ShoppingBag, StickyNote, Trash2, Users, WalletCards, XCircle } from 'lucide-react';
 
 function sameClient(row = {}, client = {}) {
   if (!row || !client) return false;
@@ -136,12 +136,12 @@ export default function Client360Dialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="top-[env(safe-area-inset-top)] h-[calc(100dvh-env(safe-area-inset-top))] max-h-[calc(100dvh-env(safe-area-inset-top))] w-screen max-w-none translate-y-0 overflow-y-auto rounded-none p-0 sm:top-[50%] sm:h-auto sm:max-h-[88vh] sm:w-auto sm:max-w-4xl sm:translate-y-[-50%] sm:rounded-lg">
-        <div className="border-b px-5 py-5 sm:px-6">
+        <div className="border-b bg-muted/20 px-5 py-4 sm:px-6 sm:py-5">
           <DialogHeader>
-            <DialogTitle className="pr-8 text-xl">{client.name}</DialogTitle>
-            <DialogDescription>Vista 360° del cliente: relación comercial, documentos, pagos y actividad.</DialogDescription>
+            <DialogTitle className="pr-8 text-xl sm:text-2xl">{client.name}</DialogTitle>
+            <DialogDescription>Vista 360° del cliente · relación comercial, documentos, pagos y actividad.</DialogDescription>
           </DialogHeader>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {client.email ? <span>{client.email}</span> : null}
             {client.phone ? <span>· {client.phone}</span> : null}
             <Badge variant="outline">{client.status === 'vip' ? 'VIP' : client.status === 'recurring' ? 'Recurrente' : 'Nuevo'}</Badge>
@@ -156,26 +156,26 @@ export default function Client360Dialog({
 
         <div className="space-y-5 p-5 sm:p-6">
           <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-            <Card className="min-w-0 overflow-hidden p-3 sm:p-4">
+            <Card className="min-w-0 overflow-hidden border-border/60 bg-muted/10 p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Facturado</p>
               <p className="mt-1 text-xl font-bold">{formatMoney(view.totalInvoiced)}</p>
             </Card>
-            <Card className="p-3 sm:p-4">
+            <Card className="border-border/60 bg-muted/10 p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Cobrado</p>
               <p className="mt-1 text-xl font-bold text-green-600">{formatMoney(view.collected)}</p>
             </Card>
-            <Card className="p-3 sm:p-4">
+            <Card className="border-border/60 bg-muted/10 p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Saldo pendiente</p>
               <p className="mt-1 text-xl font-bold text-red-600">{formatMoney(view.balance)}</p>
             </Card>
-            <Card className="p-3 sm:p-4">
+            <Card className="border-border/60 bg-muted/10 p-3 sm:p-4">
               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Cotizaciones</p>
               <p className="mt-1 text-xl font-bold">{view.clientQuotes.length}</p>
             </Card>
           </div>
 
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[0.9fr_1.6fr]">
-            <Card className="min-w-0 overflow-hidden p-3 sm:p-4">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <Card className="min-w-0 overflow-hidden p-3 sm:p-4 lg:row-span-2">
               <p className="text-sm font-semibold">Ficha del cliente</p>
               <div className="mt-4 space-y-3 text-sm">
                 <div><p className="text-xs text-muted-foreground">Nombre</p><p className="font-medium">{client.name}</p></div>
@@ -188,6 +188,7 @@ export default function Client360Dialog({
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><CalendarClock className="h-4 w-4" /></div>
                       <p className="text-sm font-semibold">{client.next_follow_up_at ? 'Seguimiento programado' : 'Próximo seguimiento'}</p>
                       {client.next_follow_up_at ? <Badge className="border-0 bg-primary/10 text-primary">Activo</Badge> : null}
                     </div>
@@ -197,7 +198,7 @@ export default function Client360Dialog({
                 </div>
 
                 {canWrite ? (
-                  <div className="mt-3 grid w-full min-w-0 max-w-full gap-3 overflow-hidden rounded-2xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                  <div className="mt-3 grid w-full min-w-0 max-w-full gap-3 overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.03] p-3 sm:p-4">
                     <Input
                       className="box-border block w-full min-w-0 max-w-full"
                       style={{ minWidth: 0, width: '100%', maxWidth: '100%' }}
@@ -398,7 +399,7 @@ export default function Client360Dialog({
               </div>
             </Card>
 
-            <Card className="p-3 sm:p-4">
+            <Card className="p-3 sm:p-4 lg:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">Historial comercial</p>
@@ -409,12 +410,12 @@ export default function Client360Dialog({
               {view.timeline.length === 0 ? (
                 <div className="mt-4 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Todavía no hay actividad relacionada con este cliente.</div>
               ) : (
-                <div className="mt-4 space-y-1">
+                <div className="relative mt-4 space-y-1 before:absolute before:bottom-4 before:left-[25px] before:top-4 before:w-px before:bg-border/70">
                   {view.timeline.slice(0, 30).map((item) => {
                     const Icon = item.icon;
                     return (
-                      <div key={item.id} className="flex gap-3 rounded-xl px-2 py-3 hover:bg-muted/35">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div>
+                      <div key={item.id} className="relative flex gap-3 rounded-xl px-2 py-3 transition hover:bg-muted/35">
+                        <div className={`z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${item.type==='Pago'?'border-emerald-200 bg-emerald-50 text-emerald-700':item.type==='Factura'?'border-pink-200 bg-pink-50 text-pink-700':item.type==='Pedido'?'border-violet-200 bg-violet-50 text-violet-700':item.type==='Cotización'?'border-amber-200 bg-amber-50 text-amber-700':'border-primary/20 bg-primary/10 text-primary'}`}><Icon className="h-4 w-4" /></div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="truncate text-sm font-semibold">{item.title}</p>
