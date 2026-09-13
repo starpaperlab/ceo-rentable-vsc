@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2, Eye } from 'lucide-react';
 import AgendaCalendar from '@/components/agenda/AgendaCalendar';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import format from 'date-fns/format';
 import { es } from 'date-fns/locale';
 import {
   deleteOwnedRowById,

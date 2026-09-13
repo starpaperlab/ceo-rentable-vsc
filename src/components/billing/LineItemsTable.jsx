@@ -30,6 +30,9 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       product_type: item.product_type || 'fisico',
       sku: item.sku || null,
       category: item.category || null,
+      unit: item.unit || 'unidad',
+      tax_pct: item.tax_pct ?? 0,
+      currency: item.currency || null,
     }));
 
     const normalizedFromProducts = (products || []).map((item) => ({
@@ -44,6 +47,9 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       product_type: item.product_type || 'fisico',
       sku: item.sku || null,
       category: item.category || null,
+      unit: item.unit || 'unidad',
+      tax_pct: item.tax_pct ?? 0,
+      currency: item.currency || null,
     }));
 
     const normalizedLocal = (localCreatedProducts || []).map((item) => ({
@@ -58,6 +64,9 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       product_type: item.product_type || 'fisico',
       sku: item.sku || null,
       category: item.category || null,
+      unit: item.unit || 'unidad',
+      tax_pct: item.tax_pct ?? 0,
+      currency: item.currency || null,
     }));
 
     const map = new Map();
@@ -105,6 +114,9 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       newItem.product_type = invItem.product_type || null;
       newItem.sku = invItem.sku || null;
       newItem.category = invItem.category || null;
+      newItem.unit = invItem.unit || 'unidad';
+      newItem.tax_pct = Number(invItem.tax_pct || 0);
+      newItem.currency = invItem.currency || null;
       if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;
       if (invItem.sale_price != null) {
         newItem.unit_price = invItem.sale_price;

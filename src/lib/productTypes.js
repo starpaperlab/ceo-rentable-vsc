@@ -2,6 +2,7 @@ export const PRODUCT_TYPES = {
   PHYSICAL: 'physical',
   DIGITAL: 'digital',
   SERVICE: 'service',
+  BUNDLE: 'bundle',
 };
 
 const PRODUCT_TYPE_ALIASES = {
@@ -15,12 +16,16 @@ const PRODUCT_TYPE_ALIASES = {
   producto_digital: PRODUCT_TYPES.DIGITAL,
   [PRODUCT_TYPES.SERVICE]: PRODUCT_TYPES.SERVICE,
   servicio: PRODUCT_TYPES.SERVICE,
+  [PRODUCT_TYPES.BUNDLE]: PRODUCT_TYPES.BUNDLE,
+  combo: PRODUCT_TYPES.BUNDLE,
+  paquete: PRODUCT_TYPES.BUNDLE,
 };
 
 const PRODUCT_TYPE_DB_MAP = {
   [PRODUCT_TYPES.PHYSICAL]: 'fisico',
   [PRODUCT_TYPES.DIGITAL]: 'digital',
   [PRODUCT_TYPES.SERVICE]: 'servicio',
+  [PRODUCT_TYPES.BUNDLE]: 'combo',
 };
 
 export function normalizeProductType(value) {
@@ -44,6 +49,10 @@ export function isServiceProductType(value) {
   return normalizeProductType(value) === PRODUCT_TYPES.SERVICE;
 }
 
+export function isBundleProductType(value) {
+  return normalizeProductType(value) === PRODUCT_TYPES.BUNDLE;
+}
+
 export function getProductTypeLabel(value, { long = false } = {}) {
   const type = normalizeProductType(value);
   if (type === PRODUCT_TYPES.DIGITAL) {
@@ -51,6 +60,9 @@ export function getProductTypeLabel(value, { long = false } = {}) {
   }
   if (type === PRODUCT_TYPES.SERVICE) {
     return 'Servicio';
+  }
+  if (type === PRODUCT_TYPES.BUNDLE) {
+    return 'Combo / paquete';
   }
   return long ? 'Producto físico' : 'Físico';
 }
