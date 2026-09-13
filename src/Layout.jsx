@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -24,6 +24,26 @@ function hexToHslToken(hex){const value=`${hex||''}`.trim().replace('#','');if(!
 export default function Layout({children,currentPageName}){
  const [sidebarOpen,setSidebarOpen]=useState(false); const {userProfile,logout,isAdmin}=useAuth(); const {workspaces,activeWorkspace,setActiveWorkspaceId,isLegacyWorkspaceMode,hasModuleAccess}=useWorkspace();
  const userEmail=userProfile?.email||''; const userName=userProfile?.full_name||userEmail||'Usuario'; const legacyBusinessName=userProfile?.business_name||userProfile?.company_name||userProfile?.business?.name||'Mi empresa'; const businessName=activeWorkspace?.name||legacyBusinessName; const planLabel=userProfile?.plan?`Plan ${userProfile.plan}`:userProfile?.has_access?'Acceso activo':'Sin plan activo'; const userInitial=`${userName||userEmail||'U'}`.trim()[0]?.toUpperCase()||'U'; const adminAccess=isAdmin?.()||userProfile?.plan==='admin'; const canSwitchWorkspace=!isLegacyWorkspaceMode&&workspaces.filter(w=>w.id).length>1; const businessLogo=activeWorkspace?.logo_url||'/brand/isotipo.png'; const themeKey=activeWorkspace?.settings?.ui_theme||DEFAULT_WORKSPACE_THEME; const resolvedTheme=resolveWorkspaceTheme(themeKey,activeWorkspace?.brand_primary_color,activeWorkspace?.brand_accent_color); const primaryToken=hexToHslToken(activeWorkspace?.brand_primary_color||resolvedTheme.primary); const accentToken=hexToHslToken(activeWorkspace?.brand_accent_color||resolvedTheme.accent); const sidebarToken=hexToHslToken(resolvedTheme.sidebar); const sidebarAccentToken=hexToHslToken(resolvedTheme.sidebarAccent); const headerToken=hexToHslToken(resolvedTheme.header); const canvasToken=hexToHslToken(resolvedTheme.canvas||'#FFFFFF'); const cardToken=hexToHslToken(resolvedTheme.card||'#FFFFFF'); const borderToken=hexToHslToken(resolvedTheme.border||'#E5E7EB'); const mutedToken=hexToHslToken(resolvedTheme.muted||'#F5F5F5'); const logoSize=activeWorkspace?.settings?.logo_size||'medium'; const logoClass=logoSize==='large'?'h-14 w-14':logoSize==='small'?'h-8 w-8':'h-11 w-11'; const workspaceThemeStyle={...(primaryToken?{'--primary':primaryToken,'--ring':primaryToken,'--chart-1':primaryToken,'--sidebar-primary':primaryToken,'--sidebar-ring':primaryToken}:{}),...(accentToken?{'--accent':accentToken,'--chart-3':accentToken}: {}),...(sidebarToken?{'--sidebar-background':sidebarToken}:{}),...(sidebarAccentToken?{'--sidebar-accent':sidebarAccentToken}:{}),...(headerToken?{'--workspace-header':headerToken}:{}),...(canvasToken?{'--workspace-canvas':canvasToken,'--background':canvasToken}:{}),...(cardToken?{'--card':cardToken,'--popover':cardToken}:{}),...(borderToken?{'--border':borderToken,'--input':borderToken,'--sidebar-border':borderToken}:{}),...(mutedToken?{'--muted':mutedToken}:{})};
+ useEffect(()=>{
+  const root=document.documentElement;
+  const portalTheme={
+    '--primary':primaryToken,
+    '--ring':primaryToken,
+    '--chart-1':primaryToken,
+    '--accent':accentToken,
+    '--chart-3':accentToken,
+  };
+  const previous={};
+  Object.entries(portalTheme).forEach(([key,value])=>{
+    if(!value)return;
+    previous[key]=root.style.getPropertyValue(key);
+    root.style.setProperty(key,value);
+  });
+  return()=>Object.entries(previous).forEach(([key,value])=>{
+    if(value)root.style.setProperty(key,value);
+    else root.style.removeProperty(key);
+  });
+ },[primaryToken,accentToken]);
  const handleLogout=async()=>{setSidebarOpen(false);await logout();};
  const visibleSections=NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>hasModuleAccess(item.module))})).filter(section=>section.items.length);
  const renderNav=(close=false)=>visibleSections.map(section=><div key={section.label} className="mb-4"><p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">{section.label}</p><div className="space-y-1">{section.items.map(item=>{const active=currentPageName===item.page;const to=item.directPath||createPageUrl(item.page);return <Link key={`${section.label}-${item.page}`} to={to} onClick={close?()=>setSidebarOpen(false):undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${active?'bg-sidebar-accent text-primary':'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'}`}><item.icon className="h-4 w-4 shrink-0"/><span className="min-w-0 flex-1">{item.name}</span>{active&&!close&&<ChevronRight className="h-3.5 w-3.5 shrink-0"/>}</Link>})}</div></div>);
