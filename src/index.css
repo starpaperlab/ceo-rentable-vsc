@@ -115,3 +115,20 @@
   background-color: hsl(var(--background)) !important;
   color: hsl(var(--foreground));
 }
+
+
+/* Workspace presets control the light interface surfaces. In dark mode,
+   keep the global dark surface system while preserving brand primary/accent. */
+.dark .workspace-shell {
+  --background: 330 15% 8% !important;
+  --workspace-canvas: 330 15% 8% !important;
+  --card: 330 12% 12% !important;
+  --popover: 330 12% 12% !important;
+  --muted: 330 10% 16% !important;
+  --border: 330 10% 18% !important;
+  --input: 330 10% 18% !important;
+  --sidebar-background: 330 12% 10% !important;
+  --sidebar-accent: 330 15% 15% !important;
+  --sidebar-border: 330 10% 18% !important;
+  --workspace-header: 330 15% 8% !important;
+}
