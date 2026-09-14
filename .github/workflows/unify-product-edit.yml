@@ -14,20 +14,17 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('src/pages/Products.jsx')
           s = p.read_text()
-          old = '''                          <Button variant="outline" size="sm" className="h-8" onClick={() => openEditProduct(product)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Básico
-                          </Button>
-                          <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
-                            <Calculator className="h-3.5 w-3.5 mr-1.5" /> Costos
-                          </Button>'''
-          new = '''                          <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
+          pattern = re.compile(r'''\s*<Button variant="outline" size="sm" className="h-8" onClick=\{\(\) => openEditProduct\(product\)\}>\s*<Pencil[^>]+/>\s*Básico\s*</Button>\s*<Button variant="outline" size="sm" className="h-8" onClick=\{\(\) => setCatalogDialog\(\{ mode: 'edit', item: product \}\)\}>\s*<Calculator[^>]+/>\s*Costos\s*</Button>''', re.S)
+          match = pattern.search(s)
+          if not match:
+            raise SystemExit('Expected product action block not found')
+          replacement = '''\n                          <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
                             <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
                           </Button>'''
-          if old not in s:
-            raise SystemExit('Expected product action block not found')
-          s = s.replace(old, new, 1)
+          s = s[:match.start()] + replacement + s[match.end():]
           p.write_text(s)
           PY
       - name: Remove temporary workflow
