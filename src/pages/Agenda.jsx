@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
@@ -59,6 +59,29 @@ function sortAppointments(rows = []) {
     const bDate = `${b.date || ''} ${b.time || '00:00'}`;
     return bDate.localeCompare(aDate);
   });
+}
+
+function reminderToCalendarEvent(reminder, clientsById = {}) {
+  const due = new Date(reminder.due_at);
+  if (Number.isNaN(due.getTime())) return null;
+  const date = [
+    due.getFullYear(),
+    String(due.getMonth() + 1).padStart(2, '0'),
+    String(due.getDate()).padStart(2, '0'),
+  ].join('-');
+  const time = `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`;
+  const client = reminder.client_id ? clientsById[reminder.client_id] : null;
+  return {
+    id: `reminder-${reminder.id}`,
+    _kind: 'collection',
+    _reminder: reminder,
+    client_name: client?.name || 'Cobranza',
+    service_type: reminder.title || 'Seguimiento de cobro',
+    date,
+    time,
+    status: 'cobro',
+    notes: reminder.notes || null,
+  };
 }
 
 export default function Agenda() {
@@ -255,6 +278,33 @@ export default function Agenda() {
     enabled,
   });
 
+  const { data: reminders = [], isLoading: loadingReminders } = useQuery({
+    queryKey: ['agenda-reminders', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'reminders', orderBy: 'due_at', ascending: true }),
+    enabled,
+  });
+
+  const clientsById = useMemo(
+    () => clients.reduce((map, client) => {
+      if (client?.id) map[client.id] = client;
+      return map;
+    }, {}),
+    [clients]
+  );
+
+  const collectionEvents = useMemo(
+    () => reminders
+      .filter((reminder) => reminder.source_type === 'invoice' && reminder.status === 'pending')
+      .map((reminder) => reminderToCalendarEvent(reminder, clientsById))
+      .filter(Boolean),
+    [clientsById, reminders]
+  );
+
+  const calendarItems = useMemo(
+    () => [...appointments, ...collectionEvents],
+    [appointments, collectionEvents]
+  );
+
   const saveMutation = useMutation({
     mutationFn: async (input) => {
       if (!writable) throw new Error('Tu acceso es de solo lectura.');
@@ -376,7 +426,7 @@ export default function Agenda() {
     cancelado: 'bg-red-100 text-red-700',
   };
 
-  if (isLoading) {
+  if (isLoading || loadingReminders) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -501,7 +551,7 @@ export default function Agenda() {
         </Card>
       ) : null}
 
-      <AgendaCalendar appointments={appointments} onEdit={writable ? handleEdit : undefined} />
+      <AgendaCalendar appointments={calendarItems} onEdit={writable ? handleEdit : undefined} />
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
