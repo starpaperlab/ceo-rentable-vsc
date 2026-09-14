@@ -278,6 +278,14 @@ function CatalogDialog({
 }) {
   const [form, setForm] = useState(() => buildCatalogForm(initial || {}, costComponents, bundleItems, currency))
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+  const existingCatalogSkus = products.map((product) => product?.sku).filter(Boolean)
+  const updateName = (value) => {
+    setForm((current) => ({
+      ...current,
+      name: value,
+      sku: initial?.id ? current.sku : (value.trim() ? generateUniqueSku(value, existingCatalogSkus) : ''),
+    }))
+  }
   const cost = getCatalogCost(form, products)
   const profit = calculateProfit(form.sale_price, cost)
   const margin = calculateMargin(form.sale_price, cost)
@@ -351,7 +359,7 @@ function CatalogDialog({
           <section className="space-y-3">
             <h3 className="font-semibold">Información básica</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div><Label>Nombre *</Label><Input value={form.name} onChange={(event) => update('name', event.target.value)} /></div>
+              <div><Label>Nombre *</Label><Input value={form.name} onChange={(event) => updateName(event.target.value)} /></div>
               <div>
                 <Label>Tipo</Label>
                 <Select value={form.product_type} onValueChange={(value) => update('product_type', value)}>
@@ -359,7 +367,11 @@ function CatalogDialog({
                   <SelectContent>{PRODUCT_TYPE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>SKU / código</Label><Input value={form.sku} onChange={(event) => update('sku', event.target.value)} /></div>
+              <div>
+                <Label>SKU / código</Label>
+                <Input value={form.sku} readOnly={!initial?.id} onChange={(event) => update('sku', event.target.value)} className={!initial?.id ? 'bg-muted/40' : ''} />
+                {!initial?.id ? <p className="mt-1 text-[11px] text-muted-foreground">Se genera automáticamente al escribir el nombre.</p> : null}
+              </div>
               <div><Label>Categoría</Label><Input value={form.category} onChange={(event) => update('category', event.target.value)} /></div>
               <div><Label>Unidad</Label><Input value={form.unit} onChange={(event) => update('unit', event.target.value)} /></div>
               <ProductImageUpload
