@@ -374,9 +374,9 @@ function CatalogDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4">
-      <Card className="flex h-[calc(100dvh-env(safe-area-inset-top))] w-full max-w-4xl flex-col overflow-hidden rounded-none border-0 bg-background sm:h-auto sm:max-h-[92dvh] sm:rounded-xl sm:border">
-        <div className="sticky top-0 z-20 flex shrink-0 items-start justify-between gap-4 border-b bg-background px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6 sm:pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(3.5rem,env(safe-area-inset-top))] sm:p-4">
+      <Card className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-xl">
+        <div className="sticky top-0 z-20 flex shrink-0 items-start justify-between gap-4 border-b bg-background p-4 sm:p-6 sm:pb-4">
           <div>
             <h2 className="text-xl font-bold">{readOnly ? 'Detalle' : initial ? 'Costos y rentabilidad' : 'Crear producto o servicio'}</h2>
             <p className="text-sm text-muted-foreground">Los cálculos se actualizan automáticamente.</p>
@@ -516,7 +516,7 @@ function CatalogDialog({
           </section>
         </fieldset>
 
-        <div className="sticky bottom-0 z-20 flex shrink-0 justify-end gap-2 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:p-6 sm:pt-4">
+        <div className="sticky bottom-0 z-20 flex shrink-0 justify-end gap-2 border-t bg-background p-4 sm:p-6 sm:pt-4">
           <Button variant="outline" onClick={onClose}>{readOnly ? 'Cerrar' : 'Cancelar'}</Button>
           {!readOnly ? <Button onClick={submit} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{initial ? 'Guardar cambios' : 'Crear ítem'}</Button> : null}
         </div>
