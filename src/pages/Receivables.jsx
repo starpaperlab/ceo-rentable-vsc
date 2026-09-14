@@ -67,6 +67,9 @@ class ReceivablesErrorBoundary extends Component {
               <p className="mt-1 text-sm text-red-700">
                 La pantalla encontró un error inesperado. Tus facturas y abonos no se han borrado.
               </p>
+              <p className="mt-3 break-words rounded-lg bg-white/70 p-2 font-mono text-xs text-red-800">
+                {this.state.error?.message || 'Error de render no identificado'}
+              </p>
               <Button className="mt-4" variant="outline" onClick={() => window.location.reload()}>
                 <RefreshCw className="mr-2 h-4 w-4" />Recargar
               </Button>
@@ -74,6 +77,38 @@ class ReceivablesErrorBoundary extends Component {
           </div>
         </Card>
       </div>
+    );
+  }
+}
+
+class ReceivablesSectionBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error(`Receivables section failed: ${this.props.label}`, error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Card className="border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-900">{this.props.label} no pudo mostrarse</p>
+            <p className="mt-1 break-words font-mono text-xs text-amber-800">
+              {this.state.error?.message || 'Error no identificado'}
+            </p>
+          </div>
+        </div>
+      </Card>
     );
   }
 }
@@ -375,22 +410,29 @@ function ReceivablesPage() {
         </Card>
       ) : null}
 
-      <ReceivablesSummary summary={summary} />
-      <ReceivablesFilters filters={filters} onChange={setFilters} onReset={() => setFilters(INITIAL_FILTERS)} />
+      <ReceivablesSectionBoundary label="Resumen de Cuentas por Cobrar">
+        <ReceivablesSummary summary={summary} />
+      </ReceivablesSectionBoundary>
 
-      <ReceivablesTable
-        rows={sortedFilteredRows}
-        clientBalances={summary.clientBalances}
-        onViewInvoice={(row) => {
-          setAutoOpenPaymentDialog(false);
-          setPreviewRow(row);
-        }}
-        onRegisterPayment={(row) => {
-          setAutoOpenPaymentDialog(true);
-          setPreviewRow(row);
-        }}
-        onScheduleCollection={(row) => setCollectionRow(row)}
-      />
+      <ReceivablesSectionBoundary label="Filtros de Cuentas por Cobrar">
+        <ReceivablesFilters filters={filters} onChange={setFilters} onReset={() => setFilters(INITIAL_FILTERS)} />
+      </ReceivablesSectionBoundary>
+
+      <ReceivablesSectionBoundary label="Listado de Cuentas por Cobrar">
+        <ReceivablesTable
+          rows={sortedFilteredRows}
+          clientBalances={summary.clientBalances}
+          onViewInvoice={(row) => {
+            setAutoOpenPaymentDialog(false);
+            setPreviewRow(row);
+          }}
+          onRegisterPayment={(row) => {
+            setAutoOpenPaymentDialog(true);
+            setPreviewRow(row);
+          }}
+          onScheduleCollection={(row) => setCollectionRow(row)}
+        />
+      </ReceivablesSectionBoundary>
 
       {previewRow ? (
         <PreviewModal
