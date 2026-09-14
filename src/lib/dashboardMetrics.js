@@ -119,12 +119,18 @@ function getPeriodSnapshot({ invoices, paymentsByInvoice, monthlyRecords, monthK
   const sales = getPeriodSales(invoices, monthKey);
   const monthlyRecord = selectMonthlyRecord(monthlyRecords, monthKey);
   const hasRegisteredExpenses = monthlyRecord && Number.isFinite(Number(monthlyRecord.expenses));
+  const expenseSource = hasRegisteredExpenses
+    ? 'registered'
+    : sales.directCosts > MONEY_EPSILON
+      ? 'estimated-direct-costs'
+      : 'missing';
   const expenses = hasRegisteredExpenses
     ? roundMoney(Number(monthlyRecord.expenses || 0))
-    : sales.directCosts;
-  const expenseSource = hasRegisteredExpenses ? 'registered' : 'estimated-direct-costs';
-  const profit = roundMoney(sales.billed - expenses);
-  const margin = sales.billed > MONEY_EPSILON ? (profit / sales.billed) * 100 : 0;
+    : sales.directCosts > MONEY_EPSILON
+      ? sales.directCosts
+      : null;
+  const profit = expenses == null ? null : roundMoney(sales.billed - expenses);
+  const margin = expenses != null && sales.billed > MONEY_EPSILON ? (profit / sales.billed) * 100 : null;
   const collected = getCollectionsForMonth({ invoices, paymentsByInvoice, monthKey });
 
   return {
@@ -217,14 +223,14 @@ export function buildDashboardFinancials({
     growth: {
       billed: percentChange(current.billed, previous.billed),
       collected: percentChange(current.collected, previous.collected),
-      expenses: percentChange(current.expenses, previous.expenses),
-      profit: percentChange(current.profit, previous.profit),
-      marginPoints: current.margin - previous.margin,
+      expenses: current.expenses == null || previous.expenses == null ? null : percentChange(current.expenses, previous.expenses),
+      profit: current.profit == null || previous.profit == null ? null : percentChange(current.profit, previous.profit),
+      marginPoints: current.margin == null || previous.margin == null ? null : current.margin - previous.margin,
     },
     hasFinancialData:
       current.billed > MONEY_EPSILON
       || current.collected > MONEY_EPSILON
-      || current.expenses > MONEY_EPSILON
+      || Number(current.expenses || 0) > MONEY_EPSILON
       || receivables.totalBilled > MONEY_EPSILON,
   };
 }
@@ -286,16 +292,20 @@ export function buildCeoScore({
     };
   }
 
-  const margin = Number(current.margin || 0);
-  const marginScore = clampScore((margin / 40) * 100);
+  const hasMargin = current.margin != null;
+  const margin = hasMargin ? Number(current.margin) : null;
+  const marginScore = hasMargin ? clampScore((margin / 40) * 100) : null;
 
   const growthValue = Number(financials?.growth?.billed || 0);
   const growthScore = clampScore(50 + Math.max(-50, Math.min(50, growthValue)));
 
   const billed = Number(current.billed || 0);
-  const expenses = Number(current.expenses || 0);
-  const expenseRatio = billed > MONEY_EPSILON ? expenses / billed : expenses > MONEY_EPSILON ? 1 : 0;
-  const expenseControlScore = clampScore(100 - (expenseRatio * 100));
+  const hasExpenses = current.expenses != null;
+  const expenses = hasExpenses ? Number(current.expenses || 0) : null;
+  const expenseRatio = hasExpenses
+    ? (billed > MONEY_EPSILON ? expenses / billed : expenses > MONEY_EPSILON ? 1 : 0)
+    : null;
+  const expenseControlScore = expenseRatio == null ? null : clampScore(100 - (expenseRatio * 100));
 
   const collected = Number(receivables.totalCollected || 0);
   const receivable = Number(receivables.totalReceivable || 0);
@@ -314,19 +324,22 @@ export function buildCeoScore({
 
   const operationalScore = clampScore(100 - (Math.max(0, Number(overdueOperationalItems || 0)) * 15));
 
-  const factors = [
-    { key: 'margin', label: 'Rentabilidad y margen', score: marginScore, weight: 0.25 },
-    { key: 'growth', label: 'Crecimiento de ingresos', score: growthScore, weight: 0.15 },
-    { key: 'expenses', label: 'Control de gastos', score: expenseControlScore, weight: 0.15 },
-    { key: 'collections', label: 'Liquidez y cobranza', score: collectionScore, weight: 0.20 },
-    { key: 'products', label: 'Rentabilidad de productos', score: productScore, weight: 0.15 },
-    { key: 'operations', label: 'Cumplimiento operativo', score: operationalScore, weight: 0.10 },
-  ].map((factor) => ({
-    ...factor,
-    weightedPoints: Math.round(factor.score * factor.weight),
-  }));
+  const allFactors = [
+    { key: 'margin', label: 'Rentabilidad y margen', score: marginScore, weight: 0.25, available: marginScore != null },
+    { key: 'growth', label: 'Crecimiento de ingresos', score: growthScore, weight: 0.15, available: true },
+    { key: 'expenses', label: 'Control de gastos', score: expenseControlScore, weight: 0.15, available: expenseControlScore != null },
+    { key: 'collections', label: 'Liquidez y cobranza', score: collectionScore, weight: 0.20, available: true },
+    { key: 'products', label: 'Rentabilidad de productos', score: productScore, weight: 0.15, available: true },
+    { key: 'operations', label: 'Cumplimiento operativo', score: operationalScore, weight: 0.10, available: true },
+  ];
 
-  const score = clampScore(factors.reduce((sum, factor) => sum + (factor.score * factor.weight), 0));
+  const factors = allFactors.filter((factor) => factor.available);
+  const availableWeight = factors.reduce((sum, factor) => sum + factor.weight, 0);
+  const score = clampScore(
+    availableWeight > 0
+      ? factors.reduce((sum, factor) => sum + (factor.score * factor.weight), 0) / availableWeight
+      : 0
+  );
   const status = score < 41 ? 'Crítico' : score < 71 ? 'Inestable' : 'Saludable';
 
   const positiveFactors = [...factors]
@@ -341,9 +354,9 @@ export function buildCeoScore({
 
   const actions = [];
   if (overdueAmount > MONEY_EPSILON) actions.push('Prioriza el cobro de facturas vencidas.');
-  if (margin < 20 && billed > MONEY_EPSILON) actions.push('Revisa costos y precios para recuperar margen.');
+  if (margin != null && margin < 20 && billed > MONEY_EPSILON) actions.push('Revisa costos y precios para recuperar margen.');
   if (growthValue < -10) actions.push('Activa seguimiento comercial para recuperar ventas del mes.');
-  if (expenseRatio > 0.8 && billed > MONEY_EPSILON) actions.push('Revisa gastos: están consumiendo más del 80% de lo facturado.');
+  if (expenseRatio != null && expenseRatio > 0.8 && billed > MONEY_EPSILON) actions.push('Revisa gastos: están consumiendo más del 80% de lo facturado.');
   if (lossProducts.length > 0) actions.push('Corrige productos que se están vendiendo con pérdida.');
   else if (lowMarginProducts.length > 0) actions.push('Ajusta los productos con margen menor al 20%.');
   if (overdueOperationalItems > 0) actions.push('Completa o reprograma seguimientos y actividades vencidas.');
