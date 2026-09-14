@@ -48,6 +48,10 @@ export function normalizeOrderItems(rawItems = []) {
       const unitPrice = Number(item?.unit_price ?? item?.sale_price ?? 0);
       const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
       const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
+      const unitCostSnapshot = Number(item?.unit_cost_snapshot ?? item?.costo_unitario ?? 0);
+      const safeUnitCostSnapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;
+      const unitProfitSnapshot = safeUnitPrice - safeUnitCostSnapshot;
+      const marginPctSnapshot = safeUnitPrice > 0 ? (unitProfitSnapshot / safeUnitPrice) * 100 : 0;
 
       return {
         product_id: item?.product_id || item?.productId || null,
@@ -62,6 +66,9 @@ export function normalizeOrderItems(rawItems = []) {
         currency: item?.currency || null,
         quantity: safeQuantity,
         unit_price: safeUnitPrice,
+        unit_cost_snapshot: safeUnitCostSnapshot,
+        unit_profit_snapshot: unitProfitSnapshot,
+        margin_pct_snapshot: marginPctSnapshot,
         total: safeQuantity * safeUnitPrice,
         sort_order: Number.isFinite(Number(item?.sort_order)) ? Number(item.sort_order) : index,
       };
@@ -154,6 +161,9 @@ export function buildInvoiceFromOrder({ order, items, invoiceNumber }) {
     tax_pct: Number(item.tax_pct || 0),
     currency: item.currency || null,
     unit_price: item.unit_price,
+    unit_cost_snapshot: item.unit_cost_snapshot,
+    unit_profit_snapshot: item.unit_profit_snapshot,
+    margin_pct_snapshot: item.margin_pct_snapshot,
     quantity: item.quantity,
     total: item.total,
   }));

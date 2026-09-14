@@ -33,6 +33,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       unit: item.unit || 'unidad',
       tax_pct: item.tax_pct ?? 0,
       currency: item.currency || null,
+      costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
+      margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
     }));
 
     const normalizedFromProducts = (products || []).map((item) => ({
@@ -50,6 +52,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       unit: item.unit || 'unidad',
       tax_pct: item.tax_pct ?? 0,
       currency: item.currency || null,
+      costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
+      margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
     }));
 
     const normalizedLocal = (localCreatedProducts || []).map((item) => ({
@@ -67,6 +71,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       unit: item.unit || 'unidad',
       tax_pct: item.tax_pct ?? 0,
       currency: item.currency || null,
+      costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
+      margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
     }));
 
     const map = new Map();
@@ -99,7 +105,12 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       const newItem = { ...item, [field]: rawValue };
       const price = field === 'unit_price' ? parseFloat(rawValue) || 0 : parseFloat(item.unit_price) || 0;
       const qty = field === 'quantity' ? parseFloat(rawValue) || 0 : parseFloat(item.quantity) || 0;
+      const costSnapshot = Number(item.unit_cost_snapshot ?? item.costo_unitario ?? 0);
+      const profitSnapshot = price - costSnapshot;
       newItem.total = price * qty;
+      newItem.unit_cost_snapshot = Number.isFinite(costSnapshot) ? costSnapshot : 0;
+      newItem.unit_profit_snapshot = Number.isFinite(profitSnapshot) ? profitSnapshot : 0;
+      newItem.margin_pct_snapshot = price > 0 ? (profitSnapshot / price) * 100 : 0;
       return newItem;
     });
     onChange(updated);
@@ -117,6 +128,12 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       newItem.unit = invItem.unit || 'unidad';
       newItem.tax_pct = Number(invItem.tax_pct || 0);
       newItem.currency = invItem.currency || null;
+      const unitCostSnapshot = Number(invItem.costo_unitario ?? invItem.unit_cost_snapshot ?? 0);
+      const unitPriceSnapshot = Number(invItem.sale_price ?? newItem.unit_price ?? 0);
+      const unitProfitSnapshot = unitPriceSnapshot - unitCostSnapshot;
+      newItem.unit_cost_snapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;
+      newItem.unit_profit_snapshot = Number.isFinite(unitProfitSnapshot) ? unitProfitSnapshot : 0;
+      newItem.margin_pct_snapshot = unitPriceSnapshot > 0 ? (unitProfitSnapshot / unitPriceSnapshot) * 100 : 0;
       if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;
       if (invItem.sale_price != null) {
         newItem.unit_price = invItem.sale_price;
@@ -212,6 +229,9 @@ export default function LineItemsTable({ items, onChange, products = [], invento
               product_type: newItem.product_type || 'fisico',
               sku: newItem.sku || null,
               category: newItem.category || null,
+              costo_unitario: Number(newItem.costo_unitario ?? newItem.unit_cost_snapshot ?? 0),
+              tax_pct: Number(newItem.tax_pct || 0),
+              currency: newItem.currency || null,
             });
             setCreateModal(null);
           }}
