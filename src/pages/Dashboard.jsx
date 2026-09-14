@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -31,7 +31,7 @@ import {
 } from 'recharts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
-import { buildCeoScore, buildDashboardFinancials, buildSixMonthTrend, normalizeInvoiceTotal } from '@/lib/dashboardMetrics';
+import { buildCeoScore, buildDashboardFinancials, buildDashboardOperations, buildSixMonthTrend, buildTopProducts, normalizeInvoiceTotal } from '@/lib/dashboardMetrics';
 import { groupPaymentsByInvoice, getInvoicePaymentSummary } from '@/lib/invoicePayments';
 
 function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo') {
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const { user, userProfile } = useAuth();
   const { activeWorkspace, enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
   const userName = (userProfile?.full_name || user?.email || 'CEO').split(' ')[0];
+  const [topProductCriterion, setTopProductCriterion] = useState('sales');
 
   const { data: products = [], isLoading: loadingProducts } = useQuery({
     queryKey: ['dashboard-products', ...contextQueryKey],
@@ -119,6 +120,30 @@ export default function Dashboard() {
     enabled,
   });
 
+  const { data: quotes = [] } = useQuery({
+    queryKey: ['dashboard-quotes', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'quotes', orderBy: 'date', ascending: false }),
+    enabled,
+  });
+
+  const { data: orders = [] } = useQuery({
+    queryKey: ['dashboard-orders', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'orders', orderBy: 'created_at', ascending: false }),
+    enabled,
+  });
+
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['dashboard-order-items', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'order_items', orderBy: 'created_at', ascending: false }),
+    enabled,
+  });
+
+  const { data: orderStatuses = [] } = useQuery({
+    queryKey: ['dashboard-order-statuses', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'order_statuses', orderBy: 'sort_order', ascending: true }),
+    enabled,
+  });
+
   const paymentsByInvoice = useMemo(
     () => groupPaymentsByInvoice(invoicePayments),
     [invoicePayments]
@@ -162,11 +187,19 @@ export default function Dashboard() {
   );
 
   const topProducts = useMemo(
-    () => [...products]
-      .filter((item) => (item.status || 'active') !== 'inactive')
-      .sort((a, b) => Number(b.margin_pct || 0) - Number(a.margin_pct || 0))
-      .slice(0, 5),
-    [products]
+    () => buildTopProducts({
+      products,
+      invoices,
+      orders,
+      orderItems,
+      criterion: topProductCriterion,
+    }),
+    [invoices, orderItems, orders, products, topProductCriterion]
+  );
+
+  const operations = useMemo(
+    () => buildDashboardOperations({ quotes, orders, orderStatuses }),
+    [orderStatuses, orders, quotes]
   );
 
   const topClients = useMemo(() => {
@@ -226,8 +259,10 @@ export default function Dashboard() {
     const items = [
       { label: 'Tienes productos registrados', done: products.length > 0 },
       { label: 'Registraste una venta hoy', done: salesToday },
-      { label: 'Sin facturas pendientes', done: pendingInvoices.length === 0 },
-      { label: 'Sin alertas pendientes', done: fugaProducts === 0 },
+      { label: 'Sin facturas vencidas', done: financials.receivables.overdueInvoices === 0 },
+      { label: 'Sin productos en fuga', done: fugaProducts === 0 },
+      { label: 'Sin cotizaciones pendientes', done: operations.pendingQuotesCount === 0 },
+      { label: 'Sin entregas próximas pendientes', done: operations.upcomingOrdersCount === 0 },
     ];
 
     return {
@@ -235,7 +270,7 @@ export default function Dashboard() {
       doneCount: items.filter((item) => item.done).length,
       totalCount: items.length,
     };
-  }, [products, invoices, pendingInvoices, fugaProducts]);
+  }, [financials.receivables.overdueInvoices, fugaProducts, invoices, operations.pendingQuotesCount, operations.upcomingOrdersCount, products]);
 
   const dailySummary = useMemo(() => {
     const now = new Date();
@@ -296,20 +331,38 @@ export default function Dashboard() {
         id: `invoice-${invoice.id}`,
         icon: CircleDollarSign,
         title: invoice.client_name || invoice.invoice_number || 'Factura vencida',
-        detail: `${invoice.invoice_number || 'Factura'} · ${formatMoney(normalizeInvoiceTotal(invoice))}`,
+        detail: `${invoice.invoice_number || 'Factura'} · ${formatMoney(getInvoicePaymentSummary(invoice, paymentsByInvoice[invoice.id] || []).balanceDue)} pendiente`,
         tone: 'critical',
+        to: createPageUrl('Receivables'),
+      })),
+      ...operations.pendingQuotes.slice(0, 2).map((quote) => ({
+        id: `quote-${quote.id}`,
+        icon: Target,
+        title: quote.client_name || quote.quote_number || 'Cotización pendiente',
+        detail: `${quote.quote_number || 'Cotización'} · ${formatMoney(normalizeInvoiceTotal(quote))}`,
+        tone: 'warning',
         to: createPageUrl('Billing'),
       })),
-    ].slice(0, 8);
+      ...operations.upcomingOrders.slice(0, 2).map(({ order, targetDate }) => ({
+        id: `order-${order.id}`,
+        icon: CalendarClock,
+        title: order.client_name || order.order_number || 'Entrega próxima',
+        detail: `${order.order_number || 'Pedido'} · ${targetDate.toLocaleDateString('es-DO')}`,
+        tone: 'info',
+        to: createPageUrl('Orders'),
+      })),
+    ].slice(0, 10);
 
     return {
       followUps: dueFollowUps.length,
       reminders: pendingReminders.length,
       appointments: todayAppointments.length,
       overdueInvoices: overdueInvoices.length,
+      pendingQuotes: operations.pendingQuotesCount,
+      upcomingOrders: operations.upcomingOrdersCount,
       actionItems,
     };
-  }, [activeWorkspace?.timezone, appointments, clients, financials.receivables.rows, formatMoney, reminders]);
+  }, [activeWorkspace?.timezone, appointments, clients, financials.receivables.rows, formatMoney, operations, paymentsByInvoice, reminders]);
 
   const chartData = useMemo(
     () => buildSixMonthTrend({ invoices, invoicePayments, monthlyRecords }),
@@ -579,7 +632,7 @@ export default function Dashboard() {
           </span>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <Link to={createPageUrl('Clients')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Seguimientos</p>
             <p className="mt-1 text-xl font-bold">{dailySummary.followUps}</p>
@@ -592,9 +645,17 @@ export default function Dashboard() {
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Agenda hoy</p>
             <p className="mt-1 text-xl font-bold">{dailySummary.appointments}</p>
           </Link>
-          <Link to={createPageUrl('Billing')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
+          <Link to={createPageUrl('Receivables')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Facturas vencidas</p>
             <p className={`mt-1 text-xl font-bold ${dailySummary.overdueInvoices>0?'text-red-600':''}`}>{dailySummary.overdueInvoices}</p>
+          </Link>
+          <Link to={createPageUrl('Billing')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Cotizaciones</p>
+            <p className={`mt-1 text-xl font-bold ${dailySummary.pendingQuotes>0?'text-amber-600':''}`}>{dailySummary.pendingQuotes}</p>
+          </Link>
+          <Link to={createPageUrl('Orders')} className="rounded-xl border border-border/60 p-3 transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Entregas próximas</p>
+            <p className="mt-1 text-xl font-bold">{dailySummary.upcomingOrders}</p>
           </Link>
         </div>
 
@@ -673,21 +734,44 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 gap-3">
           <Card className="p-3 sm:p-4">
-            <h3 className="text-sm sm:text-base font-bold text-foreground mb-2 sm:mb-3">Top Productos</h3>
+            <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+              <h3 className="text-sm sm:text-base font-bold text-foreground">Top Productos</h3>
+              <select
+                value={topProductCriterion}
+                onChange={(event) => setTopProductCriterion(event.target.value)}
+                className="h-7 rounded-md border border-border bg-background px-2 text-[11px] text-foreground"
+                aria-label="Criterio de Top Productos"
+              >
+                <option value="sales">Ventas</option>
+                <option value="profit">Beneficio</option>
+                <option value="margin">Margen</option>
+              </select>
+            </div>
             <div className="space-y-1.5 sm:space-y-2">
               {topProducts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin productos suficientes para ranking.</p>
+                <p className="text-sm text-muted-foreground">Aún no hay ventas suficientes para generar el ranking.</p>
               ) : (
                 topProducts.map((product, index) => (
-                  <div key={product.id || `${product.name}-${index}`} className="flex items-center justify-between text-xs">
+                  <Link
+                    key={product.id || `${product.name}-${index}`}
+                    to={createPageUrl('Products')}
+                    className="flex items-center justify-between gap-3 rounded-lg p-1.5 text-xs transition hover:bg-muted/40"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-muted-foreground w-3">{index + 1}</span>
-                      <span className="truncate font-medium">{product.name || 'Producto'}</span>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{product.name || 'Producto'}</p>
+                        <p className="text-[10px] text-muted-foreground">{product.quantity.toFixed(0)} unidad(es)</p>
+                      </div>
                     </div>
-                    <span className="text-[11px] font-bold rounded-full px-2.5 py-1 bg-emerald-100 text-emerald-700">
-                      {Number(product.margin_pct || 0).toFixed(0)}%
+                    <span className="text-[11px] font-bold text-primary">
+                      {topProductCriterion === 'profit'
+                        ? (product.profit == null ? 'Sin costo histórico' : formatMoney(product.profit))
+                        : topProductCriterion === 'margin'
+                          ? (product.margin == null ? 'Sin costo histórico' : `${product.margin.toFixed(1)}%`)
+                          : formatMoney(product.revenue)}
                     </span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>
@@ -700,15 +784,22 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">Aún no hay clientes con compras pagadas.</p>
               ) : (
                 topClients.map((client) => (
-                  <div key={client.client} className="flex items-center justify-between gap-3">
+                  <Link
+                    key={client.id || client.client}
+                    to={client.id ? `${createPageUrl('Clients')}?client=${encodeURIComponent(client.id)}` : createPageUrl('Clients')}
+                    className="flex items-center justify-between gap-3 rounded-lg p-1.5 transition hover:bg-muted/40"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
                         {(client.client || 'C').trim().charAt(0).toUpperCase()}
                       </span>
-                      <span className="text-xs font-medium truncate">{client.client}</span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{client.client}</p>
+                        <p className="text-[10px] text-muted-foreground">{client.purchases} compra(s)</p>
+                      </div>
                     </div>
                     <span className="text-xs font-bold text-primary">{formatMoney(client.amount)}</span>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>
