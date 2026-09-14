@@ -1325,12 +1325,26 @@ export default function Products() {
                 const margin = getMarginMetrics(product.sale_price, product.costo_unitario)
                 return (
                   <TableRow key={product.id} className="hover:bg-muted/20">
-                    <TableCell className="min-w-[220px]">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-sm text-foreground">{product.name}</p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {product.sku ? <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.sku}</span> : null}
-                          {product.category ? <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.category}</span> : null}
+                    <TableCell className="min-w-[240px]">
+                      <div className="flex items-center gap-3">
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name || 'Producto'}
+                            className="h-14 w-14 shrink-0 rounded-xl border border-border/70 bg-muted object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-muted/40">
+                            <Package className="h-5 w-5 text-muted-foreground/50" />
+                          </div>
+                        )}
+                        <div className="min-w-0 space-y-1">
+                          <p className="truncate font-semibold text-sm text-foreground">{product.name}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {product.sku ? <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.sku}</span> : null}
+                            {product.category ? <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{product.category}</span> : null}
+                          </div>
                         </div>
                       </div>
                     </TableCell>
