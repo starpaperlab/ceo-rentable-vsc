@@ -150,6 +150,7 @@ export default function PreviewModal({
   onViewReceipt,
   generatingReceiptId = null,
   canExport = false,
+  autoOpenPaymentDialog = false,
 }) {
   const { symbol } = useCurrency();
   const previewRef = useRef(null);
@@ -278,6 +279,7 @@ export default function PreviewModal({
               onGenerateReceipt={onGenerateReceipt}
               onViewReceipt={onViewReceipt}
               generatingReceiptId={generatingReceiptId}
+              autoOpenCreate={autoOpenPaymentDialog}
             />
           </div>
         ) : null}
