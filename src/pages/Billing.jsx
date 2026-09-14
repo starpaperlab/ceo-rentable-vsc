@@ -172,6 +172,28 @@ export default function Billing() {
     if (!canWrite && editDoc) setEditDoc(null);
   }, [canWrite, editDoc]);
 
+  useEffect(() => {
+    if (!canWrite || clients.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new') !== 'quote') return;
+    const clientId = params.get('client');
+    const client = clients.find((item) => item.id === clientId);
+    if (!client) return;
+
+    setActiveTab('quotes');
+    setEditDoc({
+      type: 'quote',
+      doc: {
+        client_id: client.id,
+        client_name: client.name || '',
+        client_email: client.email || '',
+        client_phone: client.phone || '',
+        status: 'pending',
+      },
+    });
+    navigate('/Billing', { replace: true });
+  }, [canWrite, clients, navigate]);
+
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
@@ -495,7 +517,7 @@ export default function Billing() {
           contextBrandProfileId={editDoc.doc?.brand_profile_id || activeBrandId || null}
           workspaceId={activeWorkspaceId}
           totalCount={editDoc.type === 'invoice' ? invoices.length : quotes.length}
-          suggestedNumber={editDoc.doc ? null : suggestedDocumentNumber}
+          suggestedNumber={editDoc.doc?.id ? null : suggestedDocumentNumber}
           autoRecoverDraft={Boolean(editDoc.autoRecoverDraft)}
         />
       </div>
