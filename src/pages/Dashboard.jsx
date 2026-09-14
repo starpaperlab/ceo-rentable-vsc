@@ -465,6 +465,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
         <KpiCard
           label="FACTURADO"
+          to={createPageUrl('Billing')}
           value={formatMoney(stats.facturado)}
           subtitle={`${stats.invoicesCount} factura${stats.invoicesCount === 1 ? '' : 's'} este mes`}
           growth={growth.billedGrowth}
@@ -472,6 +473,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="COBRADO"
+          to={createPageUrl('Receivables')}
           value={formatMoney(stats.ingresos)}
           subtitle="Efectivo cobrado este mes"
           growth={growth.revenueGrowth}
@@ -479,6 +481,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="GASTOS"
+          to={createPageUrl('MonthlyControl')}
           value={stats.gastos == null ? 'Sin datos' : formatMoney(stats.gastos)}
           subtitle={financials.current.expenseSource === 'registered' ? 'Gastos registrados' : financials.current.expenseSource === 'estimated-direct-costs' ? 'Estimado con costos directos' : 'Completa Control Mensual'}
           growth={growth.costGrowth}
@@ -488,6 +491,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="BENEFICIO"
+          to={createPageUrl('Profitability')}
           value={stats.beneficio == null ? 'Sin datos' : formatMoney(stats.beneficio)}
           subtitle={stats.beneficio == null ? 'Faltan gastos/costos' : 'Facturado − gastos'}
           growth={growth.benefitGrowth}
@@ -497,6 +501,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="MARGEN"
+          to={createPageUrl('Profitability')}
           value={stats.margen == null ? 'Sin datos' : `${stats.margen.toFixed(1)}%`}
           subtitle={stats.margen == null ? 'Faltan gastos/costos' : 'Margen del mes'}
           growth={growth.marginGrowth}
@@ -506,6 +511,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="CUENTAS POR COBRAR"
+          to={createPageUrl('Receivables')}
           value={formatMoney(stats.cuentasPorCobrar)}
           subtitle={`${stats.facturasPendientes} factura${stats.facturasPendientes === 1 ? '' : 's'} abierta${stats.facturasPendientes === 1 ? '' : 's'}`}
           growth={0}
@@ -579,17 +585,32 @@ export default function Dashboard() {
           ) : (
             <div className="mt-4 space-y-3">
               {ceoMetrics.riskFactors.length > 0 ? (
-                ceoMetrics.riskFactors.map((factor) => (
-                  <div key={factor.key} className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/70 dark:bg-amber-950/20">
-                    <div className="flex gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{factor.label}: {factor.score}/100</p>
-                        <p className="mt-0.5 text-xs text-amber-800/80 dark:text-amber-300/80">Este factor está reduciendo tu CEO Score.</p>
+                ceoMetrics.riskFactors.map((factor) => {
+                  const factorRoutes = {
+                    margin: createPageUrl('Profitability'),
+                    growth: createPageUrl('Billing'),
+                    expenses: createPageUrl('MonthlyControl'),
+                    collections: createPageUrl('Receivables'),
+                    products: createPageUrl('Products'),
+                    operations: createPageUrl('Agenda'),
+                  };
+                  return (
+                    <Link
+                      key={factor.key}
+                      to={factorRoutes[factor.key] || createPageUrl('Dashboard')}
+                      className="block rounded-xl border border-amber-200 bg-amber-50 p-3 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-primary/40 dark:border-amber-900/70 dark:bg-amber-950/20 dark:hover:bg-amber-950/35"
+                    >
+                      <div className="flex gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{factor.label}: {factor.score}/100</p>
+                          <p className="mt-0.5 text-xs text-amber-800/80 dark:text-amber-300/80">Este factor está reduciendo tu CEO Score. Toca para revisarlo.</p>
+                        </div>
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
                       </div>
-                    </div>
-                  </div>
-                ))
+                    </Link>
+                  );
+                })
               ) : (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-300">
                   No hay factores críticos en este momento.
@@ -610,8 +631,12 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-        <Card className="p-3 sm:p-4">
-          <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">PUNTO DE EQUILIBRIO</p>
+        <Link to={createPageUrl('Profitability')} className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl">
+          <Card className="p-3 sm:p-4 h-full transition hover:bg-muted/30 hover:border-primary/30">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">PUNTO DE EQUILIBRIO</p>
+            <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+          </div>
           <p className="text-lg sm:text-[32px] leading-none font-extrabold mt-1.5 sm:mt-2 text-foreground">
             {breakEven == null ? 'Sin datos' : formatMoney(breakEven)}
           </p>
@@ -628,19 +653,33 @@ export default function Dashboard() {
                 ? (stats.facturado >= breakEven ? '✓ Superaste el equilibrio' : 'Basado en costos fijos configurados')
                 : (stats.facturado >= breakEven ? '✓ Superaste el equilibrio estimado' : 'Estimado con gastos registrados')}
           </p>
-        </Card>
+          </Card>
+        </Link>
 
-        <Card className="p-3 sm:p-4">
-          <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR PRODUCTO</p>
+        <Link to={createPageUrl('Products')} className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl">
+          <Card className="p-3 sm:p-4 h-full transition hover:bg-muted/30 hover:border-primary/30">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR PRODUCTO</p>
+            <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+          </div>
           <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{bestProduct?.name || 'Sin datos'}</p>
-          <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{Number(bestProduct?.margin_pct || 0).toFixed(1)}% margen</p>
-        </Card>
+          <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{bestProduct ? formatMoney(bestProduct.revenue) : 'Sin ventas'}</p>
+          </Card>
+        </Link>
 
-        <Card className="p-3 sm:p-4">
-          <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR CLIENTE</p>
+        <Link
+          to={topClient?.id ? `${createPageUrl('Clients')}?client=${encodeURIComponent(topClient.id)}` : createPageUrl('Clients')}
+          className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl"
+        >
+          <Card className="p-3 sm:p-4 h-full transition hover:bg-muted/30 hover:border-primary/30">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">MEJOR CLIENTE</p>
+            <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+          </div>
           <p className="text-base sm:text-[24px] leading-tight font-bold mt-1.5 sm:mt-2 text-foreground truncate">{topClient?.client || 'Sin datos'}</p>
           <p className="text-[11px] sm:text-xs font-semibold text-primary mt-1.5 sm:mt-2">{formatMoney(topClient?.amount || 0)}</p>
-        </Card>
+          </Card>
+        </Link>
       </div>
 
       <Card className="p-3 sm:p-4">
@@ -851,15 +890,16 @@ function KpiCard({
   inverseGrowth = false,
   showGrowth = true,
   growthSuffix = '%',
+  to = null,
 }) {
   const isUp = growth >= 0;
   const favorable = inverseGrowth ? !isUp : isUp;
 
-  return (
-    <Card className="p-2.5 sm:p-4 border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+  const content = (
+    <Card className={`p-2.5 sm:p-4 border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)] h-full ${to ? 'transition hover:bg-muted/30 hover:border-primary/30' : ''}`}>
       <div className="flex items-start justify-between gap-1">
         <p className="text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
-        <span className="hidden min-[390px]:inline-flex sm:inline-flex">{icon}</span>
+        <span className="hidden min-[390px]:inline-flex sm:inline-flex">{to ? <ArrowUpRight className="h-4 w-4 text-muted-foreground" /> : icon}</span>
       </div>
       <p className={`mt-1 text-base sm:text-[30px] leading-tight sm:leading-none font-extrabold truncate ${positive ? 'text-foreground' : 'text-red-600'}`}>{value}</p>
       <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs leading-tight text-muted-foreground">{subtitle}</p>
@@ -869,6 +909,18 @@ function KpiCard({
         </p>
       ) : null}
     </Card>
+  );
+
+  if (!to) return content;
+
+  return (
+    <Link
+      to={to}
+      className="block min-w-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40"
+      aria-label={`Abrir detalle de ${label}`}
+    >
+      {content}
+    </Link>
   );
 }
 
