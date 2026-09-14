@@ -190,11 +190,10 @@ export default function Dashboard() {
     () => buildTopProducts({
       products,
       invoices,
-      orders,
       orderItems,
       criterion: topProductCriterion,
     }),
-    [invoices, orderItems, orders, products, topProductCriterion]
+    [invoices, orderItems, products, topProductCriterion]
   );
 
   const operations = useMemo(
