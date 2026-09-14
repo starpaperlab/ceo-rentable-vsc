@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Calculator, Copy, Eye, Loader2, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import PageTour from '@/components/shared/PageTour'
+import ProductImageUpload from '@/components/catalog/ProductImageUpload'
 import { useCurrency } from '@/components/shared/CurrencyContext'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -273,6 +274,7 @@ function CatalogDialog({
   onSave,
   saving,
   readOnly = false,
+  ownerRef,
 }) {
   const [form, setForm] = useState(() => buildCatalogForm(initial || {}, costComponents, bundleItems, currency))
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
@@ -360,7 +362,12 @@ function CatalogDialog({
               <div><Label>SKU / código</Label><Input value={form.sku} onChange={(event) => update('sku', event.target.value)} /></div>
               <div><Label>Categoría</Label><Input value={form.category} onChange={(event) => update('category', event.target.value)} /></div>
               <div><Label>Unidad</Label><Input value={form.unit} onChange={(event) => update('unit', event.target.value)} /></div>
-              <div><Label>Imagen (URL)</Label><Input value={form.image_url} onChange={(event) => update('image_url', event.target.value)} /></div>
+              <ProductImageUpload
+                value={form.image_url}
+                onChange={(value) => update('image_url', value)}
+                ownerRef={ownerRef}
+                readOnly={readOnly}
+              />
               <div className="sm:col-span-2"><Label>Descripción</Label><Textarea value={form.descripcion} onChange={(event) => update('descripcion', event.target.value)} /></div>
             </div>
           </section>
@@ -1448,6 +1455,7 @@ export default function Products() {
           onSave={(form) => saveCatalogMutation.mutate({ form, productId: catalogDialog.item?.id || null })}
           saving={saveCatalogMutation.isPending}
           readOnly={catalogDialog.mode === 'view' || !canWrite}
+          ownerRef={writeOwnerId || writeOwnerEmail || ownerId || ownerEmail}
         />
       ) : null}
     </div>
