@@ -148,6 +148,7 @@ function OpportunityFormDialog({
   }, [defaultStage?.id, initialValues, open, opportunity]);
 
   const selectedStage = stages.find((stage) => stage.id === form.stage_id);
+  const actualStage = opportunity ? stages.find((stage) => stage.id === opportunity.stage_id) : null;
   const requiresLossReason = selectedStage?.stage_type === 'lost';
 
   const submit = async () => {
@@ -311,7 +312,7 @@ function OpportunityFormDialog({
               </div>
             </div>
 
-            {selectedStage?.stage_type === 'won' ? (
+            {actualStage?.stage_type === 'won' ? (
               <Card className="border-green-200 bg-green-50/70 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
