@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { Component, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Card } from '@/components/ui/card';
-import { Eye, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle, Eye, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import PreviewModal from '@/components/billing/PreviewModal';
 import { ReceiptDetailDialog } from '@/components/billing/ReceiptList';
@@ -40,7 +41,44 @@ const groupInvoiceReminders = (rows = []) => rows.reduce((map, reminder) => {
   return map;
 }, {});
 
-export default function Receivables() {
+class ReceivablesErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Receivables render failed', error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="mx-auto max-w-3xl p-4 lg:p-8">
+        <Card className="border-red-200 bg-red-50 p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div className="min-w-0">
+              <p className="font-semibold text-red-800">No pudimos cargar Cuentas por Cobrar</p>
+              <p className="mt-1 text-sm text-red-700">
+                La pantalla encontró un error inesperado. Tus facturas y abonos no se han borrado.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={() => window.location.reload()}>
+                <RefreshCw className="mr-2 h-4 w-4" />Recargar
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+}
+
+function ReceivablesPage() {
   const queryClient = useQueryClient();
   const { canWrite } = useWorkspace();
   const {
@@ -70,25 +108,25 @@ export default function Receivables() {
     }
   };
 
-  const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
+  const { data: invoices = [], isLoading: loadingInvoices, error: invoicesError, refetch: refetchInvoices } = useQuery({
     queryKey: ['invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
     enabled,
   });
 
-  const { data: invoicePayments = [], isLoading: loadingPayments } = useQuery({
+  const { data: invoicePayments = [], isLoading: loadingPayments, error: paymentsError, refetch: refetchPayments } = useQuery({
     queryKey: ['invoice-payments', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoice_payments' }),
     enabled,
   });
 
-  const { data: orders = [], isLoading: loadingOrders } = useQuery({
+  const { data: orders = [], isLoading: loadingOrders, error: ordersError, refetch: refetchOrders } = useQuery({
     queryKey: ['orders', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'orders' }),
     enabled,
   });
 
-  const { data: reminders = [], isLoading: loadingReminders } = useQuery({
+  const { data: reminders = [], isLoading: loadingReminders, error: remindersError, refetch: refetchReminders } = useQuery({
     queryKey: ['receivable-reminders', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'reminders', orderBy: 'due_at', ascending: true }),
     enabled,
@@ -262,6 +300,8 @@ export default function Receivables() {
     onError: (error) => toast.error(`No se pudo programar el seguimiento: ${error.message}`),
   });
 
+  const fatalError = invoicesError || paymentsError || ordersError || null;
+  const secondaryError = remindersError || null;
   const isLoading = loadingInvoices || loadingPayments || loadingOrders || loadingReminders;
   const isSavingPayment =
     createInvoicePaymentMutation.isPending
@@ -272,6 +312,29 @@ export default function Receivables() {
     return (
       <div className="flex h-full min-h-[420px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (fatalError) {
+    return (
+      <div className="mx-auto max-w-3xl p-4 lg:p-8">
+        <Card className="border-red-200 bg-red-50 p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div>
+              <p className="font-semibold text-red-800">No pudimos cargar Cuentas por Cobrar</p>
+              <p className="mt-1 text-sm text-red-700">{fatalError.message || 'Ocurrió un error al consultar facturas, abonos o pedidos.'}</p>
+              <Button className="mt-4" variant="outline" onClick={() => {
+                refetchInvoices();
+                refetchPayments();
+                refetchOrders();
+              }}>
+                <RefreshCw className="mr-2 h-4 w-4" />Reintentar
+              </Button>
+            </div>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -298,6 +361,19 @@ export default function Receivables() {
           <p className="text-xl font-bold text-primary">{openRows.length}</p>
         </Card>
       </div>
+
+      {secondaryError ? (
+        <Card className="flex items-start justify-between gap-3 border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Seguimientos no disponibles temporalmente</p>
+              <p className="text-xs text-amber-800">Las facturas, saldos y abonos siguen disponibles. Solo falló la carga de seguimientos de cobro.</p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetchReminders()}>Reintentar</Button>
+        </Card>
+      ) : null}
 
       <ReceivablesSummary summary={summary} />
       <ReceivablesFilters filters={filters} onChange={setFilters} onReset={() => setFilters(INITIAL_FILTERS)} />
@@ -355,5 +431,13 @@ export default function Receivables() {
         canExport={adminMode || canWrite}
       />
     </div>
+  );
+}
+
+export default function Receivables() {
+  return (
+    <ReceivablesErrorBoundary>
+      <ReceivablesPage />
+    </ReceivablesErrorBoundary>
   );
 }
