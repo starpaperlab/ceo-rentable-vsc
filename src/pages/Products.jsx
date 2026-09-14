@@ -274,7 +274,7 @@ function CatalogDialog({
   saving,
   readOnly = false,
 }) {
-  const [form, setForm] = useState(() => buildCatalogForm(initial, costComponents, bundleItems, currency))
+  const [form, setForm] = useState(() => buildCatalogForm(initial || {}, costComponents, bundleItems, currency))
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
   const cost = getCatalogCost(form, products)
   const profit = calculateProfit(form.sale_price, cost)
