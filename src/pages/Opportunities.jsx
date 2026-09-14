@@ -523,10 +523,19 @@ export default function Opportunities() {
   const [lossState, setLossState] = useState(null);
   const [stageManagerOpen, setStageManagerOpen] = useState(false);
 
-  const { data: stages = [], isLoading: loadingStages } = useQuery({
-    queryKey: ['opportunity-stages', ...contextQueryKey],
-    queryFn: () => fetchRows({ table: 'opportunity_stages', orderBy: 'sort_order', ascending: true }),
-    enabled,
+  const { data: stages = [], isLoading: loadingStages, error: stagesError, refetch: refetchStages } = useQuery({
+    queryKey: ['opportunity-stages', activeWorkspaceId],
+    queryFn: async () => {
+      if (!activeWorkspaceId) return [];
+      const { data, error } = await supabase
+        .from('opportunity_stages')
+        .select('*')
+        .eq('workspace_id', activeWorkspaceId)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: Boolean(activeWorkspaceId),
   });
 
   const { data: opportunities = [], isLoading: loadingOpportunities } = useQuery({
@@ -817,6 +826,30 @@ export default function Opportunities() {
 
   if (isLoading) {
     return <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (stagesError) {
+    return (
+      <div className="mx-auto max-w-3xl p-4 lg:p-8">
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="font-semibold text-red-800">No pudimos cargar las etapas del Pipeline</p>
+          <p className="mt-1 text-sm text-red-700">{stagesError.message}</p>
+          <Button className="mt-4" variant="outline" onClick={() => refetchStages()}>Reintentar</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (activeWorkspaceId && stages.length === 0) {
+    return (
+      <div className="mx-auto max-w-3xl p-4 lg:p-8">
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="font-semibold text-amber-900">Este workspace no tiene etapas de Pipeline disponibles</p>
+          <p className="mt-1 text-sm text-amber-800">Las etapas existen en CEO Rentable, pero no llegaron a esta sesión. Recarga o vuelve a intentar.</p>
+          <Button className="mt-4" variant="outline" onClick={() => refetchStages()}>Recargar etapas</Button>
+        </Card>
+      </div>
+    );
   }
 
   return (
