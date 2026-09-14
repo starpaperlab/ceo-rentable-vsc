@@ -396,7 +396,6 @@ function normalizedName(value = '') {
 export function buildTopProducts({
   products = [],
   invoices = [],
-  orders = [],
   orderItems = [],
   criterion = 'sales',
 } = {}) {
