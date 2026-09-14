@@ -31,6 +31,8 @@ import {
 } from 'recharts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
+import { buildDashboardFinancials, buildSixMonthTrend, normalizeInvoiceTotal } from '@/lib/dashboardMetrics';
+import { groupPaymentsByInvoice, getInvoicePaymentSummary } from '@/lib/invoicePayments';
 
 function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo') {
   try {
@@ -50,13 +52,6 @@ function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo
   }
 }
 
-function monthLabel(dateValue) {
-  if (!dateValue) return '—';
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('es-DO', { month: '2-digit', year: '2-digit' });
-}
-
 function startOfDay(value = new Date()) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -67,29 +62,6 @@ function endOfDay(value = new Date()) {
   const date = new Date(value);
   date.setHours(23, 59, 59, 999);
   return date;
-}
-
-function daysAgo(count) {
-  const date = new Date();
-  date.setDate(date.getDate() - count);
-  return date;
-}
-
-function isPaidStatus(status) {
-  const normalized = `${status ?? ''}`.trim().toLowerCase();
-  return ['paid', 'pagada', 'pagado', 'completed', 'completado'].includes(normalized);
-}
-
-function normalizeInvoiceTotal(invoice) {
-  const direct = Number(invoice.total_final ?? invoice.total_amount ?? invoice.total ?? 0);
-  if (direct > 0) return direct;
-
-  const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
-  return lineItems.reduce((sum, item) => {
-    const quantity = Number(item.quantity ?? 1);
-    const unitPrice = Number(item.unit_price ?? item.price ?? 0);
-    return sum + (quantity * unitPrice);
-  }, 0);
 }
 
 export default function Dashboard() {
@@ -117,6 +89,24 @@ export default function Dashboard() {
     enabled,
   });
 
+  const { data: invoicePayments = [], isLoading: loadingPayments } = useQuery({
+    queryKey: ['dashboard-invoice-payments', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'invoice_payments', orderBy: 'payment_date', ascending: false }),
+    enabled,
+  });
+
+  const { data: monthlyRecords = [], isLoading: loadingMonthlyRecords } = useQuery({
+    queryKey: ['dashboard-monthly-records', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'monthly_records', orderBy: 'month', ascending: false }),
+    enabled,
+  });
+
+  const { data: costLibraryItems = [], isLoading: loadingCostLibrary } = useQuery({
+    queryKey: ['dashboard-cost-library', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'cost_library_items' }),
+    enabled,
+  });
+
   const { data: reminders = [] } = useQuery({
     queryKey: ['dashboard-reminders', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'reminders', orderBy: 'due_at', ascending: true }),
@@ -129,14 +119,46 @@ export default function Dashboard() {
     enabled,
   });
 
-  const paidInvoices = useMemo(
-    () => invoices.filter((invoice) => isPaidStatus(invoice.status)),
-    [invoices]
+  const paymentsByInvoice = useMemo(
+    () => groupPaymentsByInvoice(invoicePayments),
+    [invoicePayments]
   );
 
+  const financials = useMemo(
+    () => buildDashboardFinancials({
+      invoices,
+      invoicePayments,
+      monthlyRecords,
+      costLibraryItems,
+    }),
+    [costLibraryItems, invoicePayments, invoices, monthlyRecords]
+  );
+
+  const stats = useMemo(() => ({
+    facturado: financials.current.billed,
+    ingresos: financials.current.collected,
+    gastos: financials.current.expenses,
+    beneficio: financials.current.profit,
+    margen: financials.current.margin,
+    invoicesCount: financials.current.invoiceCount,
+    ticketPromedio: financials.current.averageTicket,
+    cuentasPorCobrar: financials.receivables.totalReceivable,
+    facturasPendientes: financials.receivables.openInvoices,
+  }), [financials]);
+
+  const growth = useMemo(() => ({
+    revenueGrowth: financials.growth.collected,
+    billedGrowth: financials.growth.billed,
+    costGrowth: financials.growth.expenses,
+    benefitGrowth: financials.growth.profit,
+    marginGrowth: financials.growth.marginPoints,
+  }), [financials]);
+
   const pendingInvoices = useMemo(
-    () => invoices.filter((invoice) => !isPaidStatus(invoice.status)),
-    [invoices]
+    () => financials.receivables.rows
+      .filter((row) => row.summary.balanceDue > 0)
+      .map((row) => row.invoice),
+    [financials.receivables.rows]
   );
 
   const topProducts = useMemo(
@@ -148,73 +170,26 @@ export default function Dashboard() {
   );
 
   const topClients = useMemo(() => {
-    const map = {};
-    paidInvoices.forEach((invoice) => {
-      const key = invoice.client_name || 'Cliente sin nombre';
-      if (!map[key]) map[key] = { client: key, amount: 0 };
-      map[key].amount += normalizeInvoiceTotal(invoice);
-    });
-    return Object.values(map).sort((a, b) => b.amount - a.amount).slice(0, 4);
-  }, [paidInvoices]);
+    const map = new Map();
 
-  const stats = useMemo(() => {
-    const ingresos = paidInvoices.reduce((sum, invoice) => sum + normalizeInvoiceTotal(invoice), 0);
+    invoices.forEach((invoice) => {
+      const summary = getInvoicePaymentSummary(invoice, paymentsByInvoice[invoice.id] || []);
+      if (summary.amountCollected <= 0) return;
 
-    const costos = paidInvoices.reduce((sum, invoice) => {
-      const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
-      const invoiceCost = lineItems.reduce((subtotal, item) => {
-        const quantity = Number(item.quantity ?? 1);
-        const unitCost = Number(item.unit_cost ?? item.cost ?? 0);
-        return subtotal + (quantity * unitCost);
-      }, 0);
-      return sum + invoiceCost;
-    }, 0);
-
-    const ingresosFallbackCost = products.reduce((sum, product) => {
-      const stock = Number(product.current_stock ?? 0);
-      const cost = Number(product.costo_unitario ?? 0);
-      return sum + Math.max(0, stock * cost * 0.04);
-    }, 0);
-
-    const finalCosts = costos > 0 ? costos : ingresosFallbackCost;
-    const beneficio = ingresos - finalCosts;
-    const margen = ingresos > 0 ? (beneficio / ingresos) * 100 : 0;
-
-    return {
-      ingresos,
-      costos: finalCosts,
-      beneficio,
-      margen,
-      invoicesCount: paidInvoices.length,
-    };
-  }, [paidInvoices, products]);
-
-  const growth = useMemo(() => {
-    const currentStart = startOfDay(daysAgo(30));
-    const previousStart = startOfDay(daysAgo(60));
-    const previousEnd = endOfDay(daysAgo(31));
-
-    const currentPeriod = paidInvoices.filter((invoice) => {
-      const date = new Date(invoice.date || invoice.created_at || new Date());
-      return date >= currentStart;
+      const key = invoice.client_id || invoice.client_name || invoice.id;
+      const current = map.get(key) || {
+        id: invoice.client_id || null,
+        client: invoice.client_name || 'Cliente sin nombre',
+        amount: 0,
+        purchases: 0,
+      };
+      current.amount += summary.amountCollected;
+      current.purchases += 1;
+      map.set(key, current);
     });
 
-    const previousPeriod = paidInvoices.filter((invoice) => {
-      const date = new Date(invoice.date || invoice.created_at || new Date());
-      return date >= previousStart && date <= previousEnd;
-    });
-
-    const currentRevenue = currentPeriod.reduce((sum, invoice) => sum + normalizeInvoiceTotal(invoice), 0);
-    const previousRevenue = previousPeriod.reduce((sum, invoice) => sum + normalizeInvoiceTotal(invoice), 0);
-    const revenueGrowth = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : (currentRevenue > 0 ? 100 : 0);
-
-    return {
-      revenueGrowth,
-      costGrowth: revenueGrowth * 0.78,
-      benefitGrowth: revenueGrowth,
-      marginGrowth: revenueGrowth * 0.65,
-    };
-  }, [paidInvoices]);
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount).slice(0, 4);
+  }, [invoices, paymentsByInvoice]);
 
   const fugaProducts = useMemo(
     () => products.filter((product) => Number(product.margin_pct || 0) < 20).length,
@@ -224,7 +199,7 @@ export default function Dashboard() {
   const ceoMetrics = useMemo(() => {
     const marginScore = Math.max(0, Math.min(100, Math.round((stats.margen / 50) * 100)));
     const incomeGrowthScore = Math.max(0, Math.min(100, Math.round(50 + growth.revenueGrowth)));
-    const costControlScore = Math.max(0, Math.min(100, Math.round(100 - ((stats.costos / Math.max(stats.ingresos, 1)) * 100))));
+    const costControlScore = Math.max(0, Math.min(100, Math.round(100 - ((stats.gastos / Math.max(stats.facturado, 1)) * 100))));
     const score = Math.round((marginScore * 0.45) + (incomeGrowthScore * 0.3) + (costControlScore * 0.25));
 
     let status = 'Saludable';
@@ -281,9 +256,9 @@ export default function Dashboard() {
       .filter((item) => item.date === todayKey && item.status !== 'cancelado')
       .sort((a, b) => `${a.time || '99:99'}`.localeCompare(`${b.time || '99:99'}`));
 
-    const overdueInvoices = pendingInvoices
-      .filter((invoice) => invoice.due_date)
-      .filter((invoice) => new Date(invoice.due_date) < start);
+    const overdueInvoices = financials.receivables.rows
+      .filter((row) => row.overdue)
+      .map((row) => row.invoice);
 
     const actionItems = [
       ...pendingReminders.map((item) => ({
@@ -327,50 +302,34 @@ export default function Dashboard() {
       overdueInvoices: overdueInvoices.length,
       actionItems,
     };
-  }, [activeWorkspace?.timezone, appointments, clients, formatMoney, pendingInvoices, reminders]);
+  }, [activeWorkspace?.timezone, appointments, clients, financials.receivables.rows, formatMoney, reminders]);
 
-  const chartData = useMemo(() => {
-    const monthlyMap = {};
-    const now = new Date();
-    const months = [];
-
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months.push(key);
-      monthlyMap[key] = { periodo: monthLabel(d), ingresos: 0, gastos: 0 };
-    }
-
-    paidInvoices.forEach((invoice) => {
-      const date = new Date(invoice.date || invoice.created_at || new Date());
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyMap[key]) return;
-      monthlyMap[key].ingresos += normalizeInvoiceTotal(invoice);
-    });
-
-    const costRatio = stats.ingresos > 0 ? (stats.costos / stats.ingresos) : 0.26;
-    months.forEach((key) => {
-      monthlyMap[key].gastos = monthlyMap[key].ingresos * Math.max(0.12, costRatio);
-    });
-
-    return months.map((key) => monthlyMap[key]);
-  }, [paidInvoices, stats]);
+  const chartData = useMemo(
+    () => buildSixMonthTrend({ invoices, invoicePayments, monthlyRecords }),
+    [invoicePayments, invoices, monthlyRecords]
+  );
 
   const topClient = topClients[0];
   const bestProduct = topProducts[0];
-  const breakEven = stats.costos;
-  const isLoading = loadingProducts || loadingInvoices;
+  const breakEven = financials.breakEven;
+  const isLoading = loadingProducts || loadingInvoices || loadingPayments || loadingMonthlyRecords || loadingCostLibrary;
 
   const downloadDashboardReport = () => {
     const rows = [
       ['Metrica', 'Valor'],
-      ['Ingresos', stats.ingresos.toFixed(2)],
-      ['Gastos', stats.costos.toFixed(2)],
+      ['Periodo', financials.current.monthKey],
+      ['Facturado', stats.facturado.toFixed(2)],
+      ['Ingresos cobrados', stats.ingresos.toFixed(2)],
+      ['Gastos', stats.gastos.toFixed(2)],
+      ['Fuente de gastos', financials.current.expenseSource === 'registered' ? 'Registrados' : 'Estimados con costos directos'],
       ['Beneficio', stats.beneficio.toFixed(2)],
       ['Margen', `${stats.margen.toFixed(1)}%`],
+      ['Cuentas por cobrar', stats.cuentasPorCobrar.toFixed(2)],
+      ['Ticket promedio', stats.ticketPromedio.toFixed(2)],
+      ['Punto de equilibrio', breakEven == null ? 'Sin datos suficientes' : breakEven.toFixed(2)],
       ['CEO Score', ceoMetrics.score],
-      ['Facturas pagadas', stats.invoicesCount],
-      ['Facturas pendientes', pendingInvoices.length],
+      ['Facturas del periodo', stats.invoicesCount],
+      ['Facturas pendientes', stats.facturasPendientes],
       ['Productos en fuga', fugaProducts],
     ];
 
@@ -422,25 +381,33 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
         <KpiCard
-          label="INGRESOS"
-          value={formatMoney(stats.ingresos)}
-          subtitle={`${stats.invoicesCount} facturas pagadas`}
-          growth={growth.revenueGrowth}
+          label="FACTURADO"
+          value={formatMoney(stats.facturado)}
+          subtitle={`${stats.invoicesCount} factura${stats.invoicesCount === 1 ? '' : 's'} este mes`}
+          growth={growth.billedGrowth}
           icon={<TrendingUp className="h-4 w-4 text-primary" />}
         />
         <KpiCard
+          label="COBRADO"
+          value={formatMoney(stats.ingresos)}
+          subtitle="Efectivo cobrado este mes"
+          growth={growth.revenueGrowth}
+          icon={<CircleDollarSign className="h-4 w-4 text-primary" />}
+        />
+        <KpiCard
           label="GASTOS"
-          value={formatMoney(stats.costos)}
-          subtitle="Costo operativo estimado"
+          value={formatMoney(stats.gastos)}
+          subtitle={financials.current.expenseSource === 'registered' ? 'Gastos registrados' : 'Estimado con costos directos'}
           growth={growth.costGrowth}
+          inverseGrowth
           icon={<ArrowDownRight className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="BENEFICIO"
           value={formatMoney(stats.beneficio)}
-          subtitle="Ingresos − costos"
+          subtitle="Facturado − gastos"
           growth={growth.benefitGrowth}
           positive={stats.beneficio >= 0}
           icon={<Target className="h-4 w-4 text-primary" />}
@@ -448,9 +415,18 @@ export default function Dashboard() {
         <KpiCard
           label="MARGEN"
           value={`${stats.margen.toFixed(1)}%`}
-          subtitle="Rentabilidad global"
+          subtitle="Margen del mes"
           growth={growth.marginGrowth}
+          growthSuffix=" pts"
           icon={<ArrowUpRight className="h-4 w-4 text-primary" />}
+        />
+        <KpiCard
+          label="CUENTAS POR COBRAR"
+          value={formatMoney(stats.cuentasPorCobrar)}
+          subtitle={`${stats.facturasPendientes} factura${stats.facturasPendientes === 1 ? '' : 's'} abierta${stats.facturasPendientes === 1 ? '' : 's'}`}
+          growth={0}
+          showGrowth={false}
+          icon={<CircleDollarSign className="h-4 w-4 text-primary" />}
         />
       </div>
 
@@ -514,11 +490,22 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
         <Card className="p-3 sm:p-4">
           <p className="text-[10px] tracking-[0.15em] font-bold text-muted-foreground">PUNTO DE EQUILIBRIO</p>
-          <p className="text-lg sm:text-[32px] leading-none font-extrabold mt-1.5 sm:mt-2 text-foreground">{formatMoney(breakEven)}</p>
+          <p className="text-lg sm:text-[32px] leading-none font-extrabold mt-1.5 sm:mt-2 text-foreground">
+            {breakEven == null ? 'Sin datos' : formatMoney(breakEven)}
+          </p>
           <div className="mt-2 sm:mt-3 h-1.5 rounded-full bg-primary/15">
-            <div className="h-full rounded-full bg-primary" style={{ width: '100%' }} />
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: breakEven && stats.facturado > 0 ? `${Math.min(100, (stats.facturado / breakEven) * 100)}%` : '0%' }}
+            />
           </div>
-          <p className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs font-semibold text-emerald-600">✓ Superaste el equilibrio</p>
+          <p className={`mt-1.5 sm:mt-2 text-[11px] sm:text-xs font-semibold ${breakEven && stats.facturado >= breakEven ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+            {breakEven == null
+              ? 'Completa gastos/costos para estimarlo'
+              : financials.breakEvenSource === 'configured-fixed-costs'
+                ? (stats.facturado >= breakEven ? '✓ Superaste el equilibrio' : 'Basado en costos fijos configurados')
+                : (stats.facturado >= breakEven ? '✓ Superaste el equilibrio estimado' : 'Estimado con gastos registrados')}
+          </p>
         </Card>
 
         <Card className="p-3 sm:p-4">
@@ -608,7 +595,8 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-3">
         <Card className="p-3 sm:p-4">
-          <h3 className="text-sm sm:text-base font-bold text-foreground mb-2 sm:mb-3">Proyección de Ingresos vs Gastos</h3>
+          <h3 className="text-sm sm:text-base font-bold text-foreground">Ingresos vs Gastos · últimos 6 meses</h3>
+          <p className="mb-2 sm:mb-3 text-[11px] text-muted-foreground">Cobros reales y gastos registrados. Los meses sin gastos no se estiman.</p>
           <div className="h-[210px] sm:h-[290px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 10, right: 12, left: 2, bottom: 0 }}>
@@ -625,13 +613,13 @@ export default function Dashboard() {
                     fontSize: 12,
                   }}
                 />
-                <Line type="monotone" dataKey="ingresos" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--primary))' }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
-                <Line type="monotone" dataKey="gastos" stroke="hsl(var(--accent))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--accent))' }} activeDot={{ r: 5, fill: 'hsl(var(--accent))' }} />
+                <Line type="monotone" dataKey="cobrado" name="Cobrado" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--primary))' }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
+                <Line type="monotone" dataKey="gastos" name="Gastos" connectNulls={false} stroke="hsl(var(--accent))" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--accent))' }} activeDot={{ r: 5, fill: 'hsl(var(--accent))' }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <div className="mt-2 flex gap-4 text-xs">
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-primary" />Ingresos</span>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-primary" />Cobrado</span>
             <span className="inline-flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-0.5 bg-accent" />Gastos</span>
           </div>
         </Card>
@@ -684,8 +672,19 @@ export default function Dashboard() {
   );
 }
 
-function KpiCard({ label, value, subtitle, growth, icon, positive = true }) {
+function KpiCard({
+  label,
+  value,
+  subtitle,
+  growth,
+  icon,
+  positive = true,
+  inverseGrowth = false,
+  showGrowth = true,
+  growthSuffix = '%',
+}) {
   const isUp = growth >= 0;
+  const favorable = inverseGrowth ? !isUp : isUp;
 
   return (
     <Card className="p-2.5 sm:p-4 border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
@@ -695,9 +694,11 @@ function KpiCard({ label, value, subtitle, growth, icon, positive = true }) {
       </div>
       <p className={`mt-1 text-base sm:text-[30px] leading-tight sm:leading-none font-extrabold truncate ${positive ? 'text-foreground' : 'text-red-600'}`}>{value}</p>
       <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs leading-tight text-muted-foreground">{subtitle}</p>
-      <p className={`mt-0.5 sm:mt-1 text-[10px] sm:text-xs font-bold ${isUp ? 'text-emerald-600' : 'text-red-600'}`}>
-        {isUp ? '↗' : '↘'} {Math.abs(growth || 0).toFixed(0)}%
-      </p>
+      {showGrowth ? (
+        <p className={`mt-0.5 sm:mt-1 text-[10px] sm:text-xs font-bold ${favorable ? 'text-emerald-600' : 'text-red-600'}`}>
+          {isUp ? '↗' : '↘'} {Math.abs(growth || 0).toFixed(growthSuffix === ' pts' ? 1 : 0)}{growthSuffix}
+        </p>
+      ) : null}
     </Card>
   );
 }
