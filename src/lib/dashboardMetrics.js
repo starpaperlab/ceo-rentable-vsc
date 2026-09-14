@@ -257,3 +257,120 @@ export function buildSixMonthTrend({
 
   return months;
 }
+
+
+function clampScore(value) {
+  return Math.max(0, Math.min(100, Math.round(Number(value || 0))));
+}
+
+export function buildCeoScore({
+  financials,
+  products = [],
+  overdueOperationalItems = 0,
+} = {}) {
+  const current = financials?.current || {};
+  const receivables = financials?.receivables || {};
+  const totalHistoricalBilled = Number(receivables.totalBilled || 0);
+  const hasSufficientData = totalHistoricalBilled > MONEY_EPSILON || Number(current.expenses || 0) > MONEY_EPSILON;
+
+  if (!hasSufficientData) {
+    return {
+      score: null,
+      status: 'Sin datos suficientes',
+      hasSufficientData: false,
+      explanation: 'Registra ventas, cobros o gastos para calcular la salud real de tu negocio.',
+      factors: [],
+      positiveFactors: [],
+      riskFactors: [],
+      actions: ['Registra tu primera venta o completa el Control Mensual.'],
+    };
+  }
+
+  const margin = Number(current.margin || 0);
+  const marginScore = clampScore((margin / 40) * 100);
+
+  const growthValue = Number(financials?.growth?.billed || 0);
+  const growthScore = clampScore(50 + Math.max(-50, Math.min(50, growthValue)));
+
+  const billed = Number(current.billed || 0);
+  const expenses = Number(current.expenses || 0);
+  const expenseRatio = billed > MONEY_EPSILON ? expenses / billed : expenses > MONEY_EPSILON ? 1 : 0;
+  const expenseControlScore = clampScore(100 - (expenseRatio * 100));
+
+  const collected = Number(receivables.totalCollected || 0);
+  const receivable = Number(receivables.totalReceivable || 0);
+  const overdueAmount = Number(receivables.overdueAmount || 0);
+  const collectionBase = Math.max(totalHistoricalBilled, collected + receivable, 1);
+  const collectionRate = Math.max(0, Math.min(1, collected / collectionBase));
+  const overdueRatio = Math.max(0, Math.min(1, overdueAmount / Math.max(receivable, 1)));
+  const collectionScore = clampScore((collectionRate * 80) + ((1 - overdueRatio) * 20));
+
+  const activeProducts = products.filter((product) => (product.status || 'active') !== 'inactive');
+  const lowMarginProducts = activeProducts.filter((product) => Number(product.margin_pct || 0) < 20);
+  const lossProducts = activeProducts.filter((product) => Number(product.margin_pct || 0) < 0);
+  const productScore = activeProducts.length
+    ? clampScore(100 - ((lowMarginProducts.length / activeProducts.length) * 70) - ((lossProducts.length / activeProducts.length) * 30))
+    : 70;
+
+  const operationalScore = clampScore(100 - (Math.max(0, Number(overdueOperationalItems || 0)) * 15));
+
+  const factors = [
+    { key: 'margin', label: 'Rentabilidad y margen', score: marginScore, weight: 0.25 },
+    { key: 'growth', label: 'Crecimiento de ingresos', score: growthScore, weight: 0.15 },
+    { key: 'expenses', label: 'Control de gastos', score: expenseControlScore, weight: 0.15 },
+    { key: 'collections', label: 'Liquidez y cobranza', score: collectionScore, weight: 0.20 },
+    { key: 'products', label: 'Rentabilidad de productos', score: productScore, weight: 0.15 },
+    { key: 'operations', label: 'Cumplimiento operativo', score: operationalScore, weight: 0.10 },
+  ].map((factor) => ({
+    ...factor,
+    weightedPoints: Math.round(factor.score * factor.weight),
+  }));
+
+  const score = clampScore(factors.reduce((sum, factor) => sum + (factor.score * factor.weight), 0));
+  const status = score < 41 ? 'Crítico' : score < 71 ? 'Inestable' : 'Saludable';
+
+  const positiveFactors = [...factors]
+    .filter((factor) => factor.score >= 70)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  const riskFactors = [...factors]
+    .filter((factor) => factor.score < 70)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3);
+
+  const actions = [];
+  if (overdueAmount > MONEY_EPSILON) actions.push('Prioriza el cobro de facturas vencidas.');
+  if (margin < 20 && billed > MONEY_EPSILON) actions.push('Revisa costos y precios para recuperar margen.');
+  if (growthValue < -10) actions.push('Activa seguimiento comercial para recuperar ventas del mes.');
+  if (expenseRatio > 0.8 && billed > MONEY_EPSILON) actions.push('Revisa gastos: están consumiendo más del 80% de lo facturado.');
+  if (lossProducts.length > 0) actions.push('Corrige productos que se están vendiendo con pérdida.');
+  else if (lowMarginProducts.length > 0) actions.push('Ajusta los productos con margen menor al 20%.');
+  if (overdueOperationalItems > 0) actions.push('Completa o reprograma seguimientos y actividades vencidas.');
+  if (!actions.length) actions.push('Mantén el ritmo actual y revisa semanalmente margen, cobros y crecimiento.');
+
+  const explanation = status === 'Saludable'
+    ? 'El negocio mantiene una combinación sólida de rentabilidad, cobranza y ejecución.'
+    : status === 'Inestable'
+      ? 'Hay señales saludables, pero uno o más factores requieren atención para estabilizar el negocio.'
+      : 'La salud del negocio necesita acción prioritaria en los factores con menor puntuación.';
+
+  return {
+    score,
+    status,
+    hasSufficientData: true,
+    explanation,
+    factors,
+    positiveFactors,
+    riskFactors,
+    actions: actions.slice(0, 4),
+    context: {
+      lowMarginProducts: lowMarginProducts.length,
+      lossProducts: lossProducts.length,
+      overdueAmount: roundMoney(overdueAmount),
+      overdueOperationalItems: Number(overdueOperationalItems || 0),
+      collectionRate,
+      expenseRatio,
+    },
+  };
+}
