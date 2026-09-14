@@ -1,0 +1,74 @@
+name: Phase 4 commercial snapshots
+on:
+  push:
+    paths:
+      - '.github/workflows/phase4-commercial-snapshots.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch commercial snapshots
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          line = Path('src/components/billing/LineItemsTable.jsx')
+          s = line.read_text()
+
+          s = s.replace("      currency: item.currency || null,\n    }));", "      currency: item.currency || null,\n      costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),\n      margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),\n    }));", 3)
+
+          old_update = """      const price = field === 'unit_price' ? parseFloat(rawValue) || 0 : parseFloat(item.unit_price) || 0;\n      const qty = field === 'quantity' ? parseFloat(rawValue) || 0 : parseFloat(item.quantity) || 0;\n      newItem.total = price * qty;\n      return newItem;"""
+          new_update = """      const price = field === 'unit_price' ? parseFloat(rawValue) || 0 : parseFloat(item.unit_price) || 0;\n      const qty = field === 'quantity' ? parseFloat(rawValue) || 0 : parseFloat(item.quantity) || 0;\n      const costSnapshot = Number(item.unit_cost_snapshot ?? item.costo_unitario ?? 0);\n      const profitSnapshot = price - costSnapshot;\n      newItem.total = price * qty;\n      newItem.unit_cost_snapshot = Number.isFinite(costSnapshot) ? costSnapshot : 0;\n      newItem.unit_profit_snapshot = Number.isFinite(profitSnapshot) ? profitSnapshot : 0;\n      newItem.margin_pct_snapshot = price > 0 ? (profitSnapshot / price) * 100 : 0;\n      return newItem;"""
+          if old_update not in s:
+            raise SystemExit('updateItem snippet not found')
+          s = s.replace(old_update, new_update, 1)
+
+          old_select = """      newItem.tax_pct = Number(invItem.tax_pct || 0);\n      newItem.currency = invItem.currency || null;\n      if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;\n      if (invItem.sale_price != null) {\n        newItem.unit_price = invItem.sale_price;\n        newItem.total = invItem.sale_price * (parseFloat(item.quantity) || 1);\n      }\n      return newItem;"""
+          new_select = """      newItem.tax_pct = Number(invItem.tax_pct || 0);\n      newItem.currency = invItem.currency || null;\n      const unitCostSnapshot = Number(invItem.costo_unitario ?? invItem.unit_cost_snapshot ?? 0);\n      const unitPriceSnapshot = Number(invItem.sale_price ?? newItem.unit_price ?? 0);\n      const unitProfitSnapshot = unitPriceSnapshot - unitCostSnapshot;\n      newItem.unit_cost_snapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;\n      newItem.unit_profit_snapshot = Number.isFinite(unitProfitSnapshot) ? unitProfitSnapshot : 0;\n      newItem.margin_pct_snapshot = unitPriceSnapshot > 0 ? (unitProfitSnapshot / unitPriceSnapshot) * 100 : 0;\n      if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;\n      if (invItem.sale_price != null) {\n        newItem.unit_price = invItem.sale_price;\n        newItem.total = invItem.sale_price * (parseFloat(item.quantity) || 1);\n      }\n      return newItem;"""
+          if old_select not in s:
+            raise SystemExit('handleProductSelect snippet not found')
+          s = s.replace(old_select, new_select, 1)
+
+          quick_old = """              product_type: newItem.product_type || 'fisico',\n              sku: newItem.sku || null,\n              category: newItem.category || null,"""
+          quick_new = """              product_type: newItem.product_type || 'fisico',\n              sku: newItem.sku || null,\n              category: newItem.category || null,\n              costo_unitario: Number(newItem.costo_unitario ?? newItem.unit_cost_snapshot ?? 0),\n              tax_pct: Number(newItem.tax_pct || 0),\n              currency: newItem.currency || null,"""
+          if quick_old not in s:
+            raise SystemExit('quick create snippet not found')
+          s = s.replace(quick_old, quick_new, 1)
+          line.write_text(s)
+
+          orders = Path('src/lib/orders.js')
+          s = orders.read_text()
+          old_numbers = """      const safeQuantity = Number.isFinite(quantity) ? quantity : 0;\n      const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;\n\n      return {"""
+          new_numbers = """      const safeQuantity = Number.isFinite(quantity) ? quantity : 0;\n      const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;\n      const unitCostSnapshot = Number(item?.unit_cost_snapshot ?? item?.costo_unitario ?? 0);\n      const safeUnitCostSnapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;\n      const unitProfitSnapshot = safeUnitPrice - safeUnitCostSnapshot;\n      const marginPctSnapshot = safeUnitPrice > 0 ? (unitProfitSnapshot / safeUnitPrice) * 100 : 0;\n\n      return {"""
+          if old_numbers not in s:
+            raise SystemExit('normalize numbers snippet not found')
+          s = s.replace(old_numbers, new_numbers, 1)
+
+          old_return = """        quantity: safeQuantity,\n        unit_price: safeUnitPrice,\n        total: safeQuantity * safeUnitPrice,"""
+          new_return = """        quantity: safeQuantity,\n        unit_price: safeUnitPrice,\n        unit_cost_snapshot: safeUnitCostSnapshot,\n        unit_profit_snapshot: unitProfitSnapshot,\n        margin_pct_snapshot: marginPctSnapshot,\n        total: safeQuantity * safeUnitPrice,"""
+          if old_return not in s:
+            raise SystemExit('normalize return snippet not found')
+          s = s.replace(old_return, new_return, 1)
+
+          invoice_old = """    unit_price: item.unit_price,\n    quantity: item.quantity,\n    total: item.total,"""
+          invoice_new = """    unit_price: item.unit_price,\n    unit_cost_snapshot: item.unit_cost_snapshot,\n    unit_profit_snapshot: item.unit_profit_snapshot,\n    margin_pct_snapshot: item.margin_pct_snapshot,\n    quantity: item.quantity,\n    total: item.total,"""
+          if invoice_old not in s:
+            raise SystemExit('invoice snapshot snippet not found')
+          s = s.replace(invoice_old, invoice_new, 1)
+          orders.write_text(s)
+
+          migration = Path('supabase/migrations/20260914032500_phase_4_commercial_line_snapshots.sql')
+          migration.write_text("""-- Fase 4: snapshots financieros y metadatos del catalogo en lineas comerciales.\nbegin;\n\nalter table public.order_items\n  add column if not exists product_type text,\n  add column if not exists sku text,\n  add column if not exists category text,\n  add column if not exists unit text not null default 'unidad',\n  add column if not exists tax_pct numeric not null default 0,\n  add column if not exists currency text,\n  add column if not exists unit_cost_snapshot numeric not null default 0,\n  add column if not exists unit_profit_snapshot numeric not null default 0,\n  add column if not exists margin_pct_snapshot numeric not null default 0;\n\ncreate index if not exists order_items_product_id_idx on public.order_items(product_id);\ncreate index if not exists order_items_workspace_product_idx on public.order_items(workspace_id, product_id);\n\ncommit;\n""")
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/phase4-commercial-snapshots.yml
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/billing/LineItemsTable.jsx src/lib/orders.js supabase/migrations/20260914032500_phase_4_commercial_line_snapshots.sql .github/workflows/phase4-commercial-snapshots.yml
+          git commit -m "feat: preserve commercial profitability snapshots"
+          git push
