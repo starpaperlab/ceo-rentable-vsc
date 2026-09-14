@@ -897,9 +897,12 @@ function KpiCard({
 
   const content = (
     <Card className={`p-2.5 sm:p-4 border border-border/60 shadow-[0_10px_28px_rgba(15,23,42,0.05)] h-full ${to ? 'transition hover:bg-muted/30 hover:border-primary/30' : ''}`}>
-      <div className="flex items-start justify-between gap-1">
-        <p className="text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
-        <span className="hidden min-[390px]:inline-flex sm:inline-flex">{to ? <ArrowUpRight className="h-4 w-4 text-muted-foreground" /> : icon}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex shrink-0">{icon}</span>
+          <p className="truncate text-[9px] sm:text-[10px] tracking-[0.08em] sm:tracking-[0.14em] font-extrabold text-muted-foreground">{label}</p>
+        </div>
+        {to ? <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
       </div>
       <p className={`mt-1 text-base sm:text-[30px] leading-tight sm:leading-none font-extrabold truncate ${positive ? 'text-foreground' : 'text-red-600'}`}>{value}</p>
       <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs leading-tight text-muted-foreground">{subtitle}</p>
