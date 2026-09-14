@@ -1,0 +1,39 @@
+name: Patch product draft persistence
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-product-draft.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Products.jsx
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/Products.jsx')
+          s=p.read_text()
+          old="""  const [form, setForm] = useState(() => buildCatalogForm(initial || {}, costComponents, bundleItems, currency))\n  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))"""
+          new="""  const draftKey = initial?.id ? null : `ceo-rentable:catalog-draft:${ownerRef || 'current'}`\n  const [form, setForm] = useState(() => {\n    if (draftKey) {\n      try {\n        const savedDraft = window.localStorage.getItem(draftKey)\n        if (savedDraft) return { ...buildCatalogForm({}, costComponents, bundleItems, currency), ...JSON.parse(savedDraft) }\n      } catch {\n        // Ignore an invalid local draft and start with a clean form.\n      }\n    }\n    return buildCatalogForm(initial || {}, costComponents, bundleItems, currency)\n  })\n  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))\n\n  useEffect(() => {\n    if (!draftKey) return\n    try {\n      window.localStorage.setItem(draftKey, JSON.stringify(form))\n    } catch {\n      // Storage can be unavailable in private/restricted browser contexts.\n    }\n  }, [draftKey, form])"""
+          if old not in s: raise SystemExit('form anchor not found')
+          s=s.replace(old,new,1)
+          old2="""    onSave({ ...form, costo_unitario: cost, margin_pct: margin })\n  }"""
+          new2="""    onSave({ ...form, costo_unitario: cost, margin_pct: margin })\n    if (draftKey) {\n      try { window.localStorage.removeItem(draftKey) } catch { /* no-op */ }\n    }\n  }"""
+          if old2 not in s: raise SystemExit('submit anchor not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+      - name: Remove temporary workflow
+        shell: python
+        run: |
+          from pathlib import Path
+          Path('.github/workflows/patch-product-draft.yml').unlink()
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: preserve unsaved product drafts" || exit 0
+          git push
