@@ -12,6 +12,7 @@ const STATUS_STYLES = {
   en_proceso: 'bg-amber-100 text-amber-700',
   completado: 'bg-violet-100 text-violet-700',
   cancelado: 'bg-red-100 text-red-700',
+  cobro: 'bg-amber-100 text-amber-700',
 };
 
 function normalizeDate(value) {
@@ -104,11 +105,12 @@ export default function AgendaCalendar({ appointments = [], onEdit }) {
             .slice()
             .sort((a,b)=>`${a.time||'99:99'}`.localeCompare(`${b.time||'99:99'}`))
             .map((appointment)=>(
-              <button key={appointment.id} type="button" onClick={()=>onEdit?.(appointment)} className="w-full rounded-xl border border-border/60 p-3 text-left transition hover:bg-muted/25">
+              <button key={appointment.id} type="button" onClick={()=>appointment._kind === 'collection' ? undefined : onEdit?.(appointment)} className="w-full rounded-xl border border-border/60 p-3 text-left transition hover:bg-muted/25">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{appointment.client_name || 'Cliente'}</p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{appointment.service_type || 'Actividad'}{appointment.time ? ` · ${appointment.time}` : ''}</p>
+                    {appointment._kind === 'collection' ? <p className="mt-1 text-[10px] font-medium text-amber-700">Seguimiento de cobro · vinculado a CxC</p> : null}
                   </div>
                   <Badge className={`${STATUS_STYLES[appointment.status] || STATUS_STYLES.programado} border-0 text-[10px]`}>{appointment.status?.replace('_',' ') || 'programado'}</Badge>
                 </div>
