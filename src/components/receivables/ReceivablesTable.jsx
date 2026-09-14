@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { Eye, PlusCircle, Receipt } from 'lucide-react';
+import { CalendarClock, Eye, PlusCircle, Receipt } from 'lucide-react';
 
 function formatPaymentDate(payment) {
   return payment?.payment_date || payment?.created_at?.slice?.(0, 10) || '-';
@@ -36,6 +36,7 @@ export default function ReceivablesTable({
   clientBalances = [],
   onViewInvoice,
   onRegisterPayment,
+  onScheduleCollection,
 }) {
   const { formatMoney } = useCurrency();
 
@@ -45,9 +46,14 @@ export default function ReceivablesTable({
         <Eye className="h-3.5 w-3.5" />
       </Button>
       {row.summary.balanceDue > 0 ? (
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onRegisterPayment(row)} title="Registrar abono">
-          <PlusCircle className="h-3.5 w-3.5" />
-        </Button>
+        <>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:text-primary" onClick={() => onRegisterPayment(row)} title="Registrar abono">
+            <PlusCircle className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => onScheduleCollection?.(row)} title="Programar seguimiento de cobro">
+            <CalendarClock className="h-3.5 w-3.5" />
+          </Button>
+        </>
       ) : null}
     </div>
   );
@@ -99,6 +105,11 @@ export default function ReceivablesTable({
               ) : (
                 <p className="text-xs text-muted-foreground">Sin abonos registrados</p>
               )}
+              {row.nextCollectionAction ? (
+                <p className="text-xs font-medium text-amber-700">Próximo cobro: {new Date(row.nextCollectionAction.due_at).toLocaleString('es-DO')}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Sin seguimiento de cobro programado</p>
+              )}
 
               <div className="border-t pt-2">{renderActions(row)}</div>
             </Card>
@@ -149,7 +160,10 @@ export default function ReceivablesTable({
                     <TableCell><Badge className={`${row.statusMeta.badgeClass} border-0 text-xs`}>{row.statusMeta.label}</Badge></TableCell>
                     <TableCell><AgingBadge row={row} /></TableCell>
                     <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">
-                      {row.lastPayment ? `${formatMoney(row.lastPayment.amount)} · ${formatPaymentDate(row.lastPayment)}` : '-'}
+                      <div className="space-y-1">
+                        <p>{row.lastPayment ? `${formatMoney(row.lastPayment.amount)} · ${formatPaymentDate(row.lastPayment)}` : '-'}</p>
+                        {row.nextCollectionAction ? <p className="text-[10px] font-medium text-amber-700">Cobro: {new Date(row.nextCollectionAction.due_at).toLocaleDateString('es-DO')}</p> : null}
+                      </div>
                     </TableCell>
                     <TableCell>{renderActions(row)}</TableCell>
                   </TableRow>
