@@ -1,0 +1,35 @@
+name: Fix automatic SKU on restored drafts
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-auto-sku-mount.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Products.jsx
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/Products.jsx')
+          s=p.read_text()
+          anchor="""  const existingCatalogSkus = products.map((product) => product?.sku).filter(Boolean)\n  const updateName = (value) => {\n    setForm((current) => ({\n      ...current,\n      name: value,\n      sku: initial?.id ? current.sku : (value.trim() ? generateUniqueSku(value, existingCatalogSkus) : ''),\n    }))\n  }\n"""
+          replacement="""  const existingCatalogSkus = products.map((product) => product?.sku).filter(Boolean)\n  const updateName = (value) => {\n    setForm((current) => ({\n      ...current,\n      name: value,\n      sku: initial?.id ? current.sku : (value.trim() ? generateUniqueSku(value, existingCatalogSkus) : ''),\n    }))\n  }\n\n  useEffect(() => {\n    if (initial?.id || !form.name?.trim() || form.sku?.trim()) return\n    setForm((current) => ({\n      ...current,\n      sku: generateUniqueSku(current.name, existingCatalogSkus),\n    }))\n  }, [initial?.id, form.name, form.sku, products])\n"""
+          if anchor not in s: raise SystemExit('SKU anchor not found')
+          s=s.replace(anchor,replacement,1)
+          p.write_text(s)
+      - name: Remove temporary workflow
+        shell: python
+        run: |
+          from pathlib import Path
+          Path('.github/workflows/fix-auto-sku-mount.yml').unlink()
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: generate SKU for restored product drafts" || exit 0
+          git push
