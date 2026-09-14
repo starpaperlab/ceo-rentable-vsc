@@ -31,7 +31,7 @@ import {
 } from 'recharts';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
-import { buildDashboardFinancials, buildSixMonthTrend, normalizeInvoiceTotal } from '@/lib/dashboardMetrics';
+import { buildCeoScore, buildDashboardFinancials, buildSixMonthTrend, normalizeInvoiceTotal } from '@/lib/dashboardMetrics';
 import { groupPaymentsByInvoice, getInvoicePaymentSummary } from '@/lib/invoicePayments';
 
 function dateKeyInTimeZone(value = new Date(), timeZone = 'America/Santo_Domingo') {
@@ -196,18 +196,25 @@ export default function Dashboard() {
     [products]
   );
 
-  const ceoMetrics = useMemo(() => {
-    const marginScore = Math.max(0, Math.min(100, Math.round((stats.margen / 50) * 100)));
-    const incomeGrowthScore = Math.max(0, Math.min(100, Math.round(50 + growth.revenueGrowth)));
-    const costControlScore = Math.max(0, Math.min(100, Math.round(100 - ((stats.gastos / Math.max(stats.facturado, 1)) * 100))));
-    const score = Math.round((marginScore * 0.45) + (incomeGrowthScore * 0.3) + (costControlScore * 0.25));
+  const overdueOperationalItems = useMemo(() => {
+    const today = startOfDay();
+    const overdueReminders = reminders.filter(
+      (item) => item.status === 'pending' && item.due_at && new Date(item.due_at) < today
+    ).length;
+    const overdueFollowUps = clients.filter(
+      (client) => client.next_follow_up_at && new Date(client.next_follow_up_at) < today
+    ).length;
+    return overdueReminders + overdueFollowUps;
+  }, [clients, reminders]);
 
-    let status = 'Saludable';
-    if (score < 41) status = 'Crítico';
-    else if (score < 71) status = 'Inestable';
-
-    return { marginScore, incomeGrowthScore, costControlScore, score, status };
-  }, [stats, growth]);
+  const ceoMetrics = useMemo(
+    () => buildCeoScore({
+      financials,
+      products,
+      overdueOperationalItems,
+    }),
+    [financials, overdueOperationalItems, products]
+  );
 
   const todayChecklist = useMemo(() => {
     const todayStart = startOfDay();
@@ -371,10 +378,12 @@ export default function Dashboard() {
           ) : null}
           <span className={`px-2 h-7 sm:px-2.5 sm:h-8 inline-flex items-center rounded-full text-[11px] sm:text-xs font-semibold border ${
             ceoMetrics.status === 'Saludable'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900'
               : ceoMetrics.status === 'Inestable'
-                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                : 'bg-red-50 text-red-700 border-red-200'
+                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900'
+                : ceoMetrics.status === 'Crítico'
+                  ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900'
+                  : 'bg-muted text-muted-foreground border-border'
           }`}>
             {ceoMetrics.status}
           </span>
@@ -431,59 +440,97 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-3">
-        <div className="rounded-xl sm:rounded-2xl border border-[#F0D074] bg-gradient-to-br from-[#FFF6D9] via-[#FFF4CC] to-[#FFF2C2] p-3 sm:p-5 space-y-2.5 sm:space-y-4">
+        <Card className="p-3 sm:p-5 border-border/70 bg-card">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-[10px] font-extrabold tracking-[0.14em] text-[#8D6A14]">CEO SCORE™</p>
-              <p className="text-[11px] sm:text-xs text-[#7A6B4E]">Salud Financiera Global</p>
+              <p className="text-[10px] font-extrabold tracking-[0.14em] text-primary">CEO SCORE™</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground">Salud global del negocio</p>
             </div>
-            <span className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 sm:py-1 rounded-full border border-[#F2CB6B] text-[#B57400] bg-[#FFF9E6]">
+            <span className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 sm:py-1 rounded-full border ${
+              ceoMetrics.status === 'Saludable'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900'
+                : ceoMetrics.status === 'Inestable'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900'
+                  : ceoMetrics.status === 'Crítico'
+                    ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900'
+                    : 'bg-muted text-muted-foreground border-border'
+            }`}>
               {ceoMetrics.status}
             </span>
           </div>
 
-          <div className="flex items-end gap-2">
-            <span className="text-4xl sm:text-5xl leading-none font-black text-[#D97A1D]">{ceoMetrics.score}</span>
-            <span className="text-[11px] sm:text-xs text-[#6B6251] pb-1 sm:pb-1.5">de 100 pts</span>
-          </div>
+          {ceoMetrics.hasSufficientData ? (
+            <>
+              <div className="mt-3 flex items-end gap-2">
+                <span className="text-4xl sm:text-5xl leading-none font-black text-foreground">{ceoMetrics.score}</span>
+                <span className="text-[11px] sm:text-xs text-muted-foreground pb-1 sm:pb-1.5">de 100 pts</span>
+              </div>
 
-          <div className="h-2 sm:h-2.5 rounded-full bg-white/70 overflow-hidden">
-            <div className="h-full bg-[#F39A2D]" style={{ width: `${ceoMetrics.score}%` }} />
-          </div>
-          <div className="text-[9px] sm:text-[10px] text-[#7A6B4E] grid grid-cols-3">
-            <span>0 · Crítico</span>
-            <span className="text-center">41 · Inestable</span>
-            <span className="text-right">71 · Saludable</span>
-          </div>
+              <div className="mt-3 h-2 sm:h-2.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${ceoMetrics.score}%` }} />
+              </div>
 
-          <MetricBar label="Margen de Ganancia" value={ceoMetrics.marginScore} tone="warning" />
-          <MetricBar label="Crecimiento de Ingresos" value={ceoMetrics.incomeGrowthScore} tone="success" />
-          <MetricBar label="Control de Gastos" value={ceoMetrics.costControlScore} tone="warning" />
-        </div>
+              <p className="mt-3 text-xs text-muted-foreground">{ceoMetrics.explanation}</p>
+
+              <div className="mt-4 grid gap-2">
+                {ceoMetrics.factors.map((factor) => (
+                  <MetricBar key={factor.key} label={factor.label} value={factor.score} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-border p-4">
+              <p className="text-sm font-semibold text-foreground">Tu CEO Score todavía no se puede calcular.</p>
+              <p className="mt-1 text-xs text-muted-foreground">{ceoMetrics.explanation}</p>
+            </div>
+          )}
+        </Card>
 
         <Card className="p-3 sm:p-5">
-          <div className="flex items-start justify-between">
-            <h3 className="text-base sm:text-[24px] leading-tight font-bold tracking-tight text-foreground">Diagnóstico Estratégico</h3>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-base sm:text-[24px] leading-tight font-bold tracking-tight text-foreground">Diagnóstico Estratégico</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Qué está impulsando o frenando tu negocio ahora.</p>
+            </div>
             <span className="text-[10px] font-semibold px-2 py-0.5 sm:py-1 rounded-full bg-muted text-muted-foreground">
-              {fugaProducts > 0 ? '1 insight' : '0 insights'}
+              {ceoMetrics.hasSufficientData ? `${ceoMetrics.riskFactors.length} riesgo${ceoMetrics.riskFactors.length === 1 ? '' : 's'}` : 'Pendiente'}
             </span>
           </div>
-          <div className="mt-2 sm:mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:p-4">
-            <div className="flex gap-2 sm:gap-3">
-              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-bold text-amber-700">
-                  {fugaProducts} producto(s) en Zona de Fuga
-                </p>
-                <p className="text-xs text-amber-700/90">
-                  Margen menor al 20% — están drenando rentabilidad.
-                </p>
-                <p className="text-xs text-amber-700/80 mt-1.5">
-                  Optimiza costos o considera ajustar precio en los productos críticos.
-                </p>
+
+          {!ceoMetrics.hasSufficientData ? (
+            <div className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              Registra actividad financiera para generar un diagnóstico basado en datos reales.
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {ceoMetrics.riskFactors.length > 0 ? (
+                ceoMetrics.riskFactors.map((factor) => (
+                  <div key={factor.key} className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/70 dark:bg-amber-950/20">
+                    <div className="flex gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{factor.label}: {factor.score}/100</p>
+                        <p className="mt-0.5 text-xs text-amber-800/80 dark:text-amber-300/80">Este factor está reduciendo tu CEO Score.</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-300">
+                  No hay factores críticos en este momento.
+                </div>
+              )}
+
+              <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Acciones recomendadas</p>
+                <div className="mt-2 space-y-1.5">
+                  {ceoMetrics.actions.map((action) => (
+                    <p key={action} className="text-xs text-foreground">• {action}</p>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </Card>
       </div>
 
@@ -703,17 +750,21 @@ function KpiCard({
   );
 }
 
-function MetricBar({ label, value, tone }) {
-  const color = tone === 'success' ? '#0E9F6E' : '#F39A2D';
+function MetricBar({ label, value }) {
+  const semanticClass = value >= 70
+    ? 'bg-emerald-500'
+    : value >= 41
+      ? 'bg-amber-500'
+      : 'bg-red-500';
 
   return (
     <div>
-      <div className="flex items-center justify-between text-[9px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] sm:tracking-[0.12em] text-[#725A2D]">
+      <div className="flex items-center justify-between text-[9px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] sm:tracking-[0.12em] text-muted-foreground">
         <span>{label}</span>
         <span>{value}</span>
       </div>
-      <div className="h-1.5 mt-1 rounded-full bg-white/70">
-        <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
+      <div className="h-1.5 mt-1 rounded-full bg-muted">
+        <div className={`h-full rounded-full ${semanticClass}`} style={{ width: `${value}%` }} />
       </div>
     </div>
   );
