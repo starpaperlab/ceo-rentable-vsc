@@ -1372,12 +1372,9 @@ export default function Products() {
                           {inventoryStatus.canPass ? (
                             <Button variant="outline" size="sm" className="h-8" onClick={() => openPassToInventory(product)}>Pasar a inventario</Button>
                           ) : null}
-                          <Button variant="outline" size="sm" className="h-8" onClick={() => openEditProduct(product)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Básico
-                          </Button>
                           <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
-                            <Calculator className="h-3.5 w-3.5 mr-1.5" /> Costos
-                          </Button>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Duplicar ${product.name}`} onClick={() => duplicateCatalogMutation.mutate(product)} disabled={duplicateCatalogMutation.isPending}>
                             <Copy className="h-4 w-4" />
                           </Button>
