@@ -374,3 +374,152 @@ export function buildCeoScore({
     },
   };
 }
+
+
+function normalizedName(value = '') {
+  return `${value || ''}`.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function buildTopProducts({
+  products = [],
+  invoices = [],
+  orders = [],
+  orderItems = [],
+  criterion = 'sales',
+} = {}) {
+  const productsById = new Map(products.filter((item) => item?.id).map((item) => [item.id, item]));
+  const productsByName = new Map(products
+    .filter((item) => item?.name)
+    .map((item) => [normalizedName(item.name), item]));
+  const activeInvoices = invoices.filter((invoice) => !isCanceled(invoice));
+  const invoicedOrderIds = new Set(activeInvoices.filter((invoice) => invoice.order_id).map((invoice) => invoice.order_id));
+  const metrics = new Map();
+
+  const add = ({ productId = null, name, revenue = 0, quantity = 0, cost = null }) => {
+    const normalized = normalizedName(name);
+    if (!normalized) return;
+    const matchedProduct = productId ? productsById.get(productId) : productsByName.get(normalized);
+    const key = matchedProduct?.id || normalized;
+    const current = metrics.get(key) || {
+      id: matchedProduct?.id || productId || null,
+      name: matchedProduct?.name || name || 'Producto',
+      revenue: 0,
+      quantity: 0,
+      knownCost: 0,
+      costCoverageRevenue: 0,
+      transactions: 0,
+    };
+
+    const safeRevenue = roundMoney(revenue);
+    current.revenue = roundMoney(current.revenue + safeRevenue);
+    current.quantity += Number(quantity || 0);
+    current.transactions += 1;
+    if (cost != null && Number.isFinite(Number(cost))) {
+      current.knownCost = roundMoney(current.knownCost + Number(cost || 0));
+      current.costCoverageRevenue = roundMoney(current.costCoverageRevenue + safeRevenue);
+    }
+    metrics.set(key, current);
+  };
+
+  orderItems
+    .filter((item) => invoicedOrderIds.has(item.order_id))
+    .forEach((item) => {
+      const quantity = Number(item.quantity || 0);
+      const revenue = Number(item.total || (quantity * Number(item.unit_price || 0)) || 0);
+      const unitCost = Number(item.unit_cost_snapshot || 0);
+      const hasCostSnapshot = unitCost > MONEY_EPSILON;
+      add({
+        productId: item.product_id || null,
+        name: item.description || item.item_description || productsById.get(item.product_id)?.name,
+        revenue,
+        quantity,
+        cost: hasCostSnapshot ? quantity * unitCost : null,
+      });
+    });
+
+  activeInvoices
+    .filter((invoice) => !invoice.order_id)
+    .forEach((invoice) => {
+      const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+      lineItems.forEach((item) => {
+        const quantity = Number(item.quantity ?? 1);
+        const revenue = Number(item.total ?? (quantity * Number(item.unit_price || item.price || 0)));
+        const productId = item.product_id || null;
+        const name = item.description || item.name || productsById.get(productId)?.name || 'Producto';
+        const snapshotCost = Number(item.unit_cost_snapshot ?? item.unit_cost ?? item.cost ?? 0);
+        add({
+          productId,
+          name,
+          revenue,
+          quantity,
+          cost: snapshotCost > MONEY_EPSILON ? quantity * snapshotCost : null,
+        });
+      });
+    });
+
+  const rows = Array.from(metrics.values()).map((item) => {
+    const profit = item.costCoverageRevenue > MONEY_EPSILON
+      ? roundMoney(item.costCoverageRevenue - item.knownCost)
+      : null;
+    const margin = profit != null && item.costCoverageRevenue > MONEY_EPSILON
+      ? (profit / item.costCoverageRevenue) * 100
+      : null;
+    return {
+      ...item,
+      profit,
+      margin,
+      costCoverageComplete: item.costCoverageRevenue + MONEY_EPSILON >= item.revenue,
+    };
+  });
+
+  const sorter = criterion === 'profit'
+    ? (a, b) => Number(b.profit ?? -Infinity) - Number(a.profit ?? -Infinity)
+    : criterion === 'margin'
+      ? (a, b) => Number(b.margin ?? -Infinity) - Number(a.margin ?? -Infinity)
+      : (a, b) => b.revenue - a.revenue;
+
+  return rows.sort(sorter).slice(0, 5);
+}
+
+export function buildDashboardOperations({
+  quotes = [],
+  orders = [],
+  orderStatuses = [],
+  now = new Date(),
+} = {}) {
+  const pendingQuoteStatuses = new Set(['pending', 'draft', 'sent']);
+  const pendingQuotes = quotes.filter((quote) => pendingQuoteStatuses.has(`${quote.status || ''}`.toLowerCase()));
+
+  const terminalCodes = new Set(
+    orderStatuses
+      .filter((status) => status.is_terminal)
+      .map((status) => status.code)
+  );
+
+  const today = startOfLocalDay(now);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 14);
+
+  const upcomingOrders = orders
+    .filter((order) => !terminalCodes.has(order.operational_status))
+    .map((order) => {
+      const targetDateValue = order.commitment_date || order.estimated_delivery_date || order.event_date || null;
+      const targetDate = targetDateValue ? new Date(`${targetDateValue}T00:00:00`) : null;
+      return { order, targetDate };
+    })
+    .filter(({ targetDate }) => targetDate && !Number.isNaN(targetDate.getTime()) && targetDate >= today && targetDate <= horizon)
+    .sort((a, b) => a.targetDate - b.targetDate);
+
+  return {
+    pendingQuotes,
+    pendingQuotesCount: pendingQuotes.length,
+    upcomingOrders,
+    upcomingOrdersCount: upcomingOrders.length,
+  };
+}
+
+function startOfLocalDay(value = new Date()) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
