@@ -1,4 +1,5 @@
 import { getInvoicePaymentSummary, getPaymentStatusMeta, roundMoney, sortInvoicePayments } from '@/lib/invoicePayments';
+import { AGING_BUCKETS, getAgingBucket, getAgingMeta, getOverdueDays, parseDateOnly } from '@/lib/receivableAging';
 
 export const RECEIVABLE_STATUS_OPTIONS = [
   { value: 'all', label: 'Todos' },
@@ -7,20 +8,6 @@ export const RECEIVABLE_STATUS_OPTIONS = [
   { value: 'overdue', label: 'Vencidas' },
   { value: 'paid', label: 'Pagadas' },
 ];
-
-function parseDateOnly(value) {
-  if (!value) return null;
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function isOverdue(invoice = {}, summary = {}, today = new Date()) {
-  if (summary.balanceDue <= 0 || !invoice.due_date) return false;
-  const dueDate = parseDateOnly(invoice.due_date);
-  if (!dueDate) return false;
-  const current = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return dueDate < current;
-}
 
 export function getReceivableStatus(invoice = {}, summary = {}, today = new Date()) {
   if (summary.paymentStatus === 'canceled') return 'canceled';
@@ -47,6 +34,9 @@ export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ord
     const status = getReceivableStatus(invoice, summary, today);
     const order = invoice.order_id ? ordersById[invoice.order_id] || null : null;
     const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null;
+    const overdueDays = summary.balanceDue > 0 ? getOverdueDays(invoice.due_date, today) : 0;
+    const agingBucket = summary.balanceDue > 0 ? getAgingBucket(invoice.due_date, today) : 'current';
+    const agingMeta = getAgingMeta(agingBucket);
 
     return {
       invoice,
@@ -56,6 +46,9 @@ export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ord
       statusMeta: getReceivableStatusMeta(status),
       order,
       lastPayment,
+      overdueDays,
+      agingBucket,
+      agingMeta,
       isManualInvoice: !invoice.order_id,
       isConnectedToOrder: Boolean(invoice.order_id),
     };
@@ -65,6 +58,21 @@ export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ord
 export function getReceivablesSummary(rows = []) {
   const activeRows = rows.filter((row) => row.status !== 'canceled');
   const openRows = activeRows.filter((row) => row.summary.balanceDue > 0);
+  const aging = AGING_BUCKETS.reduce((map, bucket) => {
+    map[bucket.value] = {
+      ...bucket,
+      amount: 0,
+      invoiceCount: 0,
+    };
+    return map;
+  }, {});
+
+  openRows.forEach((row) => {
+    const bucket = aging[row.agingBucket] || aging.current;
+    bucket.amount = roundMoney(bucket.amount + row.summary.balanceDue);
+    bucket.invoiceCount += 1;
+  });
+
   const clientBalances = openRows.reduce((map, row) => {
     const key = row.invoice.client_id || row.invoice.client_name || row.invoice.id;
     const current = map.get(key) || {
@@ -87,6 +95,8 @@ export function getReceivablesSummary(rows = []) {
     overdueInvoices: openRows.filter((row) => row.status === 'overdue').length,
     clientsWithBalance: clientBalances.size,
     clientBalances: Array.from(clientBalances.values()).sort((a, b) => b.balanceDue - a.balanceDue),
+    aging,
+    agingBuckets: AGING_BUCKETS.map((bucket) => aging[bucket.value]),
   };
 }
 
@@ -97,6 +107,7 @@ export function filterReceivableRows(rows = [], filters = {}) {
   const startDate = parseDateOnly(filters.startDate);
   const endDate = parseDateOnly(filters.endDate);
   const overdueOnly = Boolean(filters.overdueOnly);
+  const agingBucket = filters.agingBucket || 'all';
 
   return rows.filter((row) => {
     const invoice = row.invoice;
@@ -112,7 +123,8 @@ export function filterReceivableRows(rows = [], filters = {}) {
     const matchesStart = !startDate || (invoiceDate && invoiceDate >= startDate);
     const matchesEnd = !endDate || (invoiceDate && invoiceDate <= endDate);
     const matchesOverdue = !overdueOnly || row.status === 'overdue';
+    const matchesAging = agingBucket === 'all' || row.agingBucket === agingBucket;
 
-    return matchesClient && matchesStatus && matchesSource && matchesStart && matchesEnd && matchesOverdue;
+    return matchesClient && matchesStatus && matchesSource && matchesStart && matchesEnd && matchesOverdue && matchesAging;
   });
 }
