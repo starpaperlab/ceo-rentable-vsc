@@ -75,6 +75,7 @@ export default function Client360Dialog({
   onDeleteReminder,
   savingReminder = false,
   onCreateQuote,
+  onCreateOpportunity,
 }) {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityForm, setActivityForm] = useState({ activity_type: 'call', subject: '', notes: '', occurred_at: new Date().toISOString().slice(0,16) });
@@ -154,11 +155,16 @@ export default function Client360Dialog({
                 Prioridad {client.priority === 'low' ? 'baja' : client.priority === 'high' ? 'alta' : client.priority === 'urgent' ? 'urgente' : 'normal'}
               </Badge>
             </div>
-            {canWrite && onCreateQuote ? (
-              <Button size="sm" onClick={onCreateQuote}>
-                <FileText className="mr-2 h-4 w-4" />
-                Nueva cotización
-              </Button>
+            {canWrite ? (
+              <div className="flex flex-wrap gap-2">
+                {onCreateOpportunity ? <Button size="sm" variant="outline" onClick={onCreateOpportunity}>Nueva oportunidad</Button> : null}
+                {onCreateQuote ? (
+                  <Button size="sm" onClick={onCreateQuote}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Nueva cotización
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
