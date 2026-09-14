@@ -27,7 +27,7 @@ export function getReceivableStatusMeta(status) {
   return getPaymentStatusMeta(status);
 }
 
-export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ordersById = {}, today = new Date() }) {
+export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ordersById = {}, remindersByInvoice = {}, today = new Date() }) {
   return invoices.map((invoice) => {
     const payments = sortInvoicePayments(paymentsByInvoice[invoice.id] || []);
     const summary = getInvoicePaymentSummary(invoice, payments);
@@ -37,6 +37,8 @@ export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ord
     const overdueDays = summary.balanceDue > 0 ? getOverdueDays(invoice.due_date, today) : 0;
     const agingBucket = summary.balanceDue > 0 ? getAgingBucket(invoice.due_date, today) : 'current';
     const agingMeta = getAgingMeta(agingBucket);
+    const collectionReminders = (remindersByInvoice[invoice.id] || []).filter((reminder) => reminder.status === 'pending').sort((a, b) => `${a.due_at || ''}`.localeCompare(`${b.due_at || ''}`));
+    const nextCollectionAction = collectionReminders[0] || null;
 
     return {
       invoice,
@@ -49,6 +51,8 @@ export function buildReceivableRows({ invoices = [], paymentsByInvoice = {}, ord
       overdueDays,
       agingBucket,
       agingMeta,
+      nextCollectionAction,
+      collectionReminders,
       isManualInvoice: !invoice.order_id,
       isConnectedToOrder: Boolean(invoice.order_id),
     };
