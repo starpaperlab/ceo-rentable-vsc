@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import LineItemsTable from '@/components/billing/LineItemsTable';
 import { useCurrency } from '@/components/shared/CurrencyContext';
-import { calculateOrderTotals, generateOrderNumber, ORDER_STATUS_OPTIONS } from '@/lib/orders';
+import { calculateOrderTotals, generateOrderNumber } from '@/lib/orders';
 import { Loader2, Save, X } from 'lucide-react';
 
 const DEFAULT_ITEM = { description: '', unit_price: 0, quantity: 1, total: 0 };
@@ -67,6 +67,7 @@ export default function OrderForm({
   products = [],
   inventoryItems = [],
   nextNumber,
+  statusOptions = [],
   onSave,
   onCancel,
   isSaving = false,
@@ -167,7 +168,7 @@ export default function OrderForm({
             <Select value={form.operational_status} onValueChange={(value) => update('operational_status', value)}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {ORDER_STATUS_OPTIONS.map((status) => (
+                {statusOptions.map((status) => (
                   <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                 ))}
               </SelectContent>
