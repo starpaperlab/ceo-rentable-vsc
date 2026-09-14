@@ -1,0 +1,46 @@
+name: Force full product edit form
+on:
+  push:
+    paths:
+      - '.github/workflows/force-full-edit-product.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Route all legacy edit actions to full catalog form
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/Products.jsx')
+          s = p.read_text()
+          old = '''  const openEditProduct = (product) => {
+    if (!canWrite) return
+    const { activeItem, anyItem } = getInventoryLinkForProduct(product)
+    const preferredInventoryItem = activeItem || anyItem || null
+    setEditingState({ product, activeInventoryItem: activeItem, anyInventoryItem: preferredInventoryItem })
+    setProductForm(buildProductForm(product, preferredInventoryItem, Boolean(activeItem)))
+  }
+'''
+          new = '''  const openEditProduct = (product) => {
+    if (!canWrite) return
+    setEditingState(null)
+    setCatalogDialog({ mode: 'edit', item: product })
+  }
+'''
+          if old not in s:
+            raise SystemExit('Legacy openEditProduct block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/force-full-edit-product.yml
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Products.jsx .github/workflows/force-full-edit-product.yml
+          git commit -m "fix: route all product edits to full catalog form"
+          git push
