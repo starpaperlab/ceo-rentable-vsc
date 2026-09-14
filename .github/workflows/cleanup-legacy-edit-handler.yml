@@ -1,0 +1,33 @@
+name: Clean legacy product edit handler
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-legacy-edit-handler.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean handler
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/Products.jsx')
+          s = p.read_text()
+          old = """  const openEditProduct = (product) => {\n    if (!canWrite) return\n    const { activeItem, anyItem } = getInventoryLinkForProduct(product)\n    const preferredInventoryItem = activeItem || anyItem || null\n    setEditingState(null)\n    setCatalogDialog({ mode: 'edit', item: product })\n    return\n    setProductForm(buildProductForm(product, preferredInventoryItem, Boolean(activeItem)))\n  }\n"""
+          new = """  const openEditProduct = (product) => {\n    if (!canWrite) return\n    setEditingState(null)\n    setCatalogDialog({ mode: 'edit', item: product })\n  }\n"""
+          if old not in s:
+            raise SystemExit('Patched legacy handler not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/cleanup-legacy-edit-handler.yml
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Products.jsx .github/workflows/cleanup-legacy-edit-handler.yml
+          git commit -m "fix: remove legacy edit modal path"
+          git push
