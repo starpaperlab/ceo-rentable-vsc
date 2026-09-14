@@ -306,6 +306,14 @@ function CatalogDialog({
       sku: initial?.id ? current.sku : (value.trim() ? generateUniqueSku(value, existingCatalogSkus) : ''),
     }))
   }
+
+  useEffect(() => {
+    if (initial?.id || !form.name?.trim() || form.sku?.trim()) return
+    setForm((current) => ({
+      ...current,
+      sku: generateUniqueSku(current.name, existingCatalogSkus),
+    }))
+  }, [initial?.id, form.name, form.sku, products])
   const cost = getCatalogCost(form, products)
   const profit = calculateProfit(form.sale_price, cost)
   const margin = calculateMargin(form.sale_price, cost)
