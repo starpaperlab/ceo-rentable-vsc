@@ -12,6 +12,7 @@ import Inventory from './pages/Inventory';
 import MonthlyControl from './pages/MonthlyControl';
 import Onboarding from './pages/Onboarding';
 import Orders from './pages/Orders';
+import Opportunities from './pages/Opportunities';
 import Products from './pages/Products';
 import Profitability from './pages/Profitability';
 import Projection from './pages/Projection';
@@ -31,6 +32,7 @@ export const PAGES = {
     "MonthlyControl": MonthlyControl,
     "Onboarding": Onboarding,
     "Orders": Orders,
+    "Opportunities": Opportunities,
     "Products": Products,
     "Profitability": Profitability,
     "Projection": Projection,
