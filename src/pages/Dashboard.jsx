@@ -524,8 +524,8 @@ export default function Dashboard() {
         <Card className="p-3 sm:p-5 border-border/70 bg-card">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-[10px] font-extrabold tracking-[0.14em] text-primary">CEO SCORE™</p>
-              <p className="text-[11px] sm:text-xs text-muted-foreground">Salud global del negocio</p>
+              <p className="text-sm sm:text-base font-black tracking-[0.08em] sm:tracking-[0.12em] text-primary">CEO SCORE™</p>
+              <p className="mt-0.5 text-[11px] sm:text-sm text-muted-foreground">Salud global del negocio</p>
             </div>
             <span className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 sm:py-1 rounded-full border ${
               ceoMetrics.status === 'Saludable'
