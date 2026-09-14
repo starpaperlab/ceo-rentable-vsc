@@ -124,6 +124,12 @@ export default function Orders() {
     enabled,
   });
 
+  const { data: opportunities = [] } = useQuery({
+    queryKey: ['opportunities', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'opportunities' }),
+    enabled,
+  });
+
   const { data: orderStatuses = [], isLoading: loadingStatuses } = useQuery({
     queryKey: ['order-statuses', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'order_statuses', orderBy: 'sort_order', ascending: true }),
@@ -140,6 +146,7 @@ export default function Orders() {
   const invoiceByOrderId = useMemo(() => mapInvoicesByOrder(invoices), [invoices]);
   const paymentsByInvoiceId = useMemo(() => groupPaymentsByInvoice(invoicePayments), [invoicePayments]);
   const quoteById = useMemo(() => mapById(quotes), [quotes]);
+  const opportunityById = useMemo(() => mapById(opportunities), [opportunities]);
   const statusHistoryByOrderId = useMemo(() => groupHistoryByOrder(orderStatusHistory), [orderStatusHistory]);
 
   const statusOptions = useMemo(
@@ -481,6 +488,7 @@ export default function Orders() {
         invoiceByOrderId={invoiceByOrderId}
         paymentsByInvoiceId={paymentsByInvoiceId}
         quoteById={quoteById}
+        opportunityById={opportunityById}
         statusByCode={statusByCode}
         statusHistoryByOrderId={statusHistoryByOrderId}
         onEdit={(order) => {
