@@ -12,7 +12,7 @@ export const RECEIVABLE_STATUS_OPTIONS = [
 export function getReceivableStatus(invoice = {}, summary = {}, today = new Date()) {
   if (summary.paymentStatus === 'canceled') return 'canceled';
   if (summary.balanceDue <= 0 || summary.paymentStatus === 'paid') return 'paid';
-  if (isOverdue(invoice, summary, today)) return 'overdue';
+  if (summary.balanceDue > 0 && getOverdueDays(invoice.due_date, today) > 0) return 'overdue';
   if (summary.totalPaid > 0) return 'partial';
   return 'pending';
 }
