@@ -73,7 +73,14 @@ export default function DocumentList({ documents, type, draftDocuments = [], onE
             <div className="flex gap-0.5">
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onPreview(doc)} title="Vista previa"><Eye className="h-3.5 w-3.5"/></Button>
               {canWrite ? <>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(doc)} title="Editar"><Pencil className="h-3.5 w-3.5"/></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onEdit(doc)}
+                  disabled={Boolean(relatedOrder)}
+                  title={relatedOrder ? 'Cotización bloqueada porque ya generó un pedido' : 'Editar'}
+                ><Pencil className="h-3.5 w-3.5"/></Button>
                 {type === 'quote' && onConvert ? <Button
                   variant="ghost"
                   size="icon"
@@ -82,7 +89,14 @@ export default function DocumentList({ documents, type, draftDocuments = [], onE
                   onClick={() => onConvert(doc)}
                   disabled={!canConvertQuote || isConverting}
                 ><ArrowRight className="h-3.5 w-3.5"/></Button> : null}
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(doc.id)} title="Eliminar"><Trash2 className="h-3.5 w-3.5 text-muted-foreground"/></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => onDelete(doc.id)}
+                  disabled={Boolean(relatedOrder)}
+                  title={relatedOrder ? 'No se puede eliminar una cotización que ya generó un pedido' : 'Eliminar'}
+                ><Trash2 className="h-3.5 w-3.5 text-muted-foreground"/></Button>
               </> : null}
               {waLink ? <a href={waLink} target="_blank" rel="noopener noreferrer"><Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:text-green-700" title="Enviar recordatorio por WhatsApp"><MessageCircle className="h-3.5 w-3.5"/></Button></a> : null}
             </div>
