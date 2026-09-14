@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import {
   CalendarClock,
-  CheckCircle2,
   CircleDollarSign,
   Eye,
   GripVertical,
@@ -104,6 +103,7 @@ function OpportunityFormDialog({
   open,
   onOpenChange,
   opportunity,
+  initialValues = {},
   clients,
   stages,
   history = [],
@@ -135,17 +135,17 @@ function OpportunityFormDialog({
   useEffect(() => {
     if (!open) return;
     setForm({
-      title: opportunity?.title || '',
-      client_id: opportunity?.client_id || '',
-      stage_id: opportunity?.stage_id || defaultStage?.id || '',
-      expected_value: opportunity?.expected_value ?? '',
-      expected_close_date: opportunity?.expected_close_date || '',
-      source: opportunity?.source || '',
-      description: opportunity?.description || '',
-      loss_reason: opportunity?.loss_reason || '',
+      title: opportunity?.title || initialValues.title || '',
+      client_id: opportunity?.client_id || initialValues.client_id || '',
+      stage_id: opportunity?.stage_id || initialValues.stage_id || defaultStage?.id || '',
+      expected_value: opportunity?.expected_value ?? initialValues.expected_value ?? '',
+      expected_close_date: opportunity?.expected_close_date || initialValues.expected_close_date || '',
+      source: opportunity?.source || initialValues.source || '',
+      description: opportunity?.description || initialValues.description || '',
+      loss_reason: opportunity?.loss_reason || initialValues.loss_reason || '',
     });
     setActivity({ activity_type: 'note', subject: '', notes: '' });
-  }, [defaultStage?.id, open, opportunity]);
+  }, [defaultStage?.id, initialValues, open, opportunity]);
 
   const selectedStage = stages.find((stage) => stage.id === form.stage_id);
   const requiresLossReason = selectedStage?.stage_type === 'lost';
@@ -516,6 +516,7 @@ export default function Opportunities() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOpportunity, setEditingOpportunity] = useState(null);
+  const [newOpportunityDefaults, setNewOpportunityDefaults] = useState({});
   const [lossState, setLossState] = useState(null);
   const [stageManagerOpen, setStageManagerOpen] = useState(false);
 
@@ -595,7 +596,8 @@ export default function Opportunities() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('new') !== '1') return;
     const clientId = params.get('client');
-    setEditingOpportunity({
+    setEditingOpportunity(null);
+    setNewOpportunityDefaults({
       client_id: clients.some((client) => client.id === clientId) ? clientId : '',
       stage_id: stages.find((stage) => stage.is_default && stage.is_active)?.id || activeStages[0]?.id || '',
     });
@@ -797,11 +799,13 @@ export default function Opportunities() {
 
   const openNew = () => {
     setEditingOpportunity(null);
+    setNewOpportunityDefaults({});
     setDialogOpen(true);
   };
 
   const openEdit = (opportunity) => {
     setEditingOpportunity(opportunity);
+    setNewOpportunityDefaults({});
     setDialogOpen(true);
   };
 
@@ -950,9 +954,13 @@ export default function Opportunities() {
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) setEditingOpportunity(null);
+          if (!open) {
+            setEditingOpportunity(null);
+            setNewOpportunityDefaults({});
+          }
         }}
         opportunity={editingOpportunity?.id ? editingOpportunity : null}
+        initialValues={newOpportunityDefaults}
         clients={clients}
         stages={stages}
         history={editingOpportunity?.id ? historyByOpportunity[editingOpportunity.id] || [] : []}
