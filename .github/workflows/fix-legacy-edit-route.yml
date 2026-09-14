@@ -1,0 +1,34 @@
+name: Fix legacy product edit route
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-legacy-edit-route.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch legacy handler
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/Products.jsx')
+          s = p.read_text()
+          old = "    setEditingState({ product, activeInventoryItem: activeItem, anyInventoryItem: preferredInventoryItem })\n"
+          new = "    setEditingState(null)\n    setCatalogDialog({ mode: 'edit', item: product })\n    return\n"
+          if old not in s:
+            raise SystemExit('Legacy edit setter not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/fix-legacy-edit-route.yml
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Products.jsx .github/workflows/fix-legacy-edit-route.yml
+          git commit -m "fix: route legacy product edits to full catalog form"
+          git push
