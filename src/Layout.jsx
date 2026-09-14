@@ -8,14 +8,14 @@ import CurrencySelector from '@/components/shared/CurrencySelector';
 import ThemeToggle from '@/components/shared/ThemeToggle';
 import NotificationBell from '@/components/shared/NotificationBell';
 import WorkContextSelector from '@/components/shared/WorkContextSelector';
-import { LayoutDashboard, ShoppingBag, Users, Package, WalletCards, CalendarDays, FileBarChart, Settings, Menu, X, LogOut, ChevronRight, Shield, Receipt, CreditCard, Boxes, TrendingUp, Upload, BookOpen, GraduationCap, Building2, ChevronsUpDown } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Package, WalletCards, CalendarDays, FileBarChart, Settings, Menu, X, LogOut, ChevronRight, Shield, Receipt, CreditCard, Boxes, TrendingUp, Upload, BookOpen, GraduationCap, Building2, ChevronsUpDown, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DEFAULT_WORKSPACE_THEME, resolveWorkspaceTheme } from '@/lib/workspaceThemes';
 
 const NAV_SECTIONS=[
  {label:'Principal',items:[{name:'Inicio',page:'Dashboard',icon:LayoutDashboard,module:'dashboard'}]},
- {label:'Ventas',items:[{name:'Pedidos / Ventas',page:'Orders',icon:ShoppingBag,module:'orders'},{name:'Facturación',page:'Billing',icon:Receipt,module:'billing'},{name:'Cuentas por Cobrar',page:'Receivables',icon:CreditCard,module:'receivables'},{name:'Clientes',page:'Clients',icon:Users,module:'clients'},{name:'Productos / Servicios',page:'Products',icon:Package,module:'products'}]},
+ {label:'Ventas',items:[{name:'Pipeline / Oportunidades',page:'Opportunities',icon:Target,module:'opportunities'},{name:'Pedidos / Ventas',page:'Orders',icon:ShoppingBag,module:'orders'},{name:'Facturación',page:'Billing',icon:Receipt,module:'billing'},{name:'Cuentas por Cobrar',page:'Receivables',icon:CreditCard,module:'receivables'},{name:'Clientes',page:'Clients',icon:Users,module:'clients'},{name:'Productos / Servicios',page:'Products',icon:Package,module:'products'}]},
  {label:'Gestión y finanzas',items:[{name:'Inventario',page:'Inventory',icon:Boxes,module:'inventory'},{name:'Control Mensual',page:'MonthlyControl',icon:WalletCards,module:'monthly_control'},{name:'Rentabilidad',page:'Profitability',icon:TrendingUp,module:'profitability'},{name:'Proyección',page:'Projection',icon:TrendingUp,module:'projection'},{name:'Calendario / Actividades',page:'Agenda',icon:CalendarDays,module:'agenda'}]},
  {label:'Análisis y recursos',items:[{name:'Reportes',page:'Reports',icon:FileBarChart,module:'reports'},{name:'Importar datos',page:'Imports',icon:Upload,module:'imports'},{name:'Biblioteca de Costos',page:'biblioteca-costos',icon:BookOpen,directPath:'/biblioteca-costos',module:'cost_library'},{name:'Aprende',page:'Learn',icon:GraduationCap,directPath:'/Learn',module:'learn'},{name:'Mi negocio',page:'WorkspaceSettings',icon:Building2,module:'settings'},{name:'Configuración',page:'AppSettings',icon:Settings,module:'settings'}]}
 ];
