@@ -374,9 +374,9 @@ function CatalogDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 pt-[env(safe-area-inset-top)] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">
-      <Card className="max-h-[calc(100dvh-1rem)] w-full max-w-4xl overflow-y-auto rounded-b-none p-4 sm:max-h-[92dvh] sm:rounded-xl sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4">
+      <Card className="flex h-[calc(100dvh-env(safe-area-inset-top))] w-full max-w-4xl flex-col overflow-hidden rounded-none border-0 bg-background sm:h-auto sm:max-h-[92dvh] sm:rounded-xl sm:border">
+        <div className="sticky top-0 z-20 flex shrink-0 items-start justify-between gap-4 border-b bg-background px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6 sm:pb-4">
           <div>
             <h2 className="text-xl font-bold">{readOnly ? 'Detalle' : initial ? 'Costos y rentabilidad' : 'Crear producto o servicio'}</h2>
             <p className="text-sm text-muted-foreground">Los cálculos se actualizan automáticamente.</p>
@@ -384,7 +384,7 @@ function CatalogDialog({
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
-        <fieldset disabled={readOnly} className="mt-5 space-y-5">
+        <fieldset disabled={readOnly} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
           <section className="space-y-3">
             <h3 className="font-semibold">Información básica</h3>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -516,7 +516,7 @@ function CatalogDialog({
           </section>
         </fieldset>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="sticky bottom-0 z-20 flex shrink-0 justify-end gap-2 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:p-6 sm:pt-4">
           <Button variant="outline" onClick={onClose}>{readOnly ? 'Cerrar' : 'Cancelar'}</Button>
           {!readOnly ? <Button onClick={submit} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{initial ? 'Guardar cambios' : 'Crear ítem'}</Button> : null}
         </div>
