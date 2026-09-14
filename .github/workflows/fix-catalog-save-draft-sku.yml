@@ -1,0 +1,43 @@
+name: Fix catalog save draft and SKU
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-catalog-save-draft-sku.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Products.jsx
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/pages/Products.jsx')
+          s=p.read_text()
+          old="""  const submit = () => {\n    if (!form.name.trim()) {"""
+          new="""  const submit = () => {\n    const finalSku = form.sku?.trim() || (form.name?.trim() ? generateUniqueSku(form.name, existingCatalogSkus) : '')\n    if (!form.name.trim()) {"""
+          if old not in s: raise SystemExit('submit anchor missing')
+          s=s.replace(old,new,1)
+          old="""    onSave({ ...form, costo_unitario: cost, margin_pct: margin })\n    if (draftKey) {\n      try { window.localStorage.removeItem(draftKey) } catch { /* no-op */ }\n    }"""
+          new="""    onSave({ ...form, sku: finalSku, costo_unitario: cost, margin_pct: margin })"""
+          if old not in s: raise SystemExit('onSave anchor missing')
+          s=s.replace(old,new,1)
+          old="""  const saveCatalogMutation = useMutation({\n    mutationFn: saveCatalogItem,\n    onSuccess: () => {\n      refreshCatalog()\n      setCatalogDialog(null)\n      toast.success('Catálogo actualizado')\n    },"""
+          new="""  const saveCatalogMutation = useMutation({\n    mutationFn: saveCatalogItem,\n    onSuccess: () => {\n      const draftOwnerRef = writeOwnerId || writeOwnerEmail || ownerId || ownerEmail || 'current'\n      try { window.localStorage.removeItem(`ceo-rentable:catalog-draft:${draftOwnerRef}`) } catch { /* no-op */ }\n      refreshCatalog()\n      setCatalogDialog(null)\n      toast.success('Catálogo actualizado')\n    },"""
+          if old not in s: raise SystemExit('mutation anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+      - name: Remove temporary workflow
+        shell: python
+        run: |
+          from pathlib import Path
+          Path('.github/workflows/fix-catalog-save-draft-sku.yml').unlink()
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: make catalog save draft and SKU reliable" || exit 0
+          git push
