@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ensureDbUserRecord } from '@/lib/ensureDbUser';
@@ -28,7 +29,7 @@ import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasO
 
 const TOUR_STEPS = [
   { title: 'Facturacion', description: 'Registra ventas con facturas y da seguimiento a cobros pendientes.' },
-  { title: 'Facturas y Cotizaciones', description: 'Convierte cotizaciones aprobadas en facturas en un clic.' },
+  { title: 'Facturas y Cotizaciones', description: 'Convierte cotizaciones aprobadas en pedidos y desde el pedido genera la factura.' },
   { title: 'Vencidas', description: 'Identifica rapido facturas atrasadas y registra recordatorios.' },
 ];
 
@@ -135,6 +136,7 @@ function formatDraftSavedAt(value) {
 
 export default function Billing() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { formatMoney } = useCurrency();
   const { canWrite } = useWorkspace();
   const {
@@ -227,6 +229,11 @@ export default function Billing() {
   const { data: quotes = [], isLoading: loadingQuotes } = useQuery({
     queryKey: ['quotes', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'quotes' }),
+    enabled,
+  });
+  const { data: orders = [] } = useQuery({
+    queryKey: ['orders', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'orders' }),
     enabled,
   });
   const { data: clients = [] } = useQuery({
@@ -455,42 +462,26 @@ export default function Billing() {
     onError: (error) => toast.error(error.message || 'No se pudo generar el recibo.'),
   });
 
-  const convertToInvoiceMutation = useMutation({
+  const convertToOrderMutation = useMutation({
     mutationFn: async (quote) => {
       assertCanWrite();
-      if (ownerId) {
-        try {
-          await ensureDbUserRecord({ user, userProfile });
-        } catch (profileError) {
-          console.warn('No se pudo asegurar perfil antes de convertir cotización:', profileError?.message || profileError);
-        }
+      if (quote.status !== 'approved') {
+        throw new Error('Aprueba la cotización antes de convertirla en pedido.');
       }
-      const { id: _id, quote_number: _quoteNumber, created_at: _createdAt, updated_at: _updatedAt, ...rest } = quote;
-      let invoiceNumber = buildSuggestedDocumentNumber('invoice', invoices, ownConfig || {});
-      if (activeWorkspaceId) {
-        const { data: reservedNumber, error: reserveError } = await supabase.rpc('reserve_document_number', {
-          target_workspace_id: activeWorkspaceId,
-          document_type: 'invoice',
-        });
-        if (reserveError) throw reserveError;
-        if (reservedNumber) invoiceNumber = reservedNumber;
-      }
-      const payload = withOwner({
-        ...rest,
-        invoice_number: invoiceNumber,
-        status: 'pending',
-        user_id: quote.user_id || writeOwnerId,
-        created_by: normalizeEmail(quote.created_by) || writeOwnerEmail || null,
-        brand_profile_id: quote.brand_profile_id || activeBrandId || null,
+      const { data, error } = await supabase.rpc('convert_quote_to_order', {
+        target_quote_id: quote.id,
       });
-      return safeInsert('invoices', payload);
+      if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      setActiveTab('invoices');
-      toast.success('Cotizacion convertida a factura');
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['order-items'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      toast.success(`Pedido ${order?.order_number || ''} creado desde la cotización`.trim());
+      navigate('/Orders');
     },
-    onError: (error) => toast.error(`No se pudo convertir la cotización: ${error.message}`),
+    onError: (error) => toast.error(`No se pudo crear el pedido: ${error.message}`),
   });
 
   const paymentsByInvoiceId = useMemo(() => groupPaymentsByInvoice(invoicePayments), [invoicePayments]);
@@ -503,6 +494,10 @@ export default function Billing() {
   const invoicesWithPayments = useMemo(() => enrichInvoicesWithPayments(invoices, paymentsByInvoiceId), [invoices, paymentsByInvoiceId]);
   const sortedInvoices = useMemo(() => [...invoicesWithPayments].sort((a, b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')), [invoicesWithPayments]);
   const sortedQuotes = useMemo(() => [...quotes].sort((a, b) => (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')), [quotes]);
+  const orderByQuoteId = useMemo(() => orders.reduce((map, order) => {
+    if (order?.quote_id) map[order.quote_id] = order;
+    return map;
+  }, {}), [orders]);
 
   const isLoading = loadingInvoices || loadingQuotes;
   const totalBilledInvoices = invoicesWithPayments.reduce((sum, invoice) => sum + (invoice.payment_summary?.amountCollected || 0), 0);
@@ -634,7 +629,9 @@ export default function Billing() {
             onEdit={(doc) => canWrite && setEditDoc({ type: 'quote', doc })}
             onDelete={(id) => canWrite && deleteQuoteMutation.mutate(id)}
             onPreview={(doc) => setPreviewDoc({ ...applyBusinessConfigToDocument(doc, getConfigForDocument(doc)), _type: 'quote' })}
-            onConvert={canWrite ? (quote) => convertToInvoiceMutation.mutate(quote) : undefined}
+            onConvert={canWrite ? (quote) => convertToOrderMutation.mutate(quote) : undefined}
+            orderByQuoteId={orderByQuoteId}
+            convertingDocumentId={convertToOrderMutation.isPending ? convertToOrderMutation.variables?.id || null : null}
             onContinueDraft={continueLocalDraft}
             onDiscardDraft={discardLocalDraft}
             readOnly={!canWrite}
