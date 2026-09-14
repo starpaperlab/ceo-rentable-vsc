@@ -1427,10 +1427,10 @@ export default function Products() {
       ) : null}
 
       {canWrite && editingState ? (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-3xl">
-            <Card className="max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-b-none p-4 space-y-5 sm:max-h-[90dvh] sm:rounded-xl sm:p-6">
-              <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(3.5rem,env(safe-area-inset-top))] sm:p-4">
+          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="h-full min-h-0 w-full max-w-3xl sm:h-auto">
+            <Card className="h-full max-h-full overflow-y-auto rounded-2xl p-4 space-y-5 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-xl sm:p-6">
+              <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-start justify-between gap-4 border-b bg-background px-4 pb-4 pt-4 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6">
                 <div>
                   <h3 className="font-semibold text-foreground">Editar producto</h3>
                   <p className="text-sm text-muted-foreground mt-1">Actualiza tu catálogo maestro y, si aplica, sincroniza inventario sin crear duplicados.</p>
