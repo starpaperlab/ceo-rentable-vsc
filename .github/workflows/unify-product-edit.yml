@@ -1,0 +1,41 @@
+name: Unify product edit experience
+on:
+  push:
+    paths:
+      - '.github/workflows/unify-product-edit.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unify edit action
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/Products.jsx')
+          s = p.read_text()
+          old = '''                          <Button variant="outline" size="sm" className="h-8" onClick={() => openEditProduct(product)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Básico
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
+                            <Calculator className="h-3.5 w-3.5 mr-1.5" /> Costos
+                          </Button>'''
+          new = '''                          <Button variant="outline" size="sm" className="h-8" onClick={() => setCatalogDialog({ mode: 'edit', item: product })}>
+                            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                          </Button>'''
+          if old not in s:
+            raise SystemExit('Expected product action block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/unify-product-edit.yml
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Products.jsx .github/workflows/unify-product-edit.yml
+          git commit -m "fix: use full catalog form for product editing"
+          git push
