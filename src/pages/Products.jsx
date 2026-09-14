@@ -276,8 +276,28 @@ function CatalogDialog({
   readOnly = false,
   ownerRef,
 }) {
-  const [form, setForm] = useState(() => buildCatalogForm(initial || {}, costComponents, bundleItems, currency))
+  const draftKey = initial?.id ? null : `ceo-rentable:catalog-draft:${ownerRef || 'current'}`
+  const [form, setForm] = useState(() => {
+    if (draftKey) {
+      try {
+        const savedDraft = window.localStorage.getItem(draftKey)
+        if (savedDraft) return { ...buildCatalogForm({}, costComponents, bundleItems, currency), ...JSON.parse(savedDraft) }
+      } catch {
+        // Ignore an invalid local draft and start with a clean form.
+      }
+    }
+    return buildCatalogForm(initial || {}, costComponents, bundleItems, currency)
+  })
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+
+  useEffect(() => {
+    if (!draftKey) return
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify(form))
+    } catch {
+      // Storage can be unavailable in private/restricted browser contexts.
+    }
+  }, [draftKey, form])
   const existingCatalogSkus = products.map((product) => product?.sku).filter(Boolean)
   const updateName = (value) => {
     setForm((current) => ({
@@ -342,6 +362,9 @@ function CatalogDialog({
       return
     }
     onSave({ ...form, costo_unitario: cost, margin_pct: margin })
+    if (draftKey) {
+      try { window.localStorage.removeItem(draftKey) } catch { /* no-op */ }
+    }
   }
 
   return (
