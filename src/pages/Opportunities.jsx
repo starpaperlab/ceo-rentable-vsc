@@ -415,7 +415,7 @@ function StageRow({ stage, onSave, onSetDefault, isSaving }) {
         <Button size="sm" variant="outline" disabled={isSaving || !draft.name.trim()} onClick={() => onSave?.(stage, {
           name: draft.name.trim(),
           sort_order: Number(draft.sort_order || 0),
-          color: draft.color,
+          color: stage.stage_type === 'won' ? 'success' : stage.stage_type === 'lost' ? 'danger' : draft.color,
           is_active: Boolean(draft.is_active),
         })}>Guardar</Button>
         {stage.stage_type === 'open' ? (
@@ -442,7 +442,7 @@ function StageManager({ open, onOpenChange, stages, onCreate, onUpdate, onSetDef
       code,
       name,
       sort_order: maxSort + 10,
-      color: newStage.color,
+      color: newStage.stage_type === 'won' ? 'success' : newStage.stage_type === 'lost' ? 'danger' : newStage.color,
       stage_type: newStage.stage_type,
       is_default: false,
       is_active: true,
