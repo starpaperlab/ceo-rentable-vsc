@@ -1162,7 +1162,9 @@ export default function Products() {
     if (!canWrite) return
     const { activeItem, anyItem } = getInventoryLinkForProduct(product)
     const preferredInventoryItem = activeItem || anyItem || null
-    setEditingState({ product, activeInventoryItem: activeItem, anyInventoryItem: preferredInventoryItem })
+    setEditingState(null)
+    setCatalogDialog({ mode: 'edit', item: product })
+    return
     setProductForm(buildProductForm(product, preferredInventoryItem, Boolean(activeItem)))
   }
 
