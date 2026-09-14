@@ -39,20 +39,23 @@ export default function ReceivablesSummary({ summary }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <Card key={card.label} className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">{card.label}</p>
-                <p className={`mt-1 text-2xl font-bold ${card.className}`}>{card.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{card.note}</p>
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Card key={card.label} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">{card.label}</p>
+                  <p className={`mt-1 text-2xl font-bold ${card.className}`}>{card.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{card.note}</p>
+                </div>
+                <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                  <Icon className="h-4 w-4" />
+                </div>
               </div>
-              <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <card.icon className="h-4 w-4" />
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="p-4">
