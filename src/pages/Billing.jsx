@@ -172,28 +172,6 @@ export default function Billing() {
     if (!canWrite && editDoc) setEditDoc(null);
   }, [canWrite, editDoc]);
 
-  useEffect(() => {
-    if (!canWrite || clients.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('new') !== 'quote') return;
-    const clientId = params.get('client');
-    const client = clients.find((item) => item.id === clientId);
-    if (!client) return;
-
-    setActiveTab('quotes');
-    setEditDoc({
-      type: 'quote',
-      doc: {
-        client_id: client.id,
-        client_name: client.name || '',
-        client_email: client.email || '',
-        client_phone: client.phone || '',
-        status: 'pending',
-      },
-    });
-    navigate('/Billing', { replace: true });
-  }, [canWrite, clients, navigate]);
-
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
@@ -219,6 +197,29 @@ export default function Billing() {
     queryFn: () => fetchRows({ table: 'clients' }),
     enabled,
   });
+
+  useEffect(() => {
+    if (!canWrite || clients.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new') !== 'quote') return;
+    const clientId = params.get('client');
+    const client = clients.find((item) => item.id === clientId);
+    if (!client) return;
+
+    setActiveTab('quotes');
+    setEditDoc({
+      type: 'quote',
+      doc: {
+        client_id: client.id,
+        client_name: client.name || '',
+        client_email: client.email || '',
+        client_phone: client.phone || '',
+        status: 'pending',
+      },
+    });
+    navigate('/Billing', { replace: true });
+  }, [canWrite, clients, navigate]);
+
   const { data: products = [] } = useQuery({
     queryKey: ['products', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'products' }),
