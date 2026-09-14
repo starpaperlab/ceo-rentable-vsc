@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RECEIVABLE_STATUS_OPTIONS } from '@/lib/receivables';
+import { AGING_BUCKETS } from '@/lib/receivableAging';
 import { RotateCcw, Search } from 'lucide-react';
 
 export default function ReceivablesFilters({ filters, onChange, onReset }) {
@@ -15,7 +16,7 @@ export default function ReceivablesFilters({ filters, onChange, onReset }) {
 
   return (
     <Card className="p-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
         <div className="xl:col-span-2">
           <Label className="text-xs">Cliente</Label>
           <div className="relative mt-1">
@@ -49,6 +50,19 @@ export default function ReceivablesFilters({ filters, onChange, onReset }) {
               <SelectItem value="all">Todas</SelectItem>
               <SelectItem value="with_order">Con pedido</SelectItem>
               <SelectItem value="manual">Manuales</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label className="text-xs">Antigüedad</Label>
+          <Select value={filters.agingBucket || 'all'} onValueChange={(value) => update('agingBucket', value)}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {AGING_BUCKETS.map((bucket) => (
+                <SelectItem key={bucket.value} value={bucket.value}>{bucket.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
