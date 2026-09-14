@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ensureDbUserRecord } from '@/lib/ensureDbUser';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,7 +24,7 @@ import {
   listDocumentDrafts,
 } from '@/lib/documentDraftStorage';
 import { enrichInvoicesWithPayments, getInvoicePaymentErrorMessage, groupPaymentsByInvoice } from '@/lib/invoicePayments';
-import { deleteOwnedRowById, extractMissingColumnFromError, fetchOwnedRows, hasOwnerConstraintIssue, isMissingColumnError, updateOwnedRowById } from '@/lib/supabaseOwnership';
+import { deleteOwnedRowById, fetchOwnedRows, updateOwnedRowById } from '@/lib/supabaseOwnership';
 
 const TOUR_STEPS = [
   { title: 'Facturacion', description: 'Registra ventas con facturas y da seguimiento a cobros pendientes.' },
@@ -152,7 +151,6 @@ export default function Billing() {
     scopedAdminMode,
     scopedOwnerEmail,
     scopedOwnerId,
-    user,
     userProfile,
     writeOwnerEmail,
     writeOwnerId,
@@ -173,48 +171,6 @@ export default function Billing() {
   useEffect(() => {
     if (!canWrite && editDoc) setEditDoc(null);
   }, [canWrite, editDoc]);
-
-  const withOwner = (payload) => ({
-    ...payload,
-    workspace_id: payload?.workspace_id || activeWorkspaceId || null,
-    user_id: payload?.user_id || writeOwnerId,
-    created_by: normalizeEmail(payload?.created_by) || writeOwnerEmail || null,
-    brand_profile_id: payload?.brand_profile_id || activeBrandId || null,
-  });
-
-  const safeInsert = async (table, payload) => {
-    assertCanWrite();
-    const safePayload = { ...payload };
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        const { data, error } = await supabase.from(table).insert(safePayload).select().single();
-        if (error) throw error;
-        return data;
-      } catch (error) {
-        const missingColumn = extractMissingColumnFromError(error);
-        if (missingColumn && Object.prototype.hasOwnProperty.call(safePayload, missingColumn)) {
-          delete safePayload[missingColumn];
-          continue;
-        }
-        if (
-          isMissingColumnError(error, `${table}.user_id`) ||
-          isMissingColumnError(error, 'user_id') ||
-          isMissingColumnError(error, `${table}.created_by`) ||
-          isMissingColumnError(error, 'created_by')
-        ) {
-          delete safePayload.user_id;
-          delete safePayload.created_by;
-          continue;
-        }
-        if (hasOwnerConstraintIssue(error, table)) {
-          delete safePayload.user_id;
-          continue;
-        }
-        throw error;
-      }
-    }
-    throw new Error(`No se pudo insertar en ${table} porque Supabase sigue reportando columnas faltantes.`);
-  };
 
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['invoices', ...contextQueryKey],
