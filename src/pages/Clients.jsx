@@ -167,6 +167,10 @@ export default function Clients(){
     if(!selectedClient)return;
     navigate(`/Billing?new=quote&client=${selectedClient.id}`);
   }}
+  onCreateOpportunity={()=>{
+    if(!selectedClient)return;
+    navigate(`/Opportunities?new=1&client=${selectedClient.id}`);
+  }}
  />
  </div>
 }
