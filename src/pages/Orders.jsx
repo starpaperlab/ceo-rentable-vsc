@@ -11,6 +11,7 @@ import { Eye, Loader2, Plus, ReceiptText } from 'lucide-react';
 import { toast } from 'sonner';
 import OrderForm from '@/components/orders/OrderForm';
 import OrderList from '@/components/orders/OrderList';
+import OrderStatusManager from '@/components/orders/OrderStatusManager';
 import { buildOrderItemRows, buildOrderPayload, calculateOrderTotals, generateOrderNumber } from '@/lib/orders';
 import { groupPaymentsByInvoice } from '@/lib/invoicePayments';
 import { deleteOwnedRowById, updateOwnedRowById } from '@/lib/supabaseOwnership';
@@ -69,6 +70,7 @@ export default function Orders() {
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
   const [generatingInvoiceId, setGeneratingInvoiceId] = useState(null);
+  const [showStatusManager, setShowStatusManager] = useState(false);
 
   const assertCanWrite = () => {
     if (!canWrite) throw new Error('Tu perfil es de solo lectura. No puedes modificar pedidos ni generar facturas.');
@@ -331,6 +333,64 @@ export default function Orders() {
     onSettled: () => setGeneratingInvoiceId(null),
   });
 
+  const createStatusMutation = useMutation({
+    mutationFn: async (payload) => {
+      assertCanWrite();
+      if (!activeWorkspaceId) throw new Error('Selecciona un workspace antes de crear estados.');
+      const { data, error } = await supabase.from('order_statuses').insert({
+        ...payload,
+        workspace_id: activeWorkspaceId,
+      }).select('*').single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-statuses'] });
+      toast.success('Estado operativo creado');
+    },
+    onError: (error) => toast.error(`No se pudo crear el estado: ${error.message}`),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ status, payload }) => {
+      assertCanWrite();
+      if (status.is_default && payload.is_active === false) {
+        throw new Error('Primero selecciona otro estado predeterminado antes de desactivar este.');
+      }
+      const { data, error } = await supabase
+        .from('order_statuses')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', status.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-statuses'] });
+      toast.success('Estado actualizado');
+    },
+    onError: (error) => toast.error(`No se pudo actualizar el estado: ${error.message}`),
+  });
+
+  const setDefaultStatusMutation = useMutation({
+    mutationFn: async (status) => {
+      assertCanWrite();
+      const { data, error } = await supabase.rpc('set_default_order_status', {
+        target_status_id: status.id,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-statuses'] });
+      toast.success('Estado predeterminado actualizado');
+    },
+    onError: (error) => toast.error(`No se pudo cambiar el estado predeterminado: ${error.message}`),
+  });
+
+  const isSavingStatus = createStatusMutation.isPending || updateStatusMutation.isPending || setDefaultStatusMutation.isPending;
+
   if (loadingOrders || loadingItems || loadingStatuses) {
     return <div className="flex h-full min-h-[420px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -376,11 +436,26 @@ export default function Orders() {
           <p className="mt-1 text-sm text-muted-foreground">Gestiona el trabajo operativo y genera la factura sin reescribir la venta.</p>
         </div>
         {canWrite && (
-          <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto" onClick={() => { setEditingOrder(null); setShowForm(true); }}>
-            <Plus className="mr-2 h-4 w-4" />Nuevo Pedido
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowStatusManager((value) => !value)}>
+              {showStatusManager ? 'Ocultar estados' : 'Configurar estados'}
+            </Button>
+            <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto" onClick={() => { setEditingOrder(null); setShowForm(true); }}>
+              <Plus className="mr-2 h-4 w-4" />Nuevo Pedido
+            </Button>
+          </div>
         )}
       </div>
+
+      {showStatusManager && canWrite ? (
+        <OrderStatusManager
+          statuses={orderStatuses}
+          onCreate={(payload) => createStatusMutation.mutateAsync(payload)}
+          onUpdate={(status, payload) => updateStatusMutation.mutateAsync({ status, payload })}
+          onSetDefault={(status) => setDefaultStatusMutation.mutateAsync(status)}
+          isSaving={isSavingStatus}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="p-4">
