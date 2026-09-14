@@ -42,6 +42,7 @@ export default function OrderList({
   invoiceByOrderId = {},
   paymentsByInvoiceId = {},
   quoteById = {},
+  opportunityById = {},
   statusByCode = {},
   statusHistoryByOrderId = {},
   onEdit,
@@ -66,6 +67,7 @@ export default function OrderList({
     const status = statusMeta(order, statusByCode);
     const relatedInvoice = invoiceByOrderId[order.id] || null;
     const relatedQuote = order.quote_id ? quoteById[order.quote_id] || null : null;
+    const relatedOpportunity = order.opportunity_id ? opportunityById[order.opportunity_id] || null : null;
     const hasInvoice = Boolean(order.generated_invoice_id || relatedInvoice);
     const paymentSummary = relatedInvoice
       ? getInvoicePaymentSummary(relatedInvoice, paymentsByInvoiceId[relatedInvoice.id] || [])
@@ -81,6 +83,7 @@ export default function OrderList({
       status,
       relatedInvoice,
       relatedQuote,
+      relatedOpportunity,
       hasInvoice,
       paymentSummary,
       paymentMeta,
@@ -107,6 +110,7 @@ export default function OrderList({
                   </div>
                   <p className="truncate text-sm font-medium">{order.client_name || '-'}</p>
                   {view.relatedQuote ? <p className="text-[11px] text-muted-foreground">Desde {view.relatedQuote.quote_number}</p> : null}
+                  {view.relatedOpportunity ? <p className="text-[11px] text-muted-foreground">Oportunidad: {view.relatedOpportunity.title}</p> : null}
                 </div>
                 <Badge className={`${view.status.badgeClass} border-0 text-xs`}>{view.status.label}</Badge>
               </div>
@@ -188,6 +192,7 @@ export default function OrderList({
                         {view.hasImportantNotes ? <AlertCircle className="h-3.5 w-3.5 text-amber-600" /> : null}
                       </div>
                       {view.relatedQuote ? <p className="text-[11px] text-muted-foreground">Desde {view.relatedQuote.quote_number}</p> : null}
+                      {view.relatedOpportunity ? <p className="text-[11px] text-muted-foreground">Oportunidad: {view.relatedOpportunity.title}</p> : null}
                       {view.relatedInvoice ? <p className="text-[11px] text-primary">Factura {view.relatedInvoice.invoice_number}</p> : null}
                     </TableCell>
                     <TableCell className="max-w-[160px] truncate text-sm">{order.client_name || '-'}</TableCell>
