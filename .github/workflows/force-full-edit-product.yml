@@ -10,30 +10,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Route all legacy edit actions to full catalog form
+      - name: Force legacy edit handler to full form
+        shell: bash
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/pages/Products.jsx')
+          import re
+          p = Path("src/pages/Products.jsx")
           s = p.read_text()
-          old = '''  const openEditProduct = (product) => {
-    if (!canWrite) return
-    const { activeItem, anyItem } = getInventoryLinkForProduct(product)
-    const preferredInventoryItem = activeItem || anyItem || null
-    setEditingState({ product, activeInventoryItem: activeItem, anyInventoryItem: preferredInventoryItem })
-    setProductForm(buildProductForm(product, preferredInventoryItem, Boolean(activeItem)))
-  }
-'''
-          new = '''  const openEditProduct = (product) => {
+          pattern = re.compile(r"  const openEditProduct = \(product\) => \{.*?\n  \}\n\n  const updateProductForm", re.S)
+          replacement = """  const openEditProduct = (product) => {
     if (!canWrite) return
     setEditingState(null)
     setCatalogDialog({ mode: 'edit', item: product })
   }
-'''
-          if old not in s:
-            raise SystemExit('Legacy openEditProduct block not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+
+  const updateProductForm"""
+          s2, count = pattern.subn(replacement, s, count=1)
+          if count != 1:
+            raise SystemExit(f"Expected exactly one legacy edit handler, found {count}")
+          p.write_text(s2)
           PY
       - name: Remove temporary workflow
         run: rm .github/workflows/force-full-edit-product.yml
@@ -42,5 +38,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/pages/Products.jsx .github/workflows/force-full-edit-product.yml
-          git commit -m "fix: route all product edits to full catalog form"
+          git commit -m "fix: force all product edits into full catalog form"
           git push
