@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCurrency } from '@/components/shared/CurrencyContext';
@@ -25,7 +26,7 @@ function sortByCreatedDesc(rows=[]){return[...rows].sort((a,b)=>new Date(b.creat
 export default function Clients(){
  const{formatMoney}=useCurrency();const{canWriteModule}=useWorkspace();const canWriteClients=canWriteModule('clients');
  const{activeBrandId,activeWorkspaceId,adminMode,enabled,fetchRows,ownerEmail,ownerId,queryKey:contextQueryKey,scopedAdminMode,scopedOwnerEmail,scopedOwnerId,user,userProfile,writeOwnerEmail,writeOwnerId}=useWorkContextScope();
- const queryClient=useQueryClient();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[stageFilter,setStageFilter]=useState('all');const[priorityFilter,setPriorityFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);const[selectedClient,setSelectedClient]=useState(null);
+ const queryClient=useQueryClient();const navigate=useNavigate();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[stageFilter,setStageFilter]=useState('all');const[priorityFilter,setPriorityFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);const[selectedClient,setSelectedClient]=useState(null);
  const assertCanWrite=()=>{if(!canWriteClients)throw new Error('No tienes permiso para modificar clientes.')};
  const{data:clients=[],isLoading}=useQuery({queryKey:['clients',...contextQueryKey],queryFn:async()=>sortByCreatedDesc(await fetchRows({table:'clients',orderBy:'created_at',ascending:false})),enabled});
  useEffect(()=>{
@@ -162,6 +163,10 @@ export default function Clients(){
   onDismissReminder={(reminder)=>updateReminderMutation.mutateAsync({reminder,payload:{status:'dismissed'}})}
   onDeleteReminder={(id)=>deleteReminderMutation.mutate(id)}
   savingReminder={createReminderMutation.isPending||updateReminderMutation.isPending}
+  onCreateQuote={()=>{
+    if(!selectedClient)return;
+    navigate(`/Billing?new=quote&client=${selectedClient.id}`);
+  }}
  />
  </div>
 }
