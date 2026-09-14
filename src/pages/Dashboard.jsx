@@ -65,7 +65,7 @@ function endOfDay(value = new Date()) {
 }
 
 export default function Dashboard() {
-  const { formatMoney } = useCurrency();
+  const { currency, formatMoney } = useCurrency();
   const { canWrite } = useWorkspace();
   const { user, userProfile } = useAuth();
   const { activeWorkspace, enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
@@ -374,16 +374,36 @@ export default function Dashboard() {
   const breakEven = financials.breakEven;
   const isLoading = loadingProducts || loadingInvoices || loadingPayments || loadingMonthlyRecords || loadingCostLibrary;
 
+  const downloadTrendCsv = () => {
+    const rows = [
+      ['Periodo', 'Facturado', 'Cobrado', 'Gastos', 'Moneda'],
+      ...chartData.map((row) => [
+        row.monthKey,
+        Number(row.facturado || 0).toFixed(2),
+        Number(row.cobrado || 0).toFixed(2),
+        row.gastos == null ? '' : Number(row.gastos).toFixed(2),
+        currency,
+      ]),
+    ];
+    const csv = rows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `dashboard_tendencia_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+  };
+
   const downloadDashboardReport = () => {
     const rows = [
       ['Metrica', 'Valor'],
       ['Periodo', financials.current.monthKey],
       ['Facturado', stats.facturado.toFixed(2)],
       ['Ingresos cobrados', stats.ingresos.toFixed(2)],
-      ['Gastos', stats.gastos.toFixed(2)],
-      ['Fuente de gastos', financials.current.expenseSource === 'registered' ? 'Registrados' : 'Estimados con costos directos'],
-      ['Beneficio', stats.beneficio.toFixed(2)],
-      ['Margen', `${stats.margen.toFixed(1)}%`],
+      ['Moneda', currency],
+      ['Gastos', stats.gastos == null ? 'Sin datos' : stats.gastos.toFixed(2)],
+      ['Fuente de gastos', financials.current.expenseSource === 'registered' ? 'Registrados' : financials.current.expenseSource === 'estimated-direct-costs' ? 'Estimados con costos directos' : 'Sin datos'],
+      ['Beneficio', stats.beneficio == null ? 'Sin datos' : stats.beneficio.toFixed(2)],
+      ['Margen', stats.margen == null ? 'Sin datos' : `${stats.margen.toFixed(1)}%`],
       ['Cuentas por cobrar', stats.cuentasPorCobrar.toFixed(2)],
       ['Ticket promedio', stats.ticketPromedio.toFixed(2)],
       ['Punto de equilibrio', breakEven == null ? 'Sin datos suficientes' : breakEven.toFixed(2)],
@@ -460,25 +480,28 @@ export default function Dashboard() {
         />
         <KpiCard
           label="GASTOS"
-          value={formatMoney(stats.gastos)}
-          subtitle={financials.current.expenseSource === 'registered' ? 'Gastos registrados' : 'Estimado con costos directos'}
+          value={stats.gastos == null ? 'Sin datos' : formatMoney(stats.gastos)}
+          subtitle={financials.current.expenseSource === 'registered' ? 'Gastos registrados' : financials.current.expenseSource === 'estimated-direct-costs' ? 'Estimado con costos directos' : 'Completa Control Mensual'}
           growth={growth.costGrowth}
           inverseGrowth
+          showGrowth={growth.costGrowth != null}
           icon={<ArrowDownRight className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="BENEFICIO"
-          value={formatMoney(stats.beneficio)}
-          subtitle="Facturado − gastos"
+          value={stats.beneficio == null ? 'Sin datos' : formatMoney(stats.beneficio)}
+          subtitle={stats.beneficio == null ? 'Faltan gastos/costos' : 'Facturado − gastos'}
           growth={growth.benefitGrowth}
-          positive={stats.beneficio >= 0}
+          showGrowth={growth.benefitGrowth != null}
+          positive={stats.beneficio == null || stats.beneficio >= 0}
           icon={<Target className="h-4 w-4 text-primary" />}
         />
         <KpiCard
           label="MARGEN"
-          value={`${stats.margen.toFixed(1)}%`}
-          subtitle="Margen del mes"
+          value={stats.margen == null ? 'Sin datos' : `${stats.margen.toFixed(1)}%`}
+          subtitle={stats.margen == null ? 'Faltan gastos/costos' : 'Margen del mes'}
           growth={growth.marginGrowth}
+          showGrowth={growth.marginGrowth != null}
           growthSuffix=" pts"
           icon={<ArrowUpRight className="h-4 w-4 text-primary" />}
         />
@@ -703,8 +726,17 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-3">
         <Card className="p-3 sm:p-4">
-          <h3 className="text-sm sm:text-base font-bold text-foreground">Ingresos vs Gastos · últimos 6 meses</h3>
-          <p className="mb-2 sm:mb-3 text-[11px] text-muted-foreground">Cobros reales y gastos registrados. Los meses sin gastos no se estiman.</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-foreground">Ingresos vs Gastos · últimos 6 meses</h3>
+              <p className="mb-2 sm:mb-3 text-[11px] text-muted-foreground">Cobros reales y gastos registrados. Los meses sin gastos no se estiman.</p>
+            </div>
+            {canWrite ? (
+              <Button variant="outline" size="sm" className="h-8 px-2 text-[11px]" onClick={downloadTrendCsv}>
+                <Download className="mr-1 h-3.5 w-3.5" /> CSV
+              </Button>
+            ) : null}
+          </div>
           <div className="h-[210px] sm:h-[290px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 10, right: 12, left: 2, bottom: 0 }}>
