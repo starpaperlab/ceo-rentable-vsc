@@ -339,6 +339,7 @@ function CatalogDialog({
   }
 
   const submit = () => {
+    const finalSku = form.sku?.trim() || (form.name?.trim() ? generateUniqueSku(form.name, existingCatalogSkus) : '')
     if (!form.name.trim()) {
       toast.error('El nombre es obligatorio.')
       return
@@ -369,10 +370,7 @@ function CatalogDialog({
       toast.error('Agrega al menos un ítem válido al combo.')
       return
     }
-    onSave({ ...form, costo_unitario: cost, margin_pct: margin })
-    if (draftKey) {
-      try { window.localStorage.removeItem(draftKey) } catch { /* no-op */ }
-    }
+    onSave({ ...form, sku: finalSku, costo_unitario: cost, margin_pct: margin })
   }
 
   return (
@@ -931,6 +929,8 @@ export default function Products() {
   const saveCatalogMutation = useMutation({
     mutationFn: saveCatalogItem,
     onSuccess: () => {
+      const draftOwnerRef = writeOwnerId || writeOwnerEmail || ownerId || ownerEmail || 'current'
+      try { window.localStorage.removeItem(`ceo-rentable:catalog-draft:${draftOwnerRef}`) } catch { /* no-op */ }
       refreshCatalog()
       setCatalogDialog(null)
       toast.success('Catálogo actualizado')
