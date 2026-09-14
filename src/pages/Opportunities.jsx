@@ -117,6 +117,7 @@ function OpportunityFormDialog({
   isSavingActivity,
   isCreatingOrder,
   canWrite,
+  canCreateOrder = false,
   ownerEmail,
 }) {
   const defaultStage = stages.find((stage) => stage.is_default && stage.is_active) || stages.find((stage) => stage.is_active);
@@ -319,7 +320,7 @@ function OpportunityFormDialog({
                     <p className="text-sm font-semibold text-green-800">Oportunidad ganada</p>
                     <p className="text-xs text-green-700">{linkedOrder ? `Ya generó el pedido ${linkedOrder.order_number}.` : 'Convierte esta venta ganada en un pedido operativo.'}</p>
                   </div>
-                  <Button size="sm" onClick={() => onCreateOrder?.(opportunity)} disabled={Boolean(linkedOrder) || isCreatingOrder || !canWrite}>
+                  <Button size="sm" onClick={() => onCreateOrder?.(opportunity)} disabled={Boolean(linkedOrder) || isCreatingOrder || !canWrite || !canCreateOrder}>
                     <ShoppingBag className="mr-2 h-4 w-4" />{linkedOrder ? linkedOrder.order_number : 'Crear pedido'}
                   </Button>
                 </div>
@@ -504,6 +505,7 @@ export default function Opportunities() {
   const { formatMoney } = useCurrency();
   const { canWriteModule } = useWorkspace();
   const canWrite = canWriteModule('opportunities');
+  const canWriteOrders = canWriteModule('orders');
   const {
     activeWorkspaceId,
     enabled,
@@ -911,7 +913,7 @@ export default function Opportunities() {
                                           size="sm"
                                           variant={linkedOrder ? 'outline' : 'default'}
                                           className="mt-3 h-8 w-full text-xs"
-                                          disabled={!canWrite || Boolean(linkedOrder) || convertToOrderMutation.isPending}
+                                          disabled={!canWrite || !canWriteOrders || Boolean(linkedOrder) || convertToOrderMutation.isPending}
                                           onClick={() => linkedOrder ? navigate('/Orders') : convertToOrderMutation.mutate(opportunity)}
                                         >
                                           <ShoppingBag className="mr-1 h-3.5 w-3.5" />{linkedOrder ? linkedOrder.order_number : 'Crear pedido'}
@@ -977,6 +979,7 @@ export default function Opportunities() {
         isSavingActivity={createActivityMutation.isPending}
         isCreatingOrder={convertToOrderMutation.isPending}
         canWrite={canWrite}
+        canCreateOrder={canWriteOrders}
         ownerEmail={writeOwnerEmail || ownerEmail || ''}
       />
 
