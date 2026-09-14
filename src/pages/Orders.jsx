@@ -122,7 +122,7 @@ export default function Orders() {
     enabled,
   });
 
-  const { data: orderStatuses = [] } = useQuery({
+  const { data: orderStatuses = [], isLoading: loadingStatuses } = useQuery({
     queryKey: ['order-statuses', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'order_statuses', orderBy: 'sort_order', ascending: true }),
     enabled,
@@ -331,7 +331,7 @@ export default function Orders() {
     onSettled: () => setGeneratingInvoiceId(null),
   });
 
-  if (loadingOrders || loadingItems) {
+  if (loadingOrders || loadingItems || loadingStatuses) {
     return <div className="flex h-full min-h-[420px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
