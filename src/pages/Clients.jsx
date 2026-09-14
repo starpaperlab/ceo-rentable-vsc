@@ -24,7 +24,7 @@ function normalizeClientPayload(raw={}){return{name:(raw.name||'').trim(),email:
 function sortByCreatedDesc(rows=[]){return[...rows].sort((a,b)=>new Date(b.created_at||b.created_date||0).getTime()-new Date(a.created_at||a.created_date||0).getTime())}
 
 export default function Clients(){
- const{formatMoney}=useCurrency();const{canWriteModule}=useWorkspace();const canWriteClients=canWriteModule('clients');
+ const{formatMoney}=useCurrency();const{canWriteModule}=useWorkspace();const canWriteClients=canWriteModule('clients');const canWriteOpportunities=canWriteModule('opportunities');
  const{activeBrandId,activeWorkspaceId,adminMode,enabled,fetchRows,ownerEmail,ownerId,queryKey:contextQueryKey,scopedAdminMode,scopedOwnerEmail,scopedOwnerId,user,userProfile,writeOwnerEmail,writeOwnerId}=useWorkContextScope();
  const queryClient=useQueryClient();const navigate=useNavigate();const[search,setSearch]=useState('');const[statusFilter,setStatusFilter]=useState('all');const[stageFilter,setStageFilter]=useState('all');const[priorityFilter,setPriorityFilter]=useState('all');const[showForm,setShowForm]=useState(false);const[editingClient,setEditingClient]=useState(null);const[selectedClient,setSelectedClient]=useState(null);
  const assertCanWrite=()=>{if(!canWriteClients)throw new Error('No tienes permiso para modificar clientes.')};
@@ -167,10 +167,10 @@ export default function Clients(){
     if(!selectedClient)return;
     navigate(`/Billing?new=quote&client=${selectedClient.id}`);
   }}
-  onCreateOpportunity={()=>{
+  onCreateOpportunity={canWriteOpportunities?()=>{
     if(!selectedClient)return;
     navigate(`/Opportunities?new=1&client=${selectedClient.id}`);
-  }}
+  }:undefined}
  />
  </div>
 }
