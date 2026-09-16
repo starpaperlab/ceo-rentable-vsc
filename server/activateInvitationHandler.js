@@ -206,6 +206,7 @@ export async function handleActivateInvitationPayload(
         role,
         plan,
         has_access: hasAccess,
+        access_status: hasAccess ? 'active' : 'pending_payment',
         access_source: invitation.access_source || 'manual_lifetime',
         is_lifetime: invitation.is_lifetime === true,
         onboarding_completed: false,
