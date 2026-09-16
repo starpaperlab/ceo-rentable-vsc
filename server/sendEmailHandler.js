@@ -2,7 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const DEFAULT_FROM_EMAIL = 'hola@ceorentable.com';
+const DEFAULT_FROM_EMAIL = 'notificaciones@ceorentable.com';
+const DEFAULT_REPLY_TO_EMAIL = 'soporte@ceorentable.com';
 const DEFAULT_FROM_NAME = 'CEO Rentable OS';
 const RESEND_PUBLIC_ERROR_MESSAGE = 'No fue posible enviar el email en este momento.';
 const AUTH_PUBLIC_ERROR_MESSAGE = 'Sesión inválida o expirada.';
@@ -330,7 +331,7 @@ export async function sendEmailWithResend(payload = {}, { env = process.env, fet
   }
 
   const from = formatFromAddress(env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL);
-  const replyTo = extractEmail(payload.replyTo || env.RESEND_REPLY_TO || env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL);
+  const replyTo = extractEmail(payload.replyTo || env.RESEND_REPLY_TO || DEFAULT_REPLY_TO_EMAIL);
 
   const check = validateSendEmailPayload(payload);
   if (!check.valid) {
@@ -403,7 +404,7 @@ const RELATIVE_LOGO_REGEX = /(src\s*=\s*["'])\/brand\/isotipo\.png(["'])/gi;
 const TEMPLATE_FOOTER_HTML = `
   <div data-ceo-footer="1" style="text-align:center;margin-top:22px;color:#8a7f85;font-size:12px;line-height:1.5;">
     CEO Rentable OS™ · Tu sistema financiero inteligente<br/>
-    Preguntas: <a href="mailto:hola@ceorentable.com" style="color:#D45387;text-decoration:none;">hola@ceorentable.com</a>
+    Soporte: <a href="mailto:soporte@ceorentable.com" style="color:#D45387;text-decoration:none;">soporte@ceorentable.com</a>
   </div>
 `;
 const DEFAULT_TEMPLATE_VARIABLES = {
@@ -462,7 +463,7 @@ function ensureFooterHtml(html = '') {
   if (normalized.includes('data-ceo-footer="1"')) return normalized;
 
   const lower = normalized.toLowerCase();
-  if (lower.includes('hola@ceorentable.com') && lower.includes('ceo rentable os')) {
+  if (lower.includes('soporte@ceorentable.com') && lower.includes('ceo rentable os')) {
     return normalized;
   }
 
