@@ -753,7 +753,7 @@ async function sendPostPaymentEmailBestEffort(input: {
         <p style="margin:0 0 12px;color:#3d3d3d;">Recibimos tu pago de <strong>${sanitizeText(amountLabel)}</strong>. Tu acceso ya fue activado.</p>
         <p style="margin:0 0 18px;color:#3d3d3d;">Plan aplicado: <strong>${sanitizeText(input.plan || 'subscription')}</strong>.</p>
         <a href="${ctaLink}" style="display:inline-block;background:#D45387;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700;">${ctaText}</a>
-        <p style="margin-top:20px;color:#8a7f85;font-size:12px;">CEO Rentable OS™ · Tu sistema financiero inteligente<br/>Preguntas: hola@ceorentable.com</p>
+        <p style="margin-top:20px;color:#8a7f85;font-size:12px;">CEO Rentable OS™ · Tu sistema financiero inteligente<br/>Pagos y suscripciones: pagos@ceorentable.com</p>
       </div>
     </div>
   `;
