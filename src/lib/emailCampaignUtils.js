@@ -31,7 +31,7 @@ export const DEFAULT_EMAIL_TEMPLATE_VARIABLES = {
   subject_line: 'Actualización importante de CEO Rentable OS™',
   headline: 'Tenemos una actualización para ti',
   body_text: 'Gracias por formar parte de CEO Rentable OS™.',
-  support_email: 'hola@ceorentable.com',
+  support_email: 'soporte@ceorentable.com',
 };
 
 export function normalizeEmailValue(value = '') {
