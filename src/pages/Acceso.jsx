@@ -66,7 +66,7 @@ export default function Acceso() {
         <p className="text-center text-xs text-muted-foreground mt-4">
           ¿Tienes dudas? Escríbenos a{' '}
           <a href="mailto:soporte@ceorentable.com" className="text-primary hover:underline">
-            hola@ceorentable.com
+            soporte@ceorentable.com
           </a>
         </p>
       </motion.div>
