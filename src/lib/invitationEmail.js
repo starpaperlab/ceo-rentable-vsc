@@ -145,7 +145,7 @@ export function buildInvitationEmailHtml({ fullName, inviteLink, role = 'user' }
                   <td align="center" style="padding:16px 10px 0 10px;">
                     <p style="margin:0;font-size:12px;line-height:1.6;color:#8A7F85;">
                       CEO Rentable OS™ · Tu sistema financiero inteligente<br />
-                      Preguntas: <a href="mailto:hola@ceorentable.com" style="color:#D45387;text-decoration:none;">hola@ceorentable.com</a>
+                      Soporte: <a href="mailto:soporte@ceorentable.com" style="color:#D45387;text-decoration:none;">soporte@ceorentable.com</a>
                     </p>
                   </td>
                 </tr>
