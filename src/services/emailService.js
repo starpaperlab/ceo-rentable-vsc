@@ -444,7 +444,7 @@ function buildDefaultTemplates() {
       ],
       ctaText: 'Abrir mi cuenta',
       ctaUrl: '{{login_link}}',
-      note: 'Tu equipo de soporte está disponible en hola@ceorentable.com si necesitas ayuda.',
+      note: 'Tu equipo de soporte está disponible en soporte@ceorentable.com si necesitas ayuda.',
       variables: ['name', 'login_link'],
     }),
     createDefaultTemplate({
@@ -480,7 +480,7 @@ function buildDefaultTemplates() {
       ],
       ctaText: 'Entrar al sistema',
       ctaUrl: '{{login_link}}',
-      note: 'Si tienes preguntas sobre tu pago, escríbenos a hola@ceorentable.com.',
+      note: 'Si tienes preguntas sobre tu pago, escríbenos a pagos@ceorentable.com.',
       variables: ['name', 'amount', 'login_link'],
     }),
     createDefaultTemplate({
