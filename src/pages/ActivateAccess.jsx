@@ -91,6 +91,13 @@ export default function ActivateAccess() {
       }
 
       setActivationDone(true);
+
+      // signInWithPassword dispara onAuthStateChange y el árbol de rutas puede
+      // desmontarse mientras AuthProvider hidrata la nueva sesión. Una
+      // redirección explícita evita que la pantalla de activación se remonte
+      // con el formulario vacío después de una activación exitosa.
+      window.location.replace('/Onboarding');
+      return;
     } catch (submitError) {
       setError(submitError?.message || 'No se pudo activar tu acceso.');
     } finally {
