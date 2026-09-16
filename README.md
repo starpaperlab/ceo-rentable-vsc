@@ -248,7 +248,7 @@ VITE_GEMINI_API_KEY=AIzaSy...
 
 # RESEND (SOLO SERVIDOR)
 RESEND_API_KEY=re_...
-RESEND_FROM_EMAIL=hola@ceorentable.com
+RESEND_FROM_EMAIL=notificaciones@ceorentable.com
 
 # ENDPOINT INTERNO EMAIL (frontend -> backend)
 VITE_EMAIL_API_ENDPOINT=/api/send-email
@@ -295,3 +295,15 @@ Ver `.env.example` para documentación completa.
 **Creado por:** GitHub Copilot  
 **Proyecto:** CEO Rentable OS™  
 **2026**
+
+
+## Correos funcionales CEO Rentable
+
+- `hola@ceorentable.com` — contacto general
+- `ventas@ceorentable.com` — consultas comerciales y alianzas
+- `soporte@ceorentable.com` — soporte a usuarias
+- `pagos@ceorentable.com` — pagos, renovaciones y suscripciones
+- `facturacion@ceorentable.com` — facturación y comprobantes
+- `notificaciones@ceorentable.com` — remitente transaccional y automatizaciones
+- `privacidad@ceorentable.com` — privacidad y datos personales
+- `demo@ceorentable.com` — cuenta de demostración
