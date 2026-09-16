@@ -25,7 +25,7 @@ const PAYPAL_MONTHLY_PLAN_ID = import.meta.env.VITE_PAYPAL_BILLING_PLAN_MONTHLY_
 const PAYPAL_ANNUAL_PLAN_ID = import.meta.env.VITE_PAYPAL_BILLING_PLAN_ANNUAL_ID || import.meta.env.VITE_PAYPAL_ANNUAL_PLAN_ID || '';
 
 const EMAIL_API_ENDPOINT = import.meta.env.VITE_EMAIL_API_ENDPOINT || '/api/send-email';
-const RESEND_FROM_EMAIL = import.meta.env.VITE_RESEND_FROM_EMAIL || 'CEO Rentable OS <hola@ceorentable.com>';
+const RESEND_FROM_EMAIL = import.meta.env.VITE_RESEND_FROM_EMAIL || 'Notificaciones CEO Rentable <notificaciones@ceorentable.com>';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 if (!GEMINI_API_KEY) console.warn('⚠️ VITE_GEMINI_API_KEY no está definida - IA deshabilitada');
 const WHATSAPP_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER || '18092517070';
