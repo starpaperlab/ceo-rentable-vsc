@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /blog
+Allow: /blog/
+Disallow: /admin/
+Disallow: /Dashboard
+Disallow: /dashboard
+Disallow: /Billing
+Disallow: /billing
+Disallow: /Clients
+Disallow: /clients
+Disallow: /Orders
+Disallow: /orders
+Disallow: /Receivables
+Disallow: /receivables
+Disallow: /WorkspaceSettings
+Disallow: /AppSettings
+
+Sitemap: https://ceorentable.com/sitemap.xml
