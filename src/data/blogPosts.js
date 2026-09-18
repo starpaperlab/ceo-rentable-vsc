@@ -1,5 +1,129 @@
 export const blogPosts = [
   {
+    slug: 'como-calcular-precio-pastel',
+    title: 'Cómo calcular el precio de un pastel paso a paso y saber si realmente te deja ganancia',
+    excerpt: 'Aprende a calcular el precio de un pastel incluyendo ingredientes, empaque, tiempo, costos ocultos y margen. Con ejemplo en pesos dominicanos y una fórmula fácil de aplicar.',
+    category: 'Precios',
+    date: '2026-09-18',
+    readTime: '10 min',
+    keywords: ['cómo calcular precio de un pastel', 'precio de pastel', 'costear un pastel', 'precio repostería', 'margen de ganancia repostería', 'cómo cobrar un bizcocho'],
+    description: 'Guía paso a paso para calcular el precio de un pastel sin perder dinero: ingredientes, empaque, horas de trabajo, costos ocultos, margen y ejemplo en RD$.',
+    hero: 'Tu pastel no solo debe verse bonito: también debe dejarte ganancia.',
+    cta: {
+      href: '/lp?utm_source=blog&utm_medium=organic&utm_campaign=precio_pastel',
+      label: 'Calcular mis precios con CEO Rentable',
+      title: 'Calcula el costo real, el margen y el precio recomendado en un solo lugar',
+      text: 'Prueba CEO Rentable durante 21 días y deja de fijar precios a ojo.'
+    },
+    related: [
+      { slug: 'como-calcular-precio-de-venta', label: 'Cómo calcular el precio de venta de un producto sin perder dinero' },
+      { slug: 'como-saber-si-mi-negocio-es-rentable', label: 'Cómo saber si tu negocio realmente es rentable' }
+    ],
+    sections: [
+      {
+        heading: 'El error más caro en repostería: calcular solo los ingredientes',
+        paragraphs: [
+          'Si para hacer un pastel gastas RD$1,200 en ingredientes y lo vendes en RD$2,000, no significa que ganaste RD$800. Todavía faltan el empaque, la electricidad o gas, las decoraciones, las comisiones de pago, el transporte, tu tiempo y la parte de los gastos fijos que ese pedido debe ayudar a cubrir.',
+          'Por eso muchas reposteras venden constantemente, trabajan hasta tarde y aun así sienten que el dinero desaparece. El problema no siempre es vender poco; muchas veces es cobrar sin conocer el costo completo.'
+        ]
+      },
+      {
+        heading: 'Paso 1: calcula el costo exacto de los ingredientes',
+        paragraphs: [
+          'No uses el precio del paquete completo si solo utilizaste una parte. Convierte cada ingrediente a costo por gramo, mililitro o unidad y registra únicamente la cantidad consumida en la receta.'
+        ],
+        bullets: [
+          'Harina, azúcar, huevos, mantequilla, leche y chocolate.',
+          'Rellenos, coberturas y colorantes.',
+          'Fondant, sprinkles, toppers comestibles y decoración.',
+          'Cualquier ingrediente especial utilizado únicamente para ese pedido.'
+        ]
+      },
+      {
+        heading: 'Paso 2: suma empaque y materiales que también se van con el pedido',
+        paragraphs: [
+          'La caja, la base, las cintas, las etiquetas y otros materiales son parte del costo. Aunque cada uno parezca pequeño, al sumar decenas de pedidos al mes pueden representar una cantidad importante.'
+        ],
+        bullets: [
+          'Caja y base para pastel.',
+          'Etiquetas, stickers y tarjetas.',
+          'Bolsas, cintas y papel protector.',
+          'Topper o decoración comprada a terceros.'
+        ]
+      },
+      {
+        heading: 'Paso 3: ponle precio a tus horas de trabajo',
+        paragraphs: [
+          'Tu tiempo no es gratis. Cuenta las horas de preparación, horneado activo, relleno, decoración, empaque y cualquier trabajo que requiera tu intervención.',
+          'Ejemplo: si decides que tu hora de trabajo vale RD$300 y ese pastel requiere 4 horas de trabajo real, debes incluir RD$1,200 por mano de obra dentro del costo.'
+        ]
+      },
+      {
+        heading: 'Paso 4: incluye los costos ocultos y gastos del negocio',
+        paragraphs: [
+          'Aquí es donde muchos precios empiezan a quedarse cortos. Un negocio también paga electricidad, gas, internet, herramientas, mantenimiento, publicidad, plataformas y equipos. No todo debe cargarse completo a un solo pastel, pero cada venta debe aportar una parte para cubrir esos gastos.'
+        ],
+        bullets: [
+          'Electricidad, gas y agua.',
+          'Desgaste de batidora, horno y utensilios.',
+          'Comisiones de tarjeta o plataformas de pago.',
+          'Publicidad y contenido.',
+          'Transporte o delivery que asume el negocio.',
+          'Alquiler o parte del espacio utilizado para producir.'
+        ]
+      },
+      {
+        heading: 'Ejemplo completo: cuánto cuesta realmente un pastel',
+        paragraphs: [
+          'Supongamos un pastel personalizado de 2 libras. Ingredientes: RD$1,250. Empaque y decoración: RD$350. Mano de obra: RD$1,200. Parte proporcional de costos operativos: RD$300. El costo real sería RD$3,100.',
+          'Si lo vendieras en RD$3,500, solo quedarían RD$400 antes de cualquier imprevisto. Eso equivale aproximadamente a un margen de 11.4% sobre el precio de venta. Si tu meta fuera un margen de 40%, ese precio sería insuficiente.'
+        ]
+      },
+      {
+        heading: 'Paso 5: calcula el precio usando el margen que quieres obtener',
+        paragraphs: [
+          'Para trabajar con margen sobre el precio final puedes usar esta fórmula: Precio de venta = Costo total ÷ (1 − margen deseado).',
+          'Con un costo de RD$3,100 y un margen deseado de 40%, el cálculo sería RD$3,100 ÷ 0.60 = RD$5,166.67. Ese sería el precio aproximado antes de considerar impuestos, redondeos comerciales o condiciones especiales del pedido.',
+          'Esto es diferente de simplemente sumarle 40% al costo. Si multiplicaras RD$3,100 por 1.40 obtendrías RD$4,340, pero tu margen real sobre ese precio sería menor a 40%.'
+        ]
+      },
+      {
+        heading: 'No copies el precio de otra repostera sin conocer tus números',
+        paragraphs: [
+          'La competencia sirve para entender el mercado, pero no para calcular tu costo. Otra repostera puede comprar insumos al por mayor, trabajar desde un local propio, tener equipos más eficientes o valorar su hora de forma diferente.',
+          'Tu precio debe nacer de tus costos y de la rentabilidad que tu negocio necesita. Después puedes compararlo con el mercado y decidir qué ajustar: tamaño, diseño, proceso, proveedor, público objetivo o propuesta de valor.'
+        ]
+      },
+      {
+        heading: 'Qué revisar antes de enviar una cotización',
+        bullets: [
+          'Costo total del pedido actualizado.',
+          'Horas reales de trabajo requeridas.',
+          'Margen esperado.',
+          'Delivery o montaje, si aplica.',
+          'Cambios de último minuto y personalizaciones.',
+          'Abono requerido y fecha límite para pagar el balance.'
+        ],
+        paragraphs: [
+          'Si haces esta revisión antes de cotizar, reduces el riesgo de aceptar pedidos que generan ventas pero no ganancias.'
+        ]
+      },
+      {
+        heading: 'Hazlo más fácil: calcula antes de vender',
+        paragraphs: [
+          'No necesitas construir una hoja de Excel distinta para cada pastel. Lo importante es tener tus costos organizados y poder simular el precio antes de comprometerte con el cliente.',
+          'En CEO Rentable puedes registrar productos y servicios, guardar costos, establecer el margen que deseas y ver un precio recomendado. También puedes convertir ese precio en una cotización, factura y seguimiento de cobro dentro del mismo sistema.'
+        ]
+      }
+    ],
+    faq: [
+      { q: '¿Cuánto porcentaje de ganancia debo ponerle a un pastel?', a: 'No existe un porcentaje único para todas las reposterías. Debes partir de tu costo total, tus gastos, el mercado y el margen que necesita tu negocio. Lo importante es calcular el margen real sobre el precio final y no confundirlo con simplemente sumar un porcentaje al costo.' },
+      { q: '¿Debo cobrar las horas que paso decorando un pastel?', a: 'Sí. La mano de obra forma parte del costo real. Si no incluyes tu tiempo, puedes creer que el pedido es rentable cuando en realidad estás trabajando sin pagarte.' },
+      { q: '¿Cómo calculo el precio de un pastel si cambian mucho los ingredientes?', a: 'Actualiza periódicamente el costo de tus insumos y recalcula los productos cuando haya variaciones importantes. Un precio calculado con costos antiguos puede reducir tu margen sin que lo notes.' },
+      { q: '¿Puedo bajar mi precio si el cliente dice que otra persona cobra menos?', a: 'Puedes ajustar la oferta, el tamaño o la decoración, pero conviene evitar bajar el precio por debajo de un nivel que cubra tu costo y margen mínimo. El precio de otra persona no determina tu estructura de costos.' }
+    ]
+  },
+  {
     slug: 'como-saber-si-mi-negocio-es-rentable',
     title: 'Cómo saber si tu negocio es rentable: guía práctica para emprendedoras',
     excerpt: 'Vender mucho no siempre significa ganar dinero. Aprende a calcular costos, margen, utilidad y punto de equilibrio para saber si tu negocio realmente es rentable.',
