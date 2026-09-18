@@ -243,10 +243,14 @@ export default function Diagnostico() {
     if (!lead.name.trim() || !lead.email.trim()) return
     setSaving(true)
 
+    const params = new URLSearchParams(window.location.search)
+    const utmSource = (params.get('utm_source') || params.get('source') || '').trim().toLowerCase()
+    const leadSource = utmSource ? `diagnostico_${utmSource}` : 'diagnostico'
+
     const { error } = await supabase.from('leads').insert({
       name: lead.name.trim(),
       email: lead.email.trim(),
-      source: 'diagnostico',
+      source: leadSource,
       status: 'new',
       business_type: answers.business_type,
       monthly_sales: answers.monthly_sales,
