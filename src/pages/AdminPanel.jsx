@@ -40,6 +40,7 @@ import EditTemplateModal from '@/components/email/EditTemplateModal';
 import PreviewModal from '@/components/email/PreviewModal';
 import BroadcastModal from '@/components/email/BroadcastModal';
 import EmailCampaignComposer from '@/components/email/EmailCampaignComposer';
+import EmailLogs from '@/pages/EmailLogs';
 import BrandProfilesManager from '@/components/admin/BrandProfilesManager';
 
 const BRAND_PRIMARY = '#D45387';
@@ -514,7 +515,7 @@ export default function AdminPanel() {
         {[
           { key: 'usuarios', label: 'Usuarios', icon: UserRound },
           { key: 'brandings', label: 'Mis marcas', icon: Palette },
-          { key: 'emails', label: 'Emails', icon: Mail },
+          { key: 'emails', label: 'Email Marketing', icon: Mail },
           { key: 'templates', label: 'Templates', icon: Pencil },
         ].map((tab) => (
           <Button
@@ -740,12 +741,15 @@ export default function AdminPanel() {
       ) : null}
 
       {activeTab === 'emails' ? (
-        <EmailCampaignComposer
-          templates={templatesQuery.data || []}
-          onSent={() => {
-            queryClient.invalidateQueries({ queryKey: ['email-logs'] });
-          }}
-        />
+        <div className="space-y-6">
+          <EmailCampaignComposer
+            templates={templatesQuery.data || []}
+            onSent={() => {
+              queryClient.invalidateQueries({ queryKey: ['email-logs'] });
+            }}
+          />
+          <EmailLogs />
+        </div>
       ) : null}
 
       {activeTab === 'brandings' ? (
