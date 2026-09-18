@@ -59,18 +59,17 @@ const EMAIL_FOOTER_HTML = `
 `;
 
 function mapStatus(status) {
-  if (status === 'sent') return 'success';
-  if (status === 'ok') return 'success';
-  if (status === 'success') return 'success';
-  if (status === 'pending') return 'pending';
-  if (status === 'failed') return 'failed';
-  return status || 'pending';
+  const value = `${status || ''}`.trim().toLowerCase();
+  if (value === 'sent' || value === 'ok' || value === 'success') return 'sent';
+  if (['delivered', 'opened', 'clicked', 'pending', 'failed', 'bounced', 'complained', 'suppressed'].includes(value)) return value;
+  return value || 'pending';
 }
 
 function normalizeStoredStatus(status) {
   const value = `${status || ''}`.trim().toLowerCase();
   if (value === 'success' || value === 'sent' || value === 'ok') return 'sent';
-  if (value === 'failed' || value === 'error') return 'failed';
+  if (['delivered', 'opened', 'clicked', 'pending', 'failed', 'bounced', 'complained', 'suppressed'].includes(value)) return value;
+  if (value === 'error') return 'failed';
   return 'pending';
 }
 
