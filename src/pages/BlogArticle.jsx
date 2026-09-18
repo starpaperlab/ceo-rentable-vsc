@@ -1,3 +1,4 @@
+import React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, CheckCircle2 } from 'lucide-react';
 import BlogSeo from '@/components/blog/BlogSeo';
@@ -82,8 +83,8 @@ export default function BlogArticle() {
               <div className="text-xs text-slate-500">Blog</div>
             </div>
           </Link>
-          <Link to="/diagnostico" className="rounded-full px-4 py-2 text-sm font-bold text-white shadow-sm" style={{ backgroundColor: BRAND_PINK }}>
-            Diagnóstico gratis
+          <Link to={post?.cta?.href || '/diagnostico'} className="rounded-full px-4 py-2 text-sm font-bold text-white shadow-sm" style={{ backgroundColor: BRAND_PINK }}>
+            {post?.cta?.label || 'Diagnóstico gratis'}
           </Link>
         </div>
       </header>
@@ -111,8 +112,9 @@ export default function BlogArticle() {
           </div>
 
           <div className="space-y-12">
-            {post.sections.map((section) => (
-              <section key={section.heading}>
+            {post.sections.map((section, index) => (
+              <React.Fragment key={section.heading}>
+              <section>
                 <h2 className="text-2xl font-black text-slate-950 sm:text-3xl">{section.heading}</h2>
                 {section.paragraphs?.map((paragraph) => (
                   <p key={paragraph} className="mt-4 text-[17px] leading-8 text-slate-700">{paragraph}</p>
@@ -128,8 +130,32 @@ export default function BlogArticle() {
                   </ul>
                 ) : null}
               </section>
+              {post.cta && index === 4 ? (
+                <section className="rounded-3xl border border-rose-100 bg-white p-6 shadow-sm sm:p-8">
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-rose-700">Haz la prueba con tus números</p>
+                  <h2 className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">{post.cta.title}</h2>
+                  <p className="mt-3 leading-7 text-slate-600">{post.cta.text}</p>
+                  <Link to={post.cta.href} className="mt-5 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white" style={{ backgroundColor: BRAND_PINK }}>
+                    {post.cta.label} <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </section>
+              ) : null}
+              </React.Fragment>
             ))}
           </div>
+
+          {post.related?.length ? (
+            <section className="mt-14 border-t border-slate-200 pt-12">
+              <h2 className="text-2xl font-black text-slate-950 sm:text-3xl">También te puede ayudar</h2>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {post.related.map((item) => (
+                  <Link key={item.slug} to={`/blog/${item.slug}`} className="rounded-2xl border border-rose-100 bg-white p-5 font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                    {item.label} <ArrowRight className="ml-1 inline h-4 w-4" />
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {post.faq?.length ? (
             <section className="mt-14 border-t border-slate-200 pt-12">
@@ -147,10 +173,10 @@ export default function BlogArticle() {
 
           <section className="mt-14 rounded-3xl bg-slate-950 px-6 py-9 text-white sm:px-9">
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-rose-300">Llévalo a tus números</p>
-            <h2 className="mt-3 text-3xl font-black">Descubre qué está pasando realmente con tu negocio</h2>
-            <p className="mt-4 max-w-2xl leading-7 text-slate-300">Haz el diagnóstico de CEO Rentable y encuentra el área que más necesita atención.</p>
-            <Link to="/diagnostico" className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-slate-950">
-              Hacer diagnóstico gratis <ArrowRight className="h-4 w-4" />
+            <h2 className="mt-3 text-3xl font-black">{post.cta?.title || 'Descubre qué está pasando realmente con tu negocio'}</h2>
+            <p className="mt-4 max-w-2xl leading-7 text-slate-300">{post.cta?.text || 'Haz el diagnóstico de CEO Rentable y encuentra el área que más necesita atención.'}</p>
+            <Link to={post.cta?.href || '/diagnostico'} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-slate-950">
+              {post.cta?.label || 'Hacer diagnóstico gratis'} <ArrowRight className="h-4 w-4" />
             </Link>
           </section>
         </article>
