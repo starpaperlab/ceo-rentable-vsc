@@ -18,11 +18,11 @@ test('merged templates de-duplicate suggestions for mixed businesses',()=>{
 });
 
 test('configuration completion has a defined 100 point ceiling',()=>{
- const config={business_model:'products',industry_codes:['bakery'],workplace_modes:['home'],work_days_per_week:5,work_hours_per_day:8,monthly_capacity:20,monthly_capacity_unknown:false,personal_income_goal:50000};
+ const config={business_model:'products',industry_codes:['bakery'],workplace_modes:['home'],work_days_per_week:5,work_hours_per_day:8,monthly_capacity:20,monthly_capacity_unknown:false,operation_mode:'made_to_order',labor_mode:'solo',personal_income_goal:50000};
  assert.equal(setupCompletion(config,{expenses:1,materials:1,equipment:1}),100);
 });
 
 test('service businesses are not penalized for having no materials',()=>{
- const config={business_model:'services',industry_codes:['consulting'],workplace_modes:['online'],work_days_per_week:5,work_hours_per_day:6,monthly_capacity_unknown:true,monthly_capacity:null,personal_income_goal:70000};
+ const config={business_model:'services',industry_codes:['consulting'],workplace_modes:['online'],work_days_per_week:5,work_hours_per_day:6,monthly_capacity_unknown:true,monthly_capacity:null,operation_mode:'project',labor_mode:'solo',personal_income_goal:70000};
  assert.equal(setupCompletion(config,{expenses:1,materials:0,equipment:1}),100);
 });
