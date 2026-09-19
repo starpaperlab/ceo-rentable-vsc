@@ -3,7 +3,7 @@ import{Check,ChevronDown,Edit3,Loader2,Plus,Trash2,X}from'lucide-react';
 import{supabase}from'@/lib/supabase';
 import{Button}from'@/components/ui/button';
 import{Input}from'@/components/ui/input';
-import{calculateBusinessShare,calculateEquipmentMonthlyCost,calculateMaterialDisplayUnitCost,calculateMonthlyEquivalent,materialDisplayUnit}from'@/lib/costEngine';
+import{calculateBusinessShare,calculateEquipmentMonthlyCost,calculateMaterialDisplayUnitCost,calculateMonthlyEquivalent,estimateSharedExpenseUse,materialDisplayUnit}from'@/lib/costEngine';
 
 const INPUT='h-11 rounded-xl bg-background';
 const FREQUENCIES=[['monthly','Mensual'],['weekly','Semanal'],['biweekly','Quincenal'],['quarterly','Trimestral'],['semiannual','Semestral'],['annual','Anual'],['one_time','Pago único']];
@@ -36,16 +36,16 @@ function FormCard({title,onCancel,onSave,saving,children}){
  </div>
 }
 
-export function ExpenseStep({suggestions=[],rows,setRows,workspaceId,user,onError,mode='expenses'}){
+export function ExpenseStep({suggestions=[],rows,setRows,workspaceId,user,onError,mode='expenses',businessConfig={}}){
  const subscriptionMode=mode==='subscriptions';
  const visibleRows=rows.filter(row=>subscriptionMode?row.is_subscription:!row.is_subscription);
- const blank={name:'',category:subscriptionMode?'software':'operacion',amount:'',frequency:'monthly',usage_scope:'business',business_use_pct:100,business_use_source:'default',is_subscription:subscriptionMode};
+ const blank={name:'',category:subscriptionMode?'software':'operacion',amount:'',frequency:'monthly',usage_scope:'business',business_use_pct:100,business_use_source:'default',guided_answers:{serviceUse:'half',usesProductionEquipment:false,usesCooling:false,highElectricalIntensity:false,highWaterUse:false,spaceUse:'small'},is_subscription:subscriptionMode};
  const[form,setForm]=useState(null);const[saving,setSaving]=useState(false);
  const frequencies=form?.is_subscription?SUBSCRIPTION_FREQUENCIES:FREQUENCIES;
  const open=(name='')=>setForm({...blank,name});
- const edit=row=>setForm({...blank,...row,amount:row.amount??'',business_use_pct:row.business_use_pct??(row.usage_scope==='personal'?0:row.usage_scope==='shared'?50:100)});
+ const edit=row=>setForm({...blank,...row,amount:row.amount??'',business_use_pct:row.business_use_pct??(row.usage_scope==='personal'?0:row.usage_scope==='shared'?50:100),guided_answers:{...blank.guided_answers,...(row.metadata?.guided_answers||{})}});
  const save=async()=>{if(!form?.name?.trim()){onError?.('Escribe el nombre del gasto.');return}if(form.amount===''||Number(form.amount)<0){onError?.('Indica un monto aproximado válido.');return}setSaving(true);onError?.('');
-  try{const pct=form.usage_scope==='business'?100:form.usage_scope==='personal'?0:Number(form.business_use_pct??50);const payload={workspace_id:workspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:form.name.trim(),category:form.category,amount:Number(form.amount),frequency:form.frequency,usage_scope:form.usage_scope,business_use_pct:pct,business_use_source:form.usage_scope==='shared'?(form.business_use_source||'guided'):'default',is_subscription:Boolean(form.is_subscription),source:form.source||'onboarding'};
+  try{const pct=form.usage_scope==='business'?100:form.usage_scope==='personal'?0:Number(form.business_use_pct??50);const payload={workspace_id:workspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:form.name.trim(),category:form.category,amount:Number(form.amount),frequency:form.frequency,usage_scope:form.usage_scope,business_use_pct:pct,business_use_source:form.usage_scope==='shared'?(form.business_use_source||'guided'):'default',is_subscription:Boolean(form.is_subscription),source:form.source||'onboarding',metadata:{...(form.metadata||{}),guided_answers:form.guided_answers||{},business_use_estimate_reason:form.business_use_estimate_reason||null}};
    const q=form.id?supabase.from('business_expenses').update(payload).eq('id',form.id).eq('workspace_id',workspaceId):supabase.from('business_expenses').insert(payload);
    const{data,error}=await q.select('*').single();if(error)throw error;
    setRows(list=>form.id?list.map(x=>x.id===data.id?data:x):[...list,data]);setForm(null);
@@ -56,12 +56,45 @@ export function ExpenseStep({suggestions=[],rows,setRows,workspaceId,user,onErro
    <div className="grid gap-4 sm:grid-cols-2"><Field label="Nombre"><Input className={INPUT} value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Ej. Electricidad"/></Field><Field label="Monto aproximado"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">RD$</span><Input className={`${INPUT} pl-12`} type="number" min="0" step="0.01" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))}/></div></Field></div>
    <div className="grid gap-4 sm:grid-cols-2"><Field label="Categoría"><Select value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>{EXPENSE_CATEGORIES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></Field><Field label="Frecuencia"><Select value={form.frequency} onChange={e=>setForm(p=>({...p,frequency:e.target.value}))}>{frequencies.map(([id,label])=><option key={id} value={id}>{label}</option>)}</Select></Field></div>
    <Field label="Uso"><Select value={form.usage_scope} onChange={e=>{const usage=e.target.value;setForm(p=>({...p,usage_scope:usage,business_use_pct:usage==='business'?100:usage==='personal'?0:(p.business_use_pct===100?50:p.business_use_pct),business_use_source:usage==='shared'?'guided':'default'}))}}><option value="business">100% negocio</option><option value="shared">Compartido hogar / negocio</option><option value="personal">Personal / no incluir</option></Select></Field>
-   {form.usage_scope==='shared'&&<div className="rounded-xl border border-border bg-background p-3"><p className="text-sm font-semibold">¿Cuánto lo usa aproximadamente tu negocio?</p><p className="mt-1 text-xs text-muted-foreground">Elige la opción más cercana. Puedes ajustarla manualmente.</p><div className="mt-3 grid gap-2 sm:grid-cols-4">{[[25,'Principalmente personal'],[50,'Mitad y mitad'],[75,'Principalmente negocio'],[100,'Solo negocio']].map(([pct,label])=><button key={pct} type="button" onClick={()=>setForm(p=>({...p,business_use_pct:pct,business_use_source:'guided'}))} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${Number(form.business_use_pct)===pct?'border-primary bg-primary/10 text-primary':'border-border hover:border-primary/40'}`}>{label}<span className="mt-1 block text-[11px] font-normal">{pct}%</span></button>)}</div><div className="mt-3"><Field label="O escribe tu porcentaje"><Input className={INPUT} inputMode="decimal" type="number" min="0" max="100" step="1" value={form.business_use_pct} onChange={e=>setForm(p=>({...p,business_use_pct:e.target.value,business_use_source:'manual'}))}/></Field></div></div>}
+   {form.usage_scope==='shared'&&<SharedUseAssistant form={form} setForm={setForm} businessConfig={businessConfig}/>} 
    {form.amount!==''&&form.frequency!=='one_time'&&<div className="rounded-xl border border-primary/20 bg-background p-3 text-sm"><p className="text-muted-foreground">CEO Rentable lo convierte automáticamente a mensual:</p><p className="mt-1 font-bold text-primary">{money(calculateBusinessShare(calculateMonthlyEquivalent(Number(form.amount||0),form.frequency),form.usage_scope==='business'?100:form.usage_scope==='personal'?0:Number(form.business_use_pct||0)))} al mes para el negocio</p></div>}
    {!subscriptionMode&&<label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 text-sm"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={form.is_subscription} onChange={e=>setForm(p=>({...p,is_subscription:e.target.checked,frequency:e.target.checked&&!['monthly','quarterly','semiannual','annual'].includes(p.frequency)?'monthly':p.frequency,category:e.target.checked&&p.category==='operacion'?'software':p.category}))}/><span><strong>Es una suscripción o software recurrente</strong><span className="mt-0.5 block text-xs text-muted-foreground">Si lo marcas, aparecerá en la sección Suscripciones.</span></span></label>}
   </FormCard>}
   <div className="space-y-2">{visibleRows.map(row=><div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-semibold">{row.name}</p>{row.is_subscription&&<span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Suscripción</span>}</div><p className="text-xs text-muted-foreground">{money(row.amount)} · {FREQUENCIES.find(f=>f[0]===row.frequency)?.[1]||row.frequency} · {row.usage_scope==='shared'?(`${row.business_use_pct??50}% negocio`):row.usage_scope==='personal'?'No incluir':'Negocio'}{row.frequency!=='one_time'?` · ${money(calculateBusinessShare(calculateMonthlyEquivalent(row.amount,row.frequency),row.usage_scope==='business'?100:row.usage_scope==='personal'?0:Number(row.business_use_pct??50)))} / mes`:''}</p></div><RowActions onEdit={()=>edit(row)} onDelete={()=>remove(row)} disabled={saving}/></div>)}</div>
  </ResourceShell>
+}
+
+function SharedUseAssistant({form,setForm,businessConfig}){
+ const normalized=(form.name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const isElectric=normalized.includes('electric')||normalized.includes('luz')||normalized.includes('energia');
+ const isService=normalized.includes('internet')||normalized.includes('telefono')||normalized.includes('celular');
+ const isWater=normalized.includes('agua');
+ const isRent=normalized.includes('alquiler')||normalized.includes('renta');
+ const answers=form.guided_answers||{};
+ const applyEstimate=(nextAnswers=answers)=>{
+  const estimate=estimateSharedExpenseUse({
+   expenseName:form.name,
+   industryCodes:businessConfig?.industry_codes||[],
+   workHoursPerDay:businessConfig?.work_hours_per_day||0,
+   worksFromHome:(businessConfig?.workplace_modes||[]).includes('home')||(businessConfig?.workplace_modes||[]).includes('combined'),
+   answers:nextAnswers,
+  });
+  setForm(p=>({...p,guided_answers:nextAnswers,business_use_pct:estimate.pct,business_use_source:'guided',business_use_estimate_reason:estimate.reason}));
+ };
+ return <div className="rounded-xl border border-border bg-background p-3">
+  <p className="text-sm font-semibold">Te ayudamos a estimarlo</p>
+  <p className="mt-1 text-xs text-muted-foreground">Responde con aproximaciones. La sugerencia queda editable.</p>
+  {isService&&<div className="mt-3"><Field label="¿Cómo usas este servicio?"><Select value={answers.serviceUse||'half'} onChange={e=>{const next={...answers,serviceUse:e.target.value};applyEstimate(next)}}><option value="mainly_personal">Principalmente personal</option><option value="half">Mitad personal / mitad negocio</option><option value="mainly_business">Principalmente negocio</option><option value="business_only">100% negocio</option></Select></Field></div>}
+  {isElectric&&<div className="mt-3 grid gap-2 sm:grid-cols-2">
+   {[[ 'usesProductionEquipment','Uso equipos eléctricos para producir'],['usesCooling','Uso aire acondicionado durante el trabajo'],['highElectricalIntensity','Mi producción consume bastante electricidad']].map(([key,label])=><label key={key} className="flex items-start gap-2 rounded-lg border border-border p-2 text-xs"><input type="checkbox" className="mt-0.5" checked={Boolean(answers[key])} onChange={e=>{const next={...answers,[key]:e.target.checked};applyEstimate(next)}}/><span>{label}</span></label>)}
+  </div>}
+  {isWater&&<div className="mt-3"><label className="flex items-start gap-2 rounded-lg border border-border p-2 text-xs"><input type="checkbox" className="mt-0.5" checked={Boolean(answers.highWaterUse)} onChange={e=>{const next={...answers,highWaterUse:e.target.checked};applyEstimate(next)}}/><span>Uso agua frecuentemente como parte del servicio o producción</span></label></div>}
+  {isRent&&<div className="mt-3"><Field label="¿Cuánto espacio del hogar usa el negocio?"><Select value={answers.spaceUse||'small'} onChange={e=>{const next={...answers,spaceUse:e.target.value};applyEstimate(next)}}><option value="small">Un espacio pequeño</option><option value="medium">Una habitación o área importante</option><option value="large">Gran parte de la vivienda</option><option value="dedicated">Espacio dedicado completamente al negocio</option></Select></Field></div>}
+  {!isElectric&&!isService&&!isWater&&!isRent&&<div className="mt-3 grid gap-2 sm:grid-cols-4">{[[25,'Principalmente personal'],[50,'Mitad y mitad'],[75,'Principalmente negocio'],[100,'Solo negocio']].map(([pct,label])=><button key={pct} type="button" onClick={()=>setForm(p=>({...p,business_use_pct:pct,business_use_source:'guided',business_use_estimate_reason:'Estimación seleccionada por la usuaria según el nivel de uso empresarial.'}))} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${Number(form.business_use_pct)===pct?'border-primary bg-primary/10 text-primary':'border-border hover:border-primary/40'}`}>{label}<span className="mt-1 block text-[11px] font-normal">{pct}%</span></button>)}</div>}
+  {(isElectric||isService||isWater||isRent)&&<button type="button" onClick={()=>applyEstimate(answers)} className="mt-3 rounded-lg border border-primary/30 px-3 py-2 text-xs font-semibold text-primary">Calcular estimación sugerida</button>}
+  <div className="mt-3 rounded-lg bg-primary/5 p-2"><p className="text-xs text-muted-foreground">Estimación sugerida</p><p className="font-bold text-primary">{Number(form.business_use_pct||0)}% para el negocio</p>{form.business_use_estimate_reason&&<p className="mt-1 text-[11px] text-muted-foreground">{form.business_use_estimate_reason}</p>}</div>
+  <div className="mt-3"><Field label="Puedes modificarla"><Input className={INPUT} inputMode="decimal" type="number" min="0" max="100" step="1" value={form.business_use_pct} onChange={e=>setForm(p=>({...p,business_use_pct:e.target.value,business_use_source:'manual'}))}/></Field></div>
+ </div>
 }
 
 export function MaterialStep({title='Materiales e insumos',subtitle,suggestions=[],rows,setRows,workspaceId,user,onError}){
