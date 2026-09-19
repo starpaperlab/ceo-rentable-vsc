@@ -135,6 +135,18 @@ export default function Onboarding() {
     }
   };
 
+  const toggleWorkplace=(id)=>{
+    setConfig(p=>{
+      const current=p.workplace_modes||[];
+      if(id==='combined') return {...p,workplace_modes:current.includes('combined')?[]:['combined']};
+      if(current.includes('combined')){
+        const next=current.includes(id)?current.filter(x=>x!==id):[...current,id];
+        return {...p,workplace_modes:next};
+      }
+      return {...p,workplace_modes:[id]};
+    });
+  };
+
   const canContinue=()=>{
     if(step===0)return Boolean(config.business_model);
     if(step===1)return config.industry_codes.length>0 && (!config.industry_codes.includes('other') || config.custom_industry.trim());
@@ -183,7 +195,7 @@ export default function Onboarding() {
 
           {step===1 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-sm text-muted-foreground">Selecciona la opción que más se parezca. Si combinas actividades, puedes marcar varias.</p></div><div className="grid gap-2 sm:grid-cols-2">{industryOptionsFor(config.business_model).map(([id,label])=><ToggleCard key={id} selected={config.industry_codes.includes(id)} title={label} onClick={()=>toggleIndustry(id)}/>)}</div>{config.industry_codes.includes('other')&&<Input className={inputClass} value={config.custom_industry||''} onChange={e=>setConfig(p=>({...p,custom_industry:e.target.value}))} placeholder="Escribe tu tipo de negocio"/>}</div>}
 
-          {step===2 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Desde dónde trabajas principalmente?</h2><p className="mt-2 text-sm text-muted-foreground">Esto nos ayudará luego a separar correctamente los gastos del negocio y del hogar.</p></div><div className="grid gap-2 sm:grid-cols-2">{WORKPLACE_OPTIONS.map(([id,label])=><ToggleCard key={id} selected={config.workplace_modes.includes(id)} title={label} onClick={()=>setConfig(p=>({...p,workplace_modes:id==='combined'?[id]:[id]}))}/>)}</div>{config.workplace_modes.includes('other')&&<Input className={inputClass} value={config.custom_workplace||''} onChange={e=>setConfig(p=>({...p,custom_workplace:e.target.value}))} placeholder="¿Desde dónde trabajas?"/>}</div>}
+          {step===2 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Desde dónde trabajas principalmente?</h2><p className="mt-2 text-sm text-muted-foreground">Esto nos ayudará luego a separar correctamente los gastos del negocio y del hogar.</p></div><div className="grid gap-2 sm:grid-cols-2">{WORKPLACE_OPTIONS.map(([id,label])=><ToggleCard key={id} selected={config.workplace_modes.includes(id)} title={label} onClick={()=>toggleWorkplace(id)}/>)}</div>{config.workplace_modes.includes('combined')&&<p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">Puedes marcar varias opciones además de “Combinación de varias”.</p>}{config.workplace_modes.includes('other')&&<Input className={inputClass} value={config.custom_workplace||''} onChange={e=>setConfig(p=>({...p,custom_workplace:e.target.value}))} placeholder="¿Desde dónde trabajas?"/>}</div>}
 
           {step===3 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">Cuéntanos tu capacidad normal</h2><p className="mt-2 text-sm text-muted-foreground">No buscamos exactitud contable. Una aproximación útil es suficiente.</p></div><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm font-semibold">Días por semana<Input className={inputClass} type="number" min="0" max="7" value={config.work_days_per_week??''} onChange={e=>setConfig(p=>({...p,work_days_per_week:e.target.value}))}/></label><label className="space-y-2 text-sm font-semibold">Horas al día<Input className={inputClass} type="number" min="0" max="24" step="0.5" value={config.work_hours_per_day??''} onChange={e=>setConfig(p=>({...p,work_hours_per_day:e.target.value}))}/></label></div><label className="block space-y-2 text-sm font-semibold">{template.capacityLabel}<Input className={inputClass} type="number" min="0" disabled={config.monthly_capacity_unknown} value={config.monthly_capacity??''} onChange={e=>setConfig(p=>({...p,monthly_capacity:e.target.value,monthly_capacity_unknown:false}))}/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.monthly_capacity_unknown} onChange={e=>setConfig(p=>({...p,monthly_capacity_unknown:e.target.checked,monthly_capacity:e.target.checked?'':p.monthly_capacity}))}/> No estoy segura</label></div>}
 
