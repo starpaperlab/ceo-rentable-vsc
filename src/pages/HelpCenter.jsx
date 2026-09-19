@@ -46,17 +46,20 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
   const mountRef = useRef(null);
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
+  const [started, setStarted] = useState(false);
   const [ended, setEnded] = useState(false);
 
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
   useEffect(() => {
+    if (!started || ended) return undefined;
     let cancelled = false;
     const create = () => {
       if (cancelled || !mountRef.current || !window.YT?.Player) return;
       playerRef.current = new window.YT.Player(mountRef.current, {
         videoId,
         playerVars: {
+          autoplay: 1,
           rel: 0,
           playsinline: 1,
           modestbranding: 1,
@@ -66,8 +69,11 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
           origin: window.location.origin,
         },
         events: {
+          onReady: (event) => event.target.playVideo?.(),
           onStateChange: (event) => {
             if (event.data === window.YT.PlayerState.ENDED) {
+              try { playerRef.current?.destroy?.(); } catch {}
+              playerRef.current = null;
               setEnded(true);
               onEndedRef.current?.();
             }
@@ -97,31 +103,63 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
       try { playerRef.current?.destroy?.(); } catch {}
       playerRef.current = null;
     };
-  }, [videoId]);
+  }, [videoId, started, ended]);
 
   const replay = () => {
     setEnded(false);
-    playerRef.current?.seekTo?.(0, true);
-    playerRef.current?.playVideo?.();
+    setStarted(false);
   };
 
-  return (
-    <div className="relative aspect-video overflow-hidden rounded-2xl bg-black shadow-xl">
-      <div ref={mountRef} className="h-full w-full" />
-      {ended ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#171217] p-6 text-center">
-          <div>
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#D45387]/15">
-              <CheckCircle2 className="h-7 w-7 text-[#D45387]" />
-            </div>
-            <h3 className="mt-4 text-xl font-bold text-white">Lección completada</h3>
-            <p className="mt-2 text-sm text-white/65">Continúa tu aprendizaje dentro de CEO Rentable.</p>
-            <Button onClick={replay} variant="outline" className="mt-5 border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white">
-              <RotateCcw className="mr-2 h-4 w-4" /> Ver de nuevo
-            </Button>
+  if (!started && !ended) {
+    return (
+      <button
+        type="button"
+        onClick={() => setStarted(true)}
+        className="group relative block aspect-video w-full overflow-hidden rounded-2xl bg-[#171217] text-left shadow-xl"
+        aria-label={`Reproducir ${title}`}
+      >
+        <img
+          src={`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/15 transition group-hover:bg-black/25" />
+        <div className="absolute left-4 top-4 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#B83E70] shadow-sm">
+          Academia CEO Rentable
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#D45387] text-white shadow-2xl transition group-hover:scale-105">
+            <PlayCircle className="h-8 w-8" />
           </div>
         </div>
-      ) : null}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-5 pb-5 pt-14">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/75">Módulo 1 · Lección 1</p>
+          <p className="mt-1 text-base font-bold text-white sm:text-lg">{title}</p>
+        </div>
+      </button>
+    );
+  }
+
+  if (ended) {
+    return (
+      <div className="flex aspect-video items-center justify-center overflow-hidden rounded-2xl bg-[#171217] p-6 text-center shadow-xl">
+        <div>
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#D45387]/15">
+            <CheckCircle2 className="h-7 w-7 text-[#D45387]" />
+          </div>
+          <h3 className="mt-4 text-xl font-bold text-white">Lección completada</h3>
+          <p className="mt-2 text-sm text-white/65">Continúa tu aprendizaje dentro de CEO Rentable.</p>
+          <Button onClick={replay} variant="outline" className="mt-5 border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white">
+            <RotateCcw className="mr-2 h-4 w-4" /> Ver de nuevo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="aspect-video overflow-hidden rounded-2xl bg-black shadow-xl">
+      <div ref={mountRef} className="h-full w-full" />
     </div>
   );
 }
