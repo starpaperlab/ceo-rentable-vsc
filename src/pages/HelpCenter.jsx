@@ -36,6 +36,21 @@ const MODULES = [
       },
     ],
   },
+  {
+    id: 'm2',
+    number: 2,
+    title: 'Configura tu negocio',
+    description: 'Prepara la información y configuración de tu empresa para trabajar correctamente dentro de CEO Rentable.',
+    lessons: [
+      {
+        key: 'm2-l1',
+        number: 1,
+        title: 'Configura tu negocio',
+        youtubeId: 'OKImPNhzN4o',
+        description: 'Configura los datos principales de tu negocio y deja CEO Rentable preparado para tu operación.',
+      },
+    ],
+  },
 ];
 
 const HELP_CATEGORIES = [
@@ -247,10 +262,10 @@ export default function HelpCenter() {
             <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
               <div>
                 <div className="mb-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B83E70]">Módulo 1 · Lección {activeLesson.number}</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B83E70]">Módulo {activeLesson.moduleNumber} · Lección {activeLesson.number}</p>
                   <h2 className="mt-1 text-2xl font-bold">{activeLesson.title}</h2>
                 </div>
-                <YouTubeLessonPlayer videoId={activeLesson.youtubeId} title={activeLesson.title} moduleNumber={1} lessonNumber={activeLesson.number} onEnded={() => markComplete(activeLesson)} />
+                <YouTubeLessonPlayer videoId={activeLesson.youtubeId} title={activeLesson.title} moduleNumber={activeLesson.moduleNumber} lessonNumber={activeLesson.number} onEnded={() => markComplete(activeLesson)} />
                 <Card className="mt-5 p-5">
                   <h3 className="font-semibold">Sobre esta lección</h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{activeLesson.description}</p>
@@ -264,12 +279,12 @@ export default function HelpCenter() {
               </div>
               <Card className={\`h-fit overflow-hidden \${MODULES[0].lessons.length === 1 ? 'hidden lg:block' : ''}\`}>
                 <div className="border-b bg-[#FFF4F8] p-4">
-                  <p className="text-xs font-bold text-[#B83E70]">MÓDULO 1</p>
-                  <h3 className="mt-1 font-bold">Conociendo CEO Rentable</h3>
+                  <p className="text-xs font-bold text-[#B83E70]">MÓDULO {activeLesson.moduleNumber}</p>
+                  <h3 className="mt-1 font-bold">{MODULES.find(m => m.number === activeLesson.moduleNumber)?.title}</h3>
                 </div>
                 <div className="p-2">
-                  {MODULES[0].lessons.map(lesson => (
-                    <button key={lesson.key} onClick={() => setActiveLesson(lesson)} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/60">
+                  {(MODULES.find(m => m.number === activeLesson.moduleNumber)?.lessons || []).map(lesson => (
+                    <button key={lesson.key} onClick={() => setActiveLesson({ ...lesson, moduleNumber: activeLesson.moduleNumber })} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/60">
                       <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${completed.has(lesson.key)?'bg-emerald-100 text-emerald-700':'bg-[#D45387]/10 text-[#B83E70]'}`}>
                         {completed.has(lesson.key) ? '✓' : lesson.number}
                       </div>
@@ -290,7 +305,7 @@ export default function HelpCenter() {
                   </div>
                   <div>
                     {module.lessons.map(lesson => (
-                      <button key={lesson.key} onClick={() => setActiveLesson(lesson)} className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-[#FFF7FA]">
+                      <button key={lesson.key} onClick={() => setActiveLesson({ ...lesson, moduleNumber: module.number })} className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-[#FFF7FA]">
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${completed.has(lesson.key)?'bg-emerald-100 text-emerald-700':'bg-[#D45387]/10 text-[#B83E70]'}`}>
                           {completed.has(lesson.key) ? <CheckCircle2 className="h-5 w-5"/> : <PlayCircle className="h-5 w-5"/>}
                         </div>
