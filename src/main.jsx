@@ -4,6 +4,7 @@ import '@/index.css'
 
 const rootElement = document.getElementById('root')
 const root = ReactDOM.createRoot(rootElement)
+const APP_BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'local'
 
 function StartupError({ error }) {
   const message = error?.message || 'Error desconocido al iniciar la aplicación.'
@@ -23,10 +24,51 @@ function StartupError({ error }) {
   )
 }
 
+async function checkForNewVersion() {
+  if (document.visibilityState === 'hidden' || APP_BUILD_ID === 'local' || APP_BUILD_ID.startsWith('local-')) return
+
+  try {
+    const response = await fetch(`/api/version?t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    })
+
+    if (!response.ok) return
+
+    const { buildId } = await response.json()
+    if (!buildId || buildId === APP_BUILD_ID) return
+
+    const reloadKey = 'ceo-rentable-reloaded-build'
+    if (sessionStorage.getItem(reloadKey) === buildId) return
+
+    sessionStorage.setItem(reloadKey, buildId)
+    window.location.reload()
+  } catch (error) {
+    console.warn('No se pudo comprobar una nueva versión de CEO Rentable:', error)
+  }
+}
+
+function setupVersionWatcher() {
+  window.setTimeout(checkForNewVersion, 1500)
+  window.setInterval(checkForNewVersion, 10 * 60 * 1000)
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForNewVersion()
+  })
+
+  window.addEventListener('pageshow', () => {
+    checkForNewVersion()
+  })
+}
+
 async function bootstrap() {
   try {
     const { default: App } = await import('./App.jsx')
     root.render(<App />)
+    setupVersionWatcher()
   } catch (error) {
     console.error('Error al iniciar CEO Rentable:', error)
     root.render(<StartupError error={error} />)

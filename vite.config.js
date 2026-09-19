@@ -114,8 +114,16 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  const appBuildId =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.VERCEL_DEPLOYMENT_ID ||
+    `local-${Date.now()}`;
+
   return {
     plugins: [react(), devEmailApiPlugin()],
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(appBuildId),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src')
