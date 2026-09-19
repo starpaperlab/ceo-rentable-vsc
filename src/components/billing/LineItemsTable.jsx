@@ -5,6 +5,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useCurrency } from '@/components/shared/CurrencyContext';
 import ProductAutocomplete from './ProductAutocomplete';
 import QuickCreateProductModal from './QuickCreateProductModal';
+import { calculateMargin, calculateProfit } from '@/lib/catalogFinancials';
 
 export default function LineItemsTable({ items, onChange, products = [], inventoryItems = [] }) {
   const { symbol } = useCurrency();
@@ -37,6 +38,21 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
       cost_breakdown: item.cost_breakdown || item.cost_breakdown_snapshot || {},
       cost_engine_version: item.cost_engine_version || item.cost_engine_version_snapshot || 1,
+      percentage_fees: Number(item.percentage_fees ?? item.percentage_fees_snapshot ?? 0),
+      fixed_fees: Number(item.fixed_fees ?? item.fixed_fees_snapshot ?? 0),
+      minimum_margin: Number(item.minimum_margin ?? item.minimum_margin_snapshot ?? 0),
+      target_margin: Number(item.target_margin ?? item.target_margin_snapshot ?? 0),
+      pricing_snapshot: item.pricing_snapshot || item.pricing_snapshot_snapshot || {},
+      percentage_fees: Number(item.percentage_fees ?? item.percentage_fees_snapshot ?? 0),
+      fixed_fees: Number(item.fixed_fees ?? item.fixed_fees_snapshot ?? 0),
+      minimum_margin: Number(item.minimum_margin ?? item.minimum_margin_snapshot ?? 0),
+      target_margin: Number(item.target_margin ?? item.target_margin_snapshot ?? 0),
+      pricing_snapshot: item.pricing_snapshot || item.pricing_snapshot_snapshot || {},
+      percentage_fees: Number(item.percentage_fees ?? item.percentage_fees_snapshot ?? 0),
+      fixed_fees: Number(item.fixed_fees ?? item.fixed_fees_snapshot ?? 0),
+      minimum_margin: Number(item.minimum_margin ?? item.minimum_margin_snapshot ?? 0),
+      target_margin: Number(item.target_margin ?? item.target_margin_snapshot ?? 0),
+      pricing_snapshot: item.pricing_snapshot || item.pricing_snapshot_snapshot || {},
     }));
 
     const normalizedFromProducts = (products || []).map((item) => ({
@@ -112,11 +128,13 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       const price = field === 'unit_price' ? parseFloat(rawValue) || 0 : parseFloat(item.unit_price) || 0;
       const qty = field === 'quantity' ? parseFloat(rawValue) || 0 : parseFloat(item.quantity) || 0;
       const costSnapshot = Number(item.unit_cost_snapshot ?? item.costo_unitario ?? 0);
-      const profitSnapshot = price - costSnapshot;
+      const percentageFees = Number(item.percentage_fees_snapshot ?? item.percentage_fees ?? 0);
+      const fixedFees = Number(item.fixed_fees_snapshot ?? item.fixed_fees ?? 0);
+      const profitSnapshot = calculateProfit(price, costSnapshot, percentageFees, fixedFees);
       newItem.total = price * qty;
       newItem.unit_cost_snapshot = Number.isFinite(costSnapshot) ? costSnapshot : 0;
       newItem.unit_profit_snapshot = Number.isFinite(profitSnapshot) ? profitSnapshot : 0;
-      newItem.margin_pct_snapshot = price > 0 ? (profitSnapshot / price) * 100 : 0;
+      newItem.margin_pct_snapshot = calculateMargin(price, costSnapshot, percentageFees, fixedFees);
       return newItem;
     });
     onChange(updated);
@@ -136,10 +154,17 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       newItem.currency = invItem.currency || null;
       const unitCostSnapshot = Number(invItem.costo_unitario ?? invItem.unit_cost_snapshot ?? 0);
       const unitPriceSnapshot = Number(invItem.sale_price ?? newItem.unit_price ?? 0);
-      const unitProfitSnapshot = unitPriceSnapshot - unitCostSnapshot;
+      const percentageFeesSnapshot = Number(invItem.percentage_fees ?? 0);
+      const fixedFeesSnapshot = Number(invItem.fixed_fees ?? 0);
+      const unitProfitSnapshot = calculateProfit(unitPriceSnapshot, unitCostSnapshot, percentageFeesSnapshot, fixedFeesSnapshot);
       newItem.unit_cost_snapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;
       newItem.unit_profit_snapshot = Number.isFinite(unitProfitSnapshot) ? unitProfitSnapshot : 0;
-      newItem.margin_pct_snapshot = unitPriceSnapshot > 0 ? (unitProfitSnapshot / unitPriceSnapshot) * 100 : 0;
+      newItem.margin_pct_snapshot = calculateMargin(unitPriceSnapshot, unitCostSnapshot, percentageFeesSnapshot, fixedFeesSnapshot);
+      newItem.percentage_fees_snapshot = percentageFeesSnapshot;
+      newItem.fixed_fees_snapshot = fixedFeesSnapshot;
+      newItem.minimum_margin_snapshot = Number(invItem.minimum_margin ?? 0);
+      newItem.target_margin_snapshot = Number(invItem.target_margin ?? 0);
+      newItem.pricing_snapshot = invItem.pricing_snapshot || {};
       newItem.cost_breakdown_snapshot = invItem.cost_breakdown || invItem.cost_breakdown_snapshot || {};
       newItem.cost_engine_version_snapshot = invItem.cost_engine_version || invItem.cost_engine_version_snapshot || 1;
       if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;
@@ -178,6 +203,11 @@ export default function LineItemsTable({ items, onChange, products = [], invento
             {item.item_description && (
               <p className="text-[11px] text-muted-foreground px-1 truncate">{item.item_description}</p>
             )}
+            {Number(item.unit_cost_snapshot || 0) > 0 ? (
+              <p className="px-1 text-[11px] text-muted-foreground">
+                Interno: costo {symbol}{Number(item.unit_cost_snapshot || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} · margen {Number(item.margin_pct_snapshot || 0).toFixed(1)}%
+              </p>
+            ) : null}
           </div>
           <div className="col-span-5 sm:col-span-3 relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{symbol}</span>
@@ -242,6 +272,11 @@ export default function LineItemsTable({ items, onChange, products = [], invento
               currency: newItem.currency || null,
               cost_breakdown: newItem.cost_breakdown || {},
               cost_engine_version: newItem.cost_engine_version || 1,
+              percentage_fees: Number(newItem.percentage_fees || 0),
+              fixed_fees: Number(newItem.fixed_fees || 0),
+              minimum_margin: Number(newItem.minimum_margin || 0),
+              target_margin: Number(newItem.target_margin || 0),
+              pricing_snapshot: newItem.pricing_snapshot || {},
             });
             setCreateModal(null);
           }}
