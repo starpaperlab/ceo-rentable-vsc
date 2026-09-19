@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Calculator, BarChart2, DollarSign, Calendar, Star, BookOpen } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calculator, BarChart2, DollarSign, Calendar, Star, BookOpen, PlayCircle, GraduationCap, CheckCircle2 } from 'lucide-react';
 import PageTour from '@/components/shared/PageTour';
 import { useAuth } from '@/lib/AuthContext';
 import { useWorkContextScope } from '@/hooks/useWorkContextScope';
@@ -14,6 +15,23 @@ const TOUR_STEPS = [
   { title: 'Guías accionables ✅', description: 'Cada guía termina con una acción concreta que puedes hacer inmediatamente en el sistema. No teoría — pasos reales.' },
 ];
 import { motion } from 'framer-motion';
+
+const ACADEMY_MODULES = [
+  {
+    number: 1,
+    title: 'Conociendo CEO Rentable',
+    description: 'Empieza por aquí: conoce la estructura del sistema y ubica las áreas que vas a usar en tu operación diaria.',
+    lessons: [
+      {
+        number: 1,
+        title: 'Conociendo la interfaz principal',
+        description: 'Recorrido inicial por la interfaz de CEO Rentable OS™ y sus principales secciones.',
+        youtubeId: 'Ly_UIS-Fe4U',
+        duration: 'Video',
+      },
+    ],
+  },
+];
 
 const GUIDES = [
   {
@@ -260,6 +278,7 @@ Ve a **Rentabilidad → Análisis por Producto** y ordena por margen. Identifica
 
 export default function Learn() {
   const [openGuide, setOpenGuide] = useState(null);
+  const [openLesson, setOpenLesson] = useState(null);
   const { user, userProfile } = useAuth();
   const ownerEmail = (userProfile?.email || user?.email || '').toLowerCase();
   const { enabled, fetchRows, queryKey: contextQueryKey } = useWorkContextScope();
@@ -297,10 +316,63 @@ export default function Learn() {
           <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
             <BookOpen className="h-5 w-5 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Aprende</h1>
+          <h1 className="text-2xl font-bold text-foreground">Academia CEO Rentable</h1>
         </div>
-        <p className="text-sm text-muted-foreground ml-12">Guías prácticas para tomar mejores decisiones financieras.</p>
+        <p className="text-sm text-muted-foreground ml-12">Videos y guías prácticas para aprender a usar CEO Rentable y tomar mejores decisiones en tu negocio.</p>
       </motion.div>
+
+      {/* Academia */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-primary uppercase tracking-widest">Empieza aquí</p>
+            <h2 className="mt-1 text-xl font-bold text-foreground">Tu ruta de aprendizaje</h2>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
+            <GraduationCap className="h-4 w-4" />
+            Academia CEO Rentable
+          </div>
+        </div>
+
+        {ACADEMY_MODULES.map((module) => (
+          <Card key={module.number} className="overflow-hidden border-primary/15">
+            <div className="border-b bg-primary/5 px-5 py-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary">Módulo {module.number}</p>
+                  <h3 className="mt-1 text-lg font-bold text-foreground">{module.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{module.description}</p>
+                </div>
+                <div className="rounded-full bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground border">
+                  {module.lessons.length} lección{module.lessons.length === 1 ? '' : 'es'}
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y">
+              {module.lessons.map((lesson) => (
+                <div key={lesson.number} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    {lesson.number}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-semibold text-foreground">{lesson.title}</h4>
+                    <p className="mt-1 text-sm text-muted-foreground">{lesson.description}</p>
+                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                      <PlayCircle className="h-3.5 w-3.5" />
+                      {lesson.duration}
+                    </div>
+                  </div>
+                  <Button onClick={() => setOpenLesson(lesson)} className="sm:self-center">
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    Ver lección
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </section>
 
       {/* Dynamic insights */}
       {insights.length > 0 && (
@@ -356,6 +428,45 @@ export default function Learn() {
           </motion.div>
         ))}
       </div>
+
+      <Dialog open={!!openLesson} onOpenChange={(open) => !open && setOpenLesson(null)}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto p-0 sm:max-w-4xl">
+          {openLesson && (
+            <>
+              <DialogHeader className="border-b px-5 py-4 pr-12 text-left">
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">Módulo 1 · Lección {openLesson.number}</p>
+                <DialogTitle className="text-left text-xl">{openLesson.title}</DialogTitle>
+              </DialogHeader>
+
+              <div className="p-4 sm:p-6">
+                <div className="overflow-hidden rounded-2xl bg-black shadow-lg">
+                  <div className="aspect-video">
+                    <iframe
+                      className="h-full w-full"
+                      src={`https://www.youtube.com/embed/${openLesson.youtubeId}?rel=0`}
+                      title={openLesson.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border bg-muted/20 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div>
+                      <h3 className="font-semibold text-foreground">Objetivo de esta lección</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        Familiarizarte con la interfaz principal de CEO Rentable OS™ para que sepas dónde encontrar las funciones que vas a utilizar durante el resto de la academia.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={!!openGuide} onOpenChange={() => setOpenGuide(null)}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
