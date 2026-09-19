@@ -417,8 +417,8 @@ export default function Reports() {
       )}
 
       {activeTab === 'clients' && (
-        <ReportSection canExport={writable} title="Reporte de Clientes" count={clientRows.length} onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Nº Compras': r.num_compras })), 'clientes')}>
-          <Table headers={['#', 'Cliente', 'Total Comprado', 'Nº Compras']}>{clientRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-xs text-muted-foreground">#{i + 1}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.total_comprado)}</td><td className="py-2.5 px-3 text-sm">{r.num_compras}</td></tr>)}</Table>
+        <ReportSection canExport={writable} title="Rentabilidad por Cliente" count={clientRows.length} onExport={() => downloadCSV(clientRows.map((r, i) => ({ Pos: i + 1, Cliente: r.cliente, 'Total Comprado': r.total_comprado, 'Ganancia Histórica': r.ganancia, 'Margen %': r.margen_pct.toFixed(1), 'Nº Compras': r.num_compras })), 'clientes_rentabilidad')}>
+          <Table headers={['#', 'Cliente', 'Total Comprado', 'Ganancia', 'Margen', 'Nº Compras']}>{clientRows.map((r, i) => <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30"><td className="py-2.5 px-3 text-xs text-muted-foreground">#{i + 1}</td><td className="py-2.5 px-3 text-sm font-medium">{r.cliente}</td><td className="py-2.5 px-3 text-sm font-bold text-primary">{formatMoney(r.total_comprado)}</td><td className="py-2.5 px-3 text-sm font-semibold">{formatMoney(r.ganancia)}</td><td className="py-2.5 px-3 text-sm">{r.margen_pct.toFixed(1)}%</td><td className="py-2.5 px-3 text-sm">{r.num_compras}</td></tr>)}</Table>
         </ReportSection>
       )}
 
