@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
 import HelpCenter from './pages/HelpCenter';import PaymentSuccess from './pages/PaymentSuccess';import Acceso from './pages/Acceso';import ActivateAccess from './pages/ActivateAccess';import PaymentCancel from './pages/PaymentCancel';import ManualPaymentConfirmation from './pages/ManualPaymentConfirmation';import EmailLogs from './pages/EmailLogs';import EmailTemplates from './pages/EmailTemplates';import Learn from './pages/Learn';import Diagnostico from './pages/Diagnostico';import Agenda from './pages/Agenda';import Paywall from './pages/Paywall';import Checkout from './pages/Checkout';import Legal from './pages/Legal';import CostLibrary from './pages/CostLibrary';import CostLibraryViewer from './pages/CostLibraryViewer';import Blog from './pages/Blog';import BlogArticle from './pages/BlogArticle';
@@ -8,7 +10,29 @@ const{Pages,Layout,mainPage}=pagesConfig;const mainPageKey=mainPage??Object.keys
 const PAGE_MODULE={Dashboard:'dashboard',Opportunities:'opportunities',Orders:'orders',Billing:'billing',Receivables:'receivables',Clients:'clients',Products:'products',Inventory:'inventory',MonthlyControl:'monthly_control',Profitability:'profitability',Projection:'projection',Agenda:'agenda',Reports:'reports',Imports:'imports',WorkspaceSettings:'settings',AppSettings:'settings',Learn:'learn'};
 const MODULE_ROUTE_ORDER=[['dashboard','/Dashboard'],['opportunities','/Opportunities'],['orders','/Orders'],['billing','/Billing'],['receivables','/Receivables'],['clients','/Clients'],['products','/Products'],['inventory','/Inventory'],['monthly_control','/MonthlyControl'],['profitability','/Profitability'],['projection','/Projection'],['agenda','/agenda'],['reports','/Reports'],['imports','/Imports'],['cost_library','/biblioteca-costos'],['learn','/Learn'],['settings','/WorkspaceSettings']];
 const LayoutWrapper=({children,currentPageName})=>Layout?<Layout currentPageName={currentPageName}>{children}</Layout>:<>{children}</>;
-function OnboardingGate({children}){const{userProfile}=useAuth();const{activeWorkspace,isLoadingWorkspace}=useWorkspace();if(isLoadingWorkspace)return <div className="fixed inset-0 flex items-center justify-center"><div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-slate-800 animate-spin"/></div>;const ownerNeedsOnboarding=activeWorkspace?.role==='owner'&&userProfile?.role!=='admin'&&userProfile?.onboarding_completed===false;if(ownerNeedsOnboarding)return <Navigate to="/Onboarding" replace/>;return children}
+function OnboardingGate({children}){
+ const{userProfile}=useAuth();
+ const{activeWorkspace,activeWorkspaceId,isLoadingWorkspace}=useWorkspace();
+ const[state,setState]=useState('checking');
+ useEffect(()=>{let cancelled=false;
+  if(isLoadingWorkspace){setState('checking');return()=>{cancelled=true}}
+  if(!activeWorkspace||userProfile?.role==='admin'||activeWorkspace.role!=='owner'){setState('ready');return()=>{cancelled=true}}
+  if(!activeWorkspaceId){setState(userProfile?.onboarding_completed===false?'needs':'ready');return()=>{cancelled=true}}
+  setState('checking');
+  void(async()=>{const{data,error}=await supabase.from('business_config').select('onboarding_status').eq('workspace_id',activeWorkspaceId).maybeSingle();
+   if(cancelled)return;
+   if(error){console.warn('No se pudo validar onboarding del workspace:',error.message);setState(userProfile?.onboarding_completed===false?'needs':'ready');return}
+   if(data){setState(data.onboarding_status==='completed'?'ready':'needs');return}
+   const createdAt=Date.parse(activeWorkspace?.created_at||'');
+   const isNewWorkspace=Number.isFinite(createdAt)&&createdAt>=Date.parse('2026-09-19T14:44:55Z');
+   setState(userProfile?.onboarding_completed===false||isNewWorkspace?'needs':'ready');
+  })();
+  return()=>{cancelled=true};
+ },[activeWorkspace?.id,activeWorkspace?.role,activeWorkspace?.created_at,activeWorkspaceId,isLoadingWorkspace,userProfile?.onboarding_completed,userProfile?.role]);
+ if(isLoadingWorkspace||state==='checking')return <div className="fixed inset-0 flex items-center justify-center"><div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-slate-800 animate-spin"/></div>;
+ if(state==='needs')return <Navigate to="/Onboarding" replace/>;
+ return children;
+}
 const GuardedLayoutWrapper=({children,currentPageName})=><AccessGuard><OnboardingGate><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></OnboardingGate></AccessGuard>;
 const GuardedAdminLayoutWrapper=({children,currentPageName='AdminPanel'})=><AccessGuard><AdminRouteGuard><LayoutWrapper currentPageName={currentPageName}>{children}</LayoutWrapper></AdminRouteGuard></AccessGuard>;
 const ADMIN_PAGES=new Set(['AdminPanel']);
