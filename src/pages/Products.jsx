@@ -37,7 +37,6 @@ import {
   calculatePriceForMargin,
   calculateProfit,
   calculateProfitPerHour,
-  calculateRecommendedPrice,
   calculateRequiredUnits,
   calculateServiceCost,
   classifyProfitability,
@@ -415,13 +414,6 @@ function CatalogDialog({
   const profitPerHour = calculateProfitPerHour(profit, form.service_hours)
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
   const materialById = useMemo(() => new Map((businessMaterials || []).map((material) => [material.id, material])), [businessMaterials])
-  let recommendedPrice = 0
-  try {
-    recommendedPrice = calculateRecommendedPrice(cost, effectiveTargetMargin, effectiveFeePct, effectiveFixedFee)
-  } catch {
-    recommendedPrice = 0
-  }
-
   const priceMaterialComponent = (row) => {
     if (!row.business_material_id) return row
     const material = materialById.get(row.business_material_id)
