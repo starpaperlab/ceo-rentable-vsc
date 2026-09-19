@@ -78,6 +78,13 @@ export default function Dashboard() {
     enabled,
   });
 
+  const { data: businessConfigs = [] } = useQuery({
+    queryKey: ['dashboard-business-config', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'business_config', orderBy: 'updated_at', ascending: false }),
+    enabled,
+  });
+  const businessConfig = businessConfigs[0] || {};
+
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
     queryKey: ['dashboard-invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
@@ -224,7 +231,15 @@ export default function Dashboard() {
   }, [invoices, paymentsByInvoice]);
 
   const fugaProducts = useMemo(
-    () => products.filter((product) => Number(product.margin_pct || 0) < 20).length,
+    () => products.filter((product) => {
+      const minimumMargin = Number(product.minimum_margin ?? businessConfig.minimum_margin_pct ?? 20);
+      return Number(product.margin_pct || 0) < minimumMargin;
+    }).length,
+    [businessConfig.minimum_margin_pct, products]
+  );
+
+  const productsNeedingPriceReview = useMemo(
+    () => products.filter((product) => ['review', 'outdated'].includes(product.price_status)).length,
     [products]
   );
 
@@ -244,8 +259,10 @@ export default function Dashboard() {
       financials,
       products,
       overdueOperationalItems,
+      targetMargin: Number(businessConfig.target_margin_pct ?? 40),
+      minimumMargin: Number(businessConfig.minimum_margin_pct ?? 20),
     }),
-    [financials, overdueOperationalItems, products]
+    [businessConfig.minimum_margin_pct, businessConfig.target_margin_pct, financials, overdueOperationalItems, products]
   );
 
   const todayChecklist = useMemo(() => {
@@ -260,6 +277,7 @@ export default function Dashboard() {
       { label: 'Registraste una venta hoy', done: salesToday },
       { label: 'Sin facturas vencidas', done: financials.receivables.overdueInvoices === 0 },
       { label: 'Sin productos en fuga', done: fugaProducts === 0 },
+      { label: 'Precios actualizados', done: productsNeedingPriceReview === 0 },
       { label: 'Sin cotizaciones pendientes', done: operations.pendingQuotesCount === 0 },
       { label: 'Sin entregas próximas pendientes', done: operations.upcomingOrdersCount === 0 },
     ];
@@ -269,7 +287,7 @@ export default function Dashboard() {
       doneCount: items.filter((item) => item.done).length,
       totalCount: items.length,
     };
-  }, [financials.receivables.overdueInvoices, fugaProducts, invoices, operations.pendingQuotesCount, operations.upcomingOrdersCount, products]);
+  }, [financials.receivables.overdueInvoices, fugaProducts, invoices, operations.pendingQuotesCount, operations.upcomingOrdersCount, products, productsNeedingPriceReview]);
 
   const dailySummary = useMemo(() => {
     const now = new Date();
@@ -410,6 +428,7 @@ export default function Dashboard() {
       ['Facturas del periodo', stats.invoicesCount],
       ['Facturas pendientes', stats.facturasPendientes],
       ['Productos en fuga', fugaProducts],
+      ['Productos con precio por revisar', productsNeedingPriceReview],
     ];
 
     const csv = rows.map((row) => row.join(',')).join('\n');
