@@ -57,7 +57,8 @@ function ToggleCard({ selected, title, subtitle, onClick }) {
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const requestedStep = Number(searchParams.get('step'));
+  const requestedStepParam = searchParams.get('step');
+  const requestedStep = requestedStepParam === null ? null : Number(requestedStepParam);
   const editMode = searchParams.get('edit') === '1';
   const { user, refreshUserProfile } = useAuth();
   const { activeWorkspace, activeWorkspaceId, isLoadingWorkspace } = useWorkspace();
