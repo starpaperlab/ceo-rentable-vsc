@@ -1,3 +1,9 @@
+import {
+  calculateMargin,
+  calculatePriceForMargin,
+  calculateProfit,
+} from './catalogFinancials.js'
+
 const VALID_PRODUCT_TYPES = new Set(['fisico', 'digital', 'servicio']);
 
 function toSafeNumber(value) {
@@ -37,19 +43,25 @@ export function calculateProfitability({
   const normalizedHours = toSafeNumber(hours ?? time);
   const normalizedHourlyRate = toSafeNumber(hourlyRate ?? hourly);
   const normalizedLaborCost = laborCost == null ? null : toSafeNumber(laborCost);
-  const normalizedCommissionPct = toSafeNumber(commissionPct ?? commission);
+  const normalizedCommissionPct = Math.max(0, toSafeNumber(commissionPct ?? commission));
   const normalizedTargetMargin = toSafeNumber(targetMargin);
 
-  const computedLaborCost = normalizedLaborCost == null ? normalizedHours * normalizedHourlyRate : normalizedLaborCost;
+  const computedLaborCost = normalizedLaborCost == null
+    ? normalizedHours * normalizedHourlyRate
+    : normalizedLaborCost;
   const operationalCost = normalizedMaterialsCost + normalizedAdditionalCost + normalizedAdsCost + computedLaborCost;
   const commissionCost = normalizedPrice * (normalizedCommissionPct / 100);
   const totalCost = operationalCost + commissionCost;
-  const profit = normalizedPrice - totalCost;
-  const margin = normalizedPrice > 0 ? ((profit / normalizedPrice) * 100) : 0;
+  const profit = calculateProfit(normalizedPrice, operationalCost, normalizedCommissionPct);
+  const margin = calculateMargin(normalizedPrice, operationalCost, normalizedCommissionPct);
   const breakEvenUnits = profit > 0 ? Math.ceil(totalCost / profit) : 0;
-  const recommendedPrice = normalizedTargetMargin >= 100
-    ? 0
-    : (totalCost <= 0 ? 0 : totalCost / (1 - (normalizedTargetMargin / 100)));
+
+  let recommendedPrice = 0;
+  try {
+    recommendedPrice = calculatePriceForMargin(operationalCost, normalizedTargetMargin, normalizedCommissionPct);
+  } catch {
+    recommendedPrice = 0;
+  }
 
   return {
     price: normalizedPrice,
