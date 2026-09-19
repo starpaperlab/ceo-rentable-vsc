@@ -872,6 +872,7 @@ function ProfitabilitySimulator({ formatMoney }) {
   const [desiredUnitProfit, setDesiredUnitProfit] = useState(1000)
   const [desiredMonthlyProfit, setDesiredMonthlyProfit] = useState(40000)
   const [discountPct, setDiscountPct] = useState(10)
+  const [costIncreasePct, setCostIncreasePct] = useState(10)
   const [percentageFees, setPercentageFees] = useState(0)
   const [fixedFees, setFixedFees] = useState(0)
   const [hours, setHours] = useState(1)
@@ -880,6 +881,14 @@ function ProfitabilitySimulator({ formatMoney }) {
   const markup = calculateMarkup(price, cost, percentageFees, fixedFees)
   const requiredUnits = calculateRequiredUnits(desiredMonthlyProfit, profit)
   const discountImpact = calculateDiscountImpact({ price, cost, discountPct, percentageFees, fixedFees })
+  const simulatedCost = Math.max(0, toNumber(cost)) * (1 + Math.max(0, toNumber(costIncreasePct)) / 100)
+  const simulatedCostMargin = calculateMargin(price, simulatedCost, percentageFees, fixedFees)
+  let simulatedCostTargetPrice = null
+  try {
+    simulatedCostTargetPrice = calculatePriceForMargin(simulatedCost, targetMargin, percentageFees, fixedFees)
+  } catch {
+    simulatedCostTargetPrice = null
+  }
   const profitPerHour = calculateProfitPerHour(profit, hours)
   let targetPrice = null
   let desiredProfitPrice = null
@@ -914,7 +923,7 @@ function ProfitabilitySimulator({ formatMoney }) {
         <div className="rounded-xl border p-4">
           <p className="text-sm font-semibold">Quiero este margen</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div><Label className="text-xs">Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={targetMargin} onChange={(event) => setTargetMargin(event.target.value)} /></div>
+            <div><Label className="text-xs">Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={targetMargin} onChange={(event) => setTargetMargin(event.target.value)} /><div className="mt-2 flex flex-wrap gap-1">{[20,30,40,50].map((value) => <Button key={value} type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setTargetMargin(value)}>{value}%</Button>)}</div></div>
             <div><Label className="text-xs">Margen mínimo %</Label><Input type="number" min="0" max="99.99" value={minimumMargin} onChange={(event) => setMinimumMargin(event.target.value)} /></div>
           </div>
           <p className="mt-3 text-sm">Precio para tu margen: <b>{targetPrice == null ? 'Revisa los porcentajes' : formatMoney(targetPrice)}</b></p>
@@ -929,11 +938,21 @@ function ProfitabilitySimulator({ formatMoney }) {
         </div>
         <div className="rounded-xl border p-4">
           <p className="text-sm font-semibold">¿Qué pasa si descuento?</p>
-          <Label className="mt-2 block text-xs">Descuento %</Label><Input type="number" min="0" max="100" value={discountPct} onChange={(event) => setDiscountPct(event.target.value)} />
+          <Label className="mt-2 block text-xs">Descuento %</Label><Input type="number" min="0" max="100" value={discountPct} onChange={(event) => setDiscountPct(event.target.value)} /><div className="mt-2 flex flex-wrap gap-1">{[5,10,15,20].map((value) => <Button key={value} type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setDiscountPct(value)}>{value}%</Button>)}</div>
           <p className="mt-3 text-sm">Nuevo precio: <b>{formatMoney(discountImpact.finalPrice)}</b> · ganancia <b>{formatMoney(discountImpact.finalProfit)}</b> · margen <b>{discountImpact.margin.toFixed(1)}%</b>.</p>
           <p className="mt-1 text-sm">Ese descuento reduce tu ganancia en <b>{discountImpact.profitReductionPct.toFixed(1)}%</b>.</p>
           <p className="mt-1 text-xs text-muted-foreground">Máximo manteniendo margen mínimo: {maxSafeDiscount.toFixed(1)}%.</p>
         </div>
+        <div className="rounded-xl border p-4 lg:col-span-2">
+          <p className="text-sm font-semibold">¿Qué pasa si aumentan mis costos?</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            <div><Label className="text-xs">Aumento de costos %</Label><Input type="number" min="0" value={costIncreasePct} onChange={(event) => setCostIncreasePct(event.target.value)} /></div>
+            <div><p className="text-xs text-muted-foreground">Nuevo costo estimado</p><p className="font-bold">{formatMoney(simulatedCost)}</p></div>
+            <div><p className="text-xs text-muted-foreground">Margen si mantienes el precio</p><p className="font-bold">{simulatedCostMargin.toFixed(1)}%</p></div>
+          </div>
+          <p className="mt-2 text-sm">Para conservar un margen de {Number(targetMargin || 0).toFixed(1)}%, el precio tendría que ser <b>{simulatedCostTargetPrice == null ? '—' : formatMoney(simulatedCostTargetPrice)}</b>.</p>
+        </div>
+
         <div className="rounded-xl border p-4 lg:col-span-2">
           <p className="text-sm font-semibold">Meta mensual</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
