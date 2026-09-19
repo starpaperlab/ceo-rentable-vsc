@@ -54,14 +54,14 @@ const MODULES = [
 ];
 
 const FINANCE_CONCEPTS = [
-  { term:'Rentabilidad', plain:'Te dice si el esfuerzo y el dinero que pones en tu negocio realmente están produciendo una ganancia suficiente.', example:'Si vendes RD$100,000, no significa que ganaste RD$100,000. La rentabilidad mira lo que queda después de considerar los costos.' },
-  { term:'Ganancia o utilidad', plain:'Es el dinero que queda después de restar a tus ventas todos los costos y gastos que corresponden.', example:'Vendiste RD$10,000 y entre producir y operar gastaste RD$7,000: tu ganancia es RD$3,000.' },
-  { term:'Margen de ganancia', plain:'Es qué porcentaje de cada venta termina convirtiéndose en ganancia.', example:'Si vendes algo en RD$1,000 y ganas RD$300, tu margen es 30%.' },
-  { term:'Markup', plain:'Es cuánto aumentas el costo para construir el precio de venta. No es lo mismo que margen.', example:'Si algo cuesta RD$500 y agregas 50% sobre ese costo, el precio sería RD$750.' },
+  { term:'Rentabilidad', plain:'Te dice si el esfuerzo y el dinero que pones en tu negocio realmente están produciendo una ganancia suficiente.', example:'Si vendes $100,000, no significa que ganaste $100,000. La rentabilidad mira lo que queda después de considerar los costos.' },
+  { term:'Ganancia o utilidad', plain:'Es el dinero que queda después de restar a tus ventas todos los costos y gastos que corresponden.', example:'Vendiste $10,000 y entre producir y operar gastaste $7,000: tu ganancia es $3,000.' },
+  { term:'Margen de ganancia', plain:'Es qué porcentaje de cada venta termina convirtiéndose en ganancia.', example:'Si vendes algo en $1,000 y ganas $300, tu margen es 30%.' },
+  { term:'Markup', plain:'Es cuánto aumentas el costo para construir el precio de venta. No es lo mismo que margen.', example:'Si algo cuesta $500 y agregas 50% sobre ese costo, el precio sería $750.' },
   { term:'Costos fijos', plain:'Son gastos que normalmente debes pagar aunque vendas poco o no vendas ese mes.', example:'Alquiler, internet, ciertos salarios o suscripciones.' },
   { term:'Costos variables', plain:'Son costos que aumentan o disminuyen según lo que produces o vendes.', example:'Ingredientes, empaques, materiales o comisiones por venta.' },
   { term:'Punto de equilibrio', plain:'Es el nivel de ventas en el que cubres tus costos, pero todavía no has generado ganancia.', example:'Por debajo pierdes dinero; al llegar al punto de equilibrio cubres tus costos; por encima comienzas a generar ganancia.' },
-  { term:'Cuentas por cobrar', plain:'Es dinero que tus clientes todavía te deben por ventas que ya realizaste.', example:'Entregaste un pedido de RD$8,000 y el cliente pagó RD$5,000: quedan RD$3,000 por cobrar.' },
+  { term:'Cuentas por cobrar', plain:'Es dinero que tus clientes todavía te deben por ventas que ya realizaste.', example:'Entregaste un pedido de $8,000 y el cliente pagó $5,000: quedan $3,000 por cobrar.' },
   { term:'Flujo de caja', plain:'Muestra el dinero que realmente entra y sale de tu negocio en un período.', example:'Puedes tener ventas registradas y aun así tener poco efectivo disponible si tus clientes todavía no te han pagado.' },
 ];
 
