@@ -8,6 +8,7 @@ on:
       - 'src/lib/catalogFinancials.js'
       - 'src/pages/Products.jsx'
       - 'src/pages/Onboarding.jsx'
+      - 'src/pages/Profitability.jsx'
       - 'src/components/onboarding/BusinessResourceSteps.jsx'
       - 'src/lib/orders.js'
       - 'src/components/billing/LineItemsTable.jsx'
