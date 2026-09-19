@@ -278,6 +278,17 @@ function getCatalogDirectCost(form, products) {
   return toNumber(form.manual_cost)
 }
 
+function getIndustryPricingLanguage(industryCodes = []) {
+  const industries = new Set(Array.isArray(industryCodes) ? industryCodes : [])
+  if (industries.has('bakery')) return { subject: 'Este producto de repostería', costDriver: 'ingredientes, tiempo y estructura' }
+  if (industries.has('creative_stationery') || industries.has('personalization')) return { subject: 'Este producto', costDriver: 'papel, tinta, materiales, tiempo y estructura' }
+  if (industries.has('nails')) return { subject: 'Este servicio de manicure', costDriver: 'producto utilizado, tiempo por cita y estructura' }
+  if (industries.has('hair') || industries.has('makeup') || industries.has('beauty')) return { subject: 'Este servicio de belleza', costDriver: 'insumos, tiempo por cliente y estructura' }
+  if (industries.has('graphic_design') || industries.has('interior_design')) return { subject: 'Este proyecto de diseño', costDriver: 'horas, herramientas y estructura' }
+  if (industries.has('marketing') || industries.has('digital_services') || industries.has('consulting') || industries.has('professional_services')) return { subject: 'Este servicio', costDriver: 'horas, software, herramientas y estructura' }
+  return { subject: 'Este producto o servicio', costDriver: 'costos reales y estructura' }
+}
+
 function ProfitabilityBadge({ price, cost, minimumMargin = 20, targetMargin = 40, percentageFees = 0, fixedFees = 0 }) {
   const profitability = PROFITABILITY_META[classifyProfitability(price, cost, {
     minimumMargin,
@@ -452,6 +463,27 @@ function CatalogDialog({
   const breakEvenUnits = automaticCostMode && structure.monthlyOverhead > 0
     ? calculateBreakEven(structure.monthlyOverhead, contributionPerSale)
     : null
+  const industryLanguage = getIndustryPricingLanguage(businessConfig?.industry_codes)
+  const priorPricingCost = toNumber(form.pricing_snapshot?.cost)
+  const costChangePct = priorPricingCost > 0 ? ((cost - priorPricingCost) / priorPricingCost) * 100 : null
+  const pricingRecommendations = []
+  if (!pricingError) {
+    if (profit < 0) {
+      pricingRecommendations.push(`${industryLanguage.subject} pierde ${formatMoney(Math.abs(profit))} al precio actual porque ${industryLanguage.costDriver} superan lo que deja la venta.`)
+    } else if (margin < effectiveMinimumMargin) {
+      pricingRecommendations.push(`${industryLanguage.subject} cubre sus costos, pero su margen de ${margin.toFixed(1)}% está por debajo del mínimo de ${effectiveMinimumMargin.toFixed(1)}%.`)
+    } else if (margin < effectiveTargetMargin) {
+      pricingRecommendations.push(`Para acercarte al margen objetivo de ${effectiveTargetMargin.toFixed(1)}%, considera llevar el precio de ${formatMoney(form.sale_price)} a ${formatMoney(pricingDecision.recommendedPrice)}.`)
+    } else {
+      pricingRecommendations.push(`El precio actual mantiene un margen de ${margin.toFixed(1)}%, igual o superior a tu objetivo de ${effectiveTargetMargin.toFixed(1)}%.`)
+    }
+    if (costChangePct != null && Math.abs(costChangePct) >= 0.5) {
+      pricingRecommendations.push(`El costo real cambió ${costChangePct > 0 ? '+' : ''}${costChangePct.toFixed(1)}% desde la última revisión de precio. Revisa antes de ofrecer descuentos.`)
+    }
+    if (pricingDecision.maxDiscountAtMinimumMargin > 0) {
+      pricingRecommendations.push(`Puedes ofrecer hasta ${pricingDecision.maxDiscountAtMinimumMargin.toFixed(1)}% de descuento manteniendo tu margen mínimo configurado.`)
+    }
+  }
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
   const materialById = useMemo(() => new Map((businessMaterials || []).map((material) => [material.id, material])), [businessMaterials])
   const priceMaterialComponent = (row) => {
@@ -859,6 +891,18 @@ function CatalogDialog({
               <p className="text-sm font-semibold">Descuento seguro</p>
               <p className="mt-1 text-sm">Puedes descontar hasta <b>{pricingDecision.maxDiscountAtMinimumMargin.toFixed(1)}%</b> manteniendo tu margen mínimo, o hasta <b>{pricingDecision.maxDiscountToCost.toFixed(1)}%</b> antes de dejar de cubrir costo y comisiones.</p>
             </div>
+
+            {pricingRecommendations.length > 0 ? (
+              <div className="mt-4 rounded-xl border border-primary/20 bg-background p-3">
+                <p className="text-sm font-semibold">Recomendación de CEO Rentable</p>
+                <div className="mt-2 space-y-1.5">
+                  {pricingRecommendations.map((recommendation, index) => (
+                    <p key={index} className="text-sm text-muted-foreground">• {recommendation}</p>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">Basado en tus costos, márgenes, comisiones y configuración del negocio; no representa un precio de mercado.</p>
+              </div>
+            ) : null}
 
             {(monthlyProfitGoal > 0 || configuredCapacity > 0 || breakEvenUnits != null) ? (
               <div className="mt-4 rounded-xl border bg-background p-3">
