@@ -35,7 +35,7 @@ import {
   calculateServiceCost,
   classifyProfitability,
 } from '@/lib/catalogFinancials'
-import { calculateMaterialCost, materialDisplayUnit } from '@/lib/costEngine'
+import { calculateLaborHourlyCost, calculateMaterialCost, materialDisplayUnit } from '@/lib/costEngine'
 import {
   getProductTypeLabel,
   isBundleProductType,
@@ -277,6 +277,7 @@ function CatalogDialog({
   products,
   costComponents,
   businessMaterials,
+  businessConfig,
   bundleItems,
   currency,
   formatMoney,
@@ -299,6 +300,12 @@ function CatalogDialog({
     return buildCatalogForm(initial || {}, costComponents, bundleItems, currency)
   })
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+  const recommendedHourlyCost = useMemo(() => calculateLaborHourlyCost({
+    personalIncomeGoal: businessConfig?.personal_income_goal || 0,
+    workDaysPerWeek: businessConfig?.work_days_per_week || 0,
+    workHoursPerDay: businessConfig?.work_hours_per_day || 0,
+    productivePct: businessConfig?.productive_time_pct || 70,
+  }), [businessConfig?.personal_income_goal, businessConfig?.work_days_per_week, businessConfig?.work_hours_per_day, businessConfig?.productive_time_pct])
 
   useEffect(() => {
     if (!draftKey) return
@@ -324,6 +331,12 @@ function CatalogDialog({
       sku: generateUniqueSku(current.name, existingCatalogSkus),
     }))
   }, [initial?.id, form.name, form.sku, products])
+
+  useEffect(() => {
+    if (initial?.id || !isServiceProductType(form.product_type) || form.cost_mode !== 'service') return
+    if (toNumber(form.hourly_cost) > 0 || recommendedHourlyCost <= 0) return
+    setForm((current) => ({ ...current, hourly_cost: recommendedHourlyCost }))
+  }, [initial?.id, form.product_type, form.cost_mode, form.hourly_cost, recommendedHourlyCost])
   const cost = getCatalogCost(form, products)
   const profit = calculateProfit(form.sale_price, cost)
   const margin = calculateMargin(form.sale_price, cost)
@@ -495,11 +508,19 @@ function CatalogDialog({
             ) : null}
 
             {isServiceProductType(form.product_type) && form.cost_mode === 'service' ? (
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div><Label>Horas</Label><Input type="number" min="0" value={form.service_hours} onChange={(event) => update('service_hours', event.target.value)} /></div>
-                <div><Label>Costo por hora</Label><Input type="number" min="0" value={form.hourly_cost} onChange={(event) => update('hourly_cost', event.target.value)} /></div>
-                <div><Label>Materiales</Label><Input type="number" min="0" value={form.material_cost} onChange={(event) => update('material_cost', event.target.value)} /></div>
-                <div><Label>Otros costos</Label><Input type="number" min="0" value={form.other_cost} onChange={(event) => update('other_cost', event.target.value)} /></div>
+              <div className="space-y-3">
+                {recommendedHourlyCost > 0 ? <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><p className="text-xs text-muted-foreground">Tu hora estimada según la configuración del negocio</p><p className="text-lg font-bold text-primary">{formatMoney(recommendedHourlyCost)} / hora</p><p className="text-[11px] text-muted-foreground">Usa meta personal + horas productivas; puedes modificarla para este servicio.</p></div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => update('hourly_cost', recommendedHourlyCost)}>Usar recomendación</Button>
+                  </div>
+                </div> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Completa meta personal y horario en Mi negocio para calcular tu hora automáticamente.</div>}
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <div><Label>Horas del servicio</Label><Input inputMode="decimal" type="number" min="0" step="0.25" value={form.service_hours} onChange={(event) => update('service_hours', event.target.value)} /></div>
+                  <div><Label>Valor de tu hora</Label><Input inputMode="decimal" type="number" min="0" step="0.01" value={form.hourly_cost} onChange={(event) => update('hourly_cost', event.target.value)} /></div>
+                  <div><Label>Materiales directos</Label><Input inputMode="decimal" type="number" min="0" step="0.01" value={form.material_cost} onChange={(event) => update('material_cost', event.target.value)} /></div>
+                  <div><Label>Otros costos directos</Label><Input inputMode="decimal" type="number" min="0" step="0.01" value={form.other_cost} onChange={(event) => update('other_cost', event.target.value)} /></div>
+                </div>
               </div>
             ) : null}
           </section>
@@ -697,6 +718,15 @@ export default function Products() {
   const { data: businessMaterials = [], isLoading: loadingBusinessMaterials } = useQuery({
     queryKey: ['business-materials', ...contextQueryKey],
     queryFn: async () => fetchRows({ table: 'business_materials', orderBy: 'created_at', ascending: true }),
+    enabled,
+  })
+
+  const { data: businessConfig = null } = useQuery({
+    queryKey: ['business-cost-config', ...contextQueryKey],
+    queryFn: async () => {
+      const rows = await fetchRows({ table: 'business_config', orderBy: 'updated_at', ascending: false })
+      return rows?.[0] || null
+    },
     enabled,
   })
 
@@ -1582,6 +1612,7 @@ export default function Products() {
           products={products}
           costComponents={costComponents}
           businessMaterials={businessMaterials}
+          businessConfig={businessConfig}
           bundleItems={bundleItems}
           currency={currency}
           formatMoney={formatMoney}
