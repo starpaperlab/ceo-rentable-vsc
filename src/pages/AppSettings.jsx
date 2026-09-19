@@ -273,6 +273,21 @@ export default function AppSettings() {
     }
 
     const serialized = serializeSettingsForm(data);
+    if (serialized.minimum_margin_pct < 0 || serialized.target_margin_pct < 0 || serialized.target_margin_pct >= 100) {
+      throw new Error('Los márgenes deben estar entre 0% y menos de 100%.');
+    }
+    if (serialized.minimum_margin_pct > serialized.target_margin_pct) {
+      throw new Error('El margen mínimo no puede superar el margen objetivo.');
+    }
+    if (serialized.payment_fee_pct < 0 || serialized.payment_fee_pct >= 100 || serialized.payment_fixed_fee < 0) {
+      throw new Error('Revisa las comisiones o cargos de pasarela.');
+    }
+    if (serialized.target_margin_pct + serialized.payment_fee_pct >= 100) {
+      throw new Error('Margen objetivo + comisión debe ser menor de 100%.');
+    }
+    if (serialized.minimum_margin_pct + serialized.payment_fee_pct >= 100) {
+      throw new Error('Margen mínimo + comisión debe ser menor de 100%.');
+    }
     const payload = {
       ...serialized,
       workspace_id: activeWorkspaceId || null,
