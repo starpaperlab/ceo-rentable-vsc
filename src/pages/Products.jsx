@@ -35,6 +35,7 @@ import {
   calculateServiceCost,
   classifyProfitability,
 } from '@/lib/catalogFinancials'
+import { calculateMaterialCost, materialDisplayUnit } from '@/lib/costEngine'
 import {
   getProductTypeLabel,
   isBundleProductType,
@@ -103,12 +104,20 @@ const PROFITABILITY_META = {
   loss: { label: 'Pierdes dinero', className: 'bg-red-100 text-red-700 border-red-200' },
 }
 
+const COST_USAGE_UNITS = ['unidad','hoja','pagina','paquete','caja','libra','onza','kilogramo','gramo','litro','mililitro','galon','metro','centimetro','pie','pulgada','yarda','docena','hora','minuto']
+
 const createEmptyCostComponent = () => ({
   name: '',
   cost_type: 'materia_prima',
   quantity: 1,
   unit: 'unidad',
+  usage_unit: 'unidad',
   unit_cost: 0,
+  business_material_id: null,
+  source_cost_method: null,
+  source_unit_cost: null,
+  source_updated_at: null,
+  needs_recalculation: false,
 })
 
 function normalizeProductName(value = '') {
@@ -231,7 +240,7 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     other_cost: product.other_cost ?? 0,
     target_margin: product.target_margin ?? 40,
     components: product.id
-      ? costComponents.filter((row) => row.product_id === product.id)
+      ? costComponents.filter((row) => row.product_id === product.id).map((row) => ({ ...row, usage_unit: row.usage_unit || row.unit || 'unidad' }))
       : [],
     bundleItems: product.id
       ? bundleItems.filter((row) => row.bundle_product_id === product.id)
@@ -267,6 +276,7 @@ function CatalogDialog({
   initial,
   products,
   costComponents,
+  businessMaterials,
   bundleItems,
   currency,
   formatMoney,
@@ -319,6 +329,7 @@ function CatalogDialog({
   const margin = calculateMargin(form.sale_price, cost)
   const markup = calculateMarkup(form.sale_price, cost)
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
+  const materialById = new Map((businessMaterials || []).map((material) => [material.id, material]))
   let recommendedPrice = 0
   try {
     recommendedPrice = calculateRecommendedPrice(cost, form.target_margin)
@@ -326,10 +337,48 @@ function CatalogDialog({
     recommendedPrice = 0
   }
 
+  const priceMaterialComponent = (row) => {
+    if (!row.business_material_id) return row
+    const material = materialById.get(row.business_material_id)
+    if (!material) return row
+    const usageUnit = row.usage_unit || row.unit || materialDisplayUnit(material)
+    let unitCost = row.unit_cost
+    try {
+      unitCost = calculateMaterialCost(material, { quantity: 1, unit: usageUnit })
+    } catch {
+      unitCost = row.unit_cost
+    }
+    return {
+      ...row,
+      name: material.name,
+      cost_type: 'materia_prima',
+      unit: usageUnit,
+      usage_unit: usageUnit,
+      unit_cost: unitCost,
+      source_cost_method: material.cost_method || 'exact',
+      source_unit_cost: unitCost,
+      source_updated_at: material.updated_at || null,
+      needs_recalculation: false,
+    }
+  }
+
   const patchComponent = (index, field, value) => {
-    update('components', form.components.map((row, currentIndex) => (
-      currentIndex === index ? { ...row, [field]: value } : row
-    )))
+    update('components', form.components.map((row, currentIndex) => {
+      if (currentIndex !== index) return row
+      let next = { ...row, [field]: value }
+      if (field === 'business_material_id') {
+        const material = materialById.get(value)
+        next = {
+          ...next,
+          usage_unit: material ? materialDisplayUnit(material) : (row.usage_unit || row.unit || 'unidad'),
+          unit: material ? materialDisplayUnit(material) : (row.unit || 'unidad'),
+        }
+      }
+      if (next.business_material_id && ['business_material_id', 'usage_unit'].includes(field)) {
+        next = priceMaterialComponent(next)
+      }
+      return next
+    }))
   }
 
   const patchBundleItem = (index, field, value) => {
@@ -463,16 +512,33 @@ function CatalogDialog({
               </div>
               {form.components.map((row, index) => (
                 <div key={row.id || index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-12">
-                  <Input className="sm:col-span-3" placeholder="Nombre" value={row.name} onChange={(event) => patchComponent(index, 'name', event.target.value)} />
-                  <Select value={row.cost_type} onValueChange={(value) => patchComponent(index, 'cost_type', value)}>
+                  <div className="sm:col-span-12">
+                    <Label className="text-xs">Usar material registrado</Label>
+                    <Select value={row.business_material_id || 'manual'} onValueChange={(value) => patchComponent(index, 'business_material_id', value === 'manual' ? null : value)}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Selecciona un material" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Otro costo / entrada manual</SelectItem>
+                        {(businessMaterials || []).map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input className="sm:col-span-3" placeholder="Nombre" value={row.name} readOnly={Boolean(row.business_material_id)} onChange={(event) => patchComponent(index, 'name', event.target.value)} />
+                  <Select value={row.cost_type} onValueChange={(value) => patchComponent(index, 'cost_type', value)} disabled={Boolean(row.business_material_id)}>
                     <SelectTrigger className="sm:col-span-3"><SelectValue /></SelectTrigger>
                     <SelectContent>{COST_TYPE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                   </Select>
-                  <Input className="sm:col-span-2" type="number" min="0.0001" step="0.01" value={row.quantity} onChange={(event) => patchComponent(index, 'quantity', event.target.value)} />
-                  <Input className="sm:col-span-2" placeholder="Unidad" value={row.unit} onChange={(event) => patchComponent(index, 'unit', event.target.value)} />
-                  <Input className="sm:col-span-2" type="number" min="0" step="0.01" value={row.unit_cost} onChange={(event) => patchComponent(index, 'unit_cost', event.target.value)} />
-                  <div className="flex items-center justify-between text-xs sm:col-span-12">
-                    <span>Total: {formatMoney(calculateCostComponentTotal(row))}</span>
+                  <Input className="sm:col-span-2" inputMode="decimal" type="number" min="0.0001" step="0.0001" value={row.quantity} onChange={(event) => patchComponent(index, 'quantity', event.target.value)} />
+                  {row.business_material_id ? (
+                    <Select value={row.usage_unit || row.unit || 'unidad'} onValueChange={(value) => patchComponent(index, 'usage_unit', value)}>
+                      <SelectTrigger className="sm:col-span-2"><SelectValue /></SelectTrigger>
+                      <SelectContent>{COST_USAGE_UNITS.map((unit) => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : (
+                    <Input className="sm:col-span-2" placeholder="Unidad" value={row.unit} onChange={(event) => patchComponent(index, 'unit', event.target.value)} />
+                  )}
+                  <Input className="sm:col-span-2" inputMode="decimal" type="number" min="0" step="0.0001" value={row.unit_cost} readOnly={Boolean(row.business_material_id)} onChange={(event) => patchComponent(index, 'unit_cost', event.target.value)} />
+                  <div className="flex items-center justify-between gap-3 text-xs sm:col-span-12">
+                    <span>Total: <b>{formatMoney(calculateCostComponentTotal(row))}</b>{row.business_material_id ? ' · costo unitario calculado automáticamente' : ''}</span>
                     <Button type="button" variant="ghost" size="sm" onClick={() => update('components', form.components.filter((_, currentIndex) => currentIndex !== index))}>Eliminar</Button>
                   </div>
                 </div>
@@ -628,6 +694,12 @@ export default function Products() {
     enabled,
   })
 
+  const { data: businessMaterials = [], isLoading: loadingBusinessMaterials } = useQuery({
+    queryKey: ['business-materials', ...contextQueryKey],
+    queryFn: async () => fetchRows({ table: 'business_materials', orderBy: 'created_at', ascending: true }),
+    enabled,
+  })
+
   const { data: bundleItems = [], isLoading: loadingBundleItems } = useQuery({
     queryKey: ['product-bundle-items', ...contextQueryKey],
     queryFn: async () => fetchRows({ table: 'product_bundle_items', orderBy: 'sort_order', ascending: true }),
@@ -637,6 +709,7 @@ export default function Products() {
   const refreshCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ['products'] })
     queryClient.invalidateQueries({ queryKey: ['product-cost-components'] })
+    queryClient.invalidateQueries({ queryKey: ['business-materials'] })
     queryClient.invalidateQueries({ queryKey: ['product-bundle-items'] })
     queryClient.invalidateQueries({ queryKey: ['products-inventory-items'] })
     queryClient.invalidateQueries({ queryKey: ['inventory-items'] })
@@ -903,8 +976,16 @@ export default function Products() {
         name: row.name.trim(),
         cost_type: row.cost_type,
         quantity: toNumber(row.quantity),
-        unit: parseText(row.unit) || 'unidad',
+        unit: parseText(row.usage_unit || row.unit) || 'unidad',
         unit_cost: toNumber(row.unit_cost),
+        business_material_id: row.business_material_id || null,
+        usage_unit: parseText(row.usage_unit || row.unit) || 'unidad',
+        custom_usage_unit: parseText(row.custom_usage_unit),
+        source_cost_method: parseText(row.source_cost_method),
+        source_unit_cost: row.source_unit_cost == null ? null : toNumber(row.source_unit_cost),
+        source_updated_at: row.source_updated_at || null,
+        needs_recalculation: false,
+        calculation_notes: row.business_material_id ? { source: 'business_material', automatic: true } : { source: 'manual', automatic: false },
         sort_order: index,
       }))
       const { error } = await supabase.from('product_cost_components').insert(rows)
@@ -1500,6 +1581,7 @@ export default function Products() {
           initial={catalogDialog.item}
           products={products}
           costComponents={costComponents}
+          businessMaterials={businessMaterials}
           bundleItems={bundleItems}
           currency={currency}
           formatMoney={formatMoney}
