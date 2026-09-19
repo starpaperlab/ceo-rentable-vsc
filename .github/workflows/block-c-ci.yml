@@ -8,6 +8,8 @@ on:
       - 'src/pages/Products.jsx'
       - 'src/pages/AppSettings.jsx'
       - 'src/pages/Dashboard.jsx'
+      - 'src/pages/Reports.jsx'
+      - 'src/components/orders/OrderList.jsx'
       - 'src/lib/dashboardMetrics.js'
       - 'src/lib/profitabilityCalculations.js'
       - 'src/components/billing/LineItemsTable.jsx'
