@@ -24,6 +24,23 @@ function statusMeta(order, statusByCode = {}) {
   };
 }
 
+function getOrderProfitability(order, items = []) {
+  const subtotal = items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 0), 0);
+  const cost = items.reduce((sum, item) => sum + Number(item.unit_cost_snapshot || 0) * Number(item.quantity || 0), 0);
+  const fees = items.reduce((sum, item) => {
+    const quantity = Number(item.quantity || 0);
+    const unitPrice = Number(item.unit_price || 0);
+    const pct = Number(item.percentage_fees_snapshot || 0);
+    const fixed = Number(item.fixed_fees_snapshot || 0);
+    return sum + (((unitPrice * pct) / 100) + fixed) * quantity;
+  }, 0);
+  const discount = Number(order?.discount_amount || 0);
+  const netRevenue = Math.max(0, subtotal - discount);
+  const profit = netRevenue - cost - fees;
+  const margin = netRevenue > 0 ? (profit / netRevenue) * 100 : 0;
+  return { subtotal, netRevenue, cost, fees, discount, profit, margin };
+}
+
 function formatHistoryDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -77,7 +94,9 @@ export default function OrderList({
     const latestHistory = history[0] || null;
     const deliveryDate = order.commitment_date || order.estimated_delivery_date || order.event_date || '';
     const hasImportantNotes = Boolean(order.important_notes || order.internal_notes || order.client_instructions);
-    const itemCount = orderItemsById[order.id]?.length || 0;
+    const orderItems = orderItemsById[order.id] || [];
+    const itemCount = orderItems.length;
+    const profitability = getOrderProfitability(order, orderItems);
 
     return {
       status,
@@ -92,6 +111,7 @@ export default function OrderList({
       deliveryDate,
       hasImportantNotes,
       itemCount,
+      profitability,
     };
   };
 
@@ -121,8 +141,8 @@ export default function OrderList({
                   <p className="font-bold text-primary">{formatMoney(order.total_final || 0)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-muted-foreground">Trabajo</p>
-                  <p>{view.itemCount} item{view.itemCount === 1 ? '' : 's'}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground">Rentabilidad</p>
+                  <p className={view.profitability.profit < 0 ? 'font-semibold text-red-600' : 'font-semibold'}>{formatMoney(view.profitability.profit)} · {view.profitability.margin.toFixed(1)}%</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase text-muted-foreground">Entrega</p>
@@ -205,6 +225,7 @@ export default function OrderList({
                     </TableCell>
                     <TableCell>
                       <p className="font-bold text-primary">{formatMoney(order.total_final || 0)}</p>
+                      {view.itemCount > 0 ? <p className={`mt-0.5 text-[11px] ${view.profitability.profit < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>Ganancia {formatMoney(view.profitability.profit)} · margen {view.profitability.margin.toFixed(1)}%</p> : null}
                       {view.paymentSummary ? (
                         <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
                           <p>Abonado {formatMoney(view.paymentSummary.amountCollected)}</p>
