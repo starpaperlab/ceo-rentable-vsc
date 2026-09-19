@@ -9,6 +9,8 @@ on:
       - 'src/pages/Products.jsx'
       - 'src/pages/Onboarding.jsx'
       - 'src/components/onboarding/BusinessResourceSteps.jsx'
+      - 'src/lib/orders.js'
+      - 'src/components/billing/LineItemsTable.jsx'
       - 'tests/block-b-cost-engine.test.js'
       - 'tests/catalog-financials.test.js'
       - 'supabase/migrations/*block_b*.sql'
