@@ -6,9 +6,14 @@ on:
     paths:
       - 'src/lib/catalogFinancials.js'
       - 'src/pages/Products.jsx'
+      - 'src/pages/AppSettings.jsx'
+      - 'src/pages/Dashboard.jsx'
+      - 'src/lib/dashboardMetrics.js'
+      - 'src/lib/profitabilityCalculations.js'
       - 'src/components/billing/LineItemsTable.jsx'
       - 'src/lib/orders.js'
       - 'tests/block-c-pricing-engine.test.js'
+      - 'tests/block-c-real-cases.test.js'
       - 'tests/catalog-financials.test.js'
       - 'supabase/migrations/*block_c*.sql'
       - '.github/workflows/block-c-ci.yml'
@@ -25,5 +30,5 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: node --test tests/block-c-pricing-engine.test.js tests/catalog-financials.test.js tests/block-b-cost-engine.test.js
+      - run: node --test tests/block-c-pricing-engine.test.js tests/block-c-real-cases.test.js tests/catalog-financials.test.js tests/block-b-cost-engine.test.js
       - run: npm run build
