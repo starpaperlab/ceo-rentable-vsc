@@ -240,6 +240,8 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     other_cost: product.other_cost ?? 0,
     target_margin: product.target_margin ?? 40,
     cost_complexity: product.cost_complexity || 'standard',
+    auto_allocate_general_tools: product.auto_allocate_general_tools !== false,
+    linked_expense_ids: Array.isArray(product.linked_expense_ids) ? product.linked_expense_ids : [],
     components: product.id
       ? costComponents.filter((row) => row.product_id === product.id).map((row) => ({ ...row, usage_unit: row.usage_unit || row.unit || 'unidad' }))
       : [],
@@ -338,8 +340,13 @@ function CatalogDialog({
   const directCost = getCatalogDirectCost(form, products)
   const automaticCostMode = form.cost_mode === 'detailed' || (isServiceProductType(form.product_type) && form.cost_mode === 'service')
   const laborCost = automaticCostMode ? calculateLaborCost(form.service_hours, form.hourly_cost) : 0
+  const allocatableExpenses = (businessExpenses || []).filter((expense) => {
+    const isTool = Boolean(expense.is_subscription) || expense.category === 'software'
+    if (!isTool || form.auto_allocate_general_tools !== false) return true
+    return (form.linked_expense_ids || []).includes(expense.id)
+  })
   const structure = automaticCostMode ? calculateBusinessStructure({
-    expenses: businessExpenses || [],
+    expenses: allocatableExpenses,
     equipment: businessEquipment || [],
     config: businessConfig || {},
     complexity: form.cost_complexity || 'standard',
@@ -489,6 +496,8 @@ function CatalogDialog({
       cost_confidence_pct: confidence.score,
       cost_calculated_at: new Date().toISOString(),
       cost_engine_version: 1,
+      auto_allocate_general_tools: form.auto_allocate_general_tools !== false,
+      linked_expense_ids: form.linked_expense_ids || [],
       cost_breakdown: {
         direct_cost: directCost,
         labor_cost: laborCost,
@@ -667,6 +676,15 @@ function CatalogDialog({
               ))}
             </section>
           ) : null}
+
+          {automaticCostMode && (businessExpenses || []).some((expense) => expense.is_subscription || expense.category === 'software') ? <section className="space-y-3 rounded-2xl border border-border bg-background p-4">
+            <div><h3 className="font-semibold">Herramientas y suscripciones</h3><p className="text-xs text-muted-foreground">Por defecto CEO Rentable distribuye automáticamente tus herramientas generales. Desactívalo solo si quieres asignar herramientas específicas a este producto o servicio.</p></div>
+            <label className="flex items-start gap-3 rounded-xl bg-muted/30 p-3 text-sm"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={form.auto_allocate_general_tools !== false} onChange={(event) => update('auto_allocate_general_tools', event.target.checked)} /><span><b>Distribuir automáticamente mis herramientas generales</b><span className="mt-1 block text-xs text-muted-foreground">Recomendado para evitar microcosteo.</span></span></label>
+            {form.auto_allocate_general_tools === false ? <div className="grid gap-2 sm:grid-cols-2">{(businessExpenses || []).filter((expense) => expense.is_subscription || expense.category === 'software').map((expense) => {
+              const selected=(form.linked_expense_ids || []).includes(expense.id)
+              return <label key={expense.id} className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${selected?'border-primary bg-primary/5':'border-border'}`}><input type="checkbox" className="mt-0.5" checked={selected} onChange={(event) => update('linked_expense_ids', event.target.checked ? [...new Set([...(form.linked_expense_ids || []), expense.id])] : (form.linked_expense_ids || []).filter((id) => id !== expense.id))}/><span><b>{expense.name}</b><span className="block text-xs text-muted-foreground">{expense.frequency || 'monthly'} · {formatMoney(expense.amount || 0)}</span></span></label>
+            })}</div> : null}
+          </section> : null}
 
           {automaticCostMode ? <section className="rounded-2xl border border-border bg-background p-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">¿Cómo calculamos tu costo?</h3><p className="text-xs text-muted-foreground">El total se actualiza con los datos de tu negocio.</p></div><Badge variant="outline">{confidence.score}% configuración</Badge></div>
@@ -1075,6 +1093,8 @@ export default function Products() {
       cost_confidence_pct: toNumber(form.cost_confidence_pct),
       cost_calculated_at: form.cost_calculated_at || new Date().toISOString(),
       cost_engine_version: toNumber(form.cost_engine_version) || 1,
+      auto_allocate_general_tools: form.auto_allocate_general_tools !== false,
+      linked_expense_ids: form.linked_expense_ids || [],
       updated_at: new Date().toISOString(),
     }
 
