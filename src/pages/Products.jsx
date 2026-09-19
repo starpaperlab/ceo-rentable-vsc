@@ -27,9 +27,16 @@ import {
 import {
   calculateCostComponentTotal,
   calculateDetailedCost,
+  buildPricingDecision,
+  calculateDiscountImpact,
   calculateMargin,
   calculateMarkup,
+  calculateMaxSafeDiscount,
+  calculateMinimumPrice,
+  calculatePriceForDesiredProfit,
+  calculatePriceForMargin,
   calculateProfit,
+  calculateProfitPerHour,
   calculateRecommendedPrice,
   calculateRequiredUnits,
   calculateServiceCost,
@@ -239,6 +246,10 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     material_cost: product.material_cost ?? 0,
     other_cost: product.other_cost ?? 0,
     target_margin: product.target_margin ?? 40,
+    minimum_margin: product.minimum_margin ?? 20,
+    percentage_fees: product.percentage_fees ?? 0,
+    fixed_fees: product.fixed_fees ?? 0,
+    commercial_rounding: product.commercial_rounding ?? 10,
     cost_complexity: product.cost_complexity || 'standard',
     auto_allocate_general_tools: product.auto_allocate_general_tools !== false,
     linked_expense_ids: Array.isArray(product.linked_expense_ids) ? product.linked_expense_ids : [],
@@ -265,8 +276,13 @@ function getCatalogDirectCost(form, products) {
   return toNumber(form.manual_cost)
 }
 
-function ProfitabilityBadge({ price, cost }) {
-  const profitability = PROFITABILITY_META[classifyProfitability(price, cost)]
+function ProfitabilityBadge({ price, cost, minimumMargin = 20, targetMargin = 40, percentageFees = 0, fixedFees = 0 }) {
+  const profitability = PROFITABILITY_META[classifyProfitability(price, cost, {
+    minimumMargin,
+    targetMargin,
+    percentageFees,
+    fixedFees,
+  })]
   return <Badge className={`border text-xs font-bold ${profitability.className}`}>{profitability.label}</Badge>
 }
 
@@ -379,14 +395,29 @@ function CatalogDialog({
     hasCapacity: !structure.missingCapacity,
     hasEquipment: (businessEquipment || []).length > 0,
   })
-  const profit = calculateProfit(form.sale_price, cost)
-  const margin = calculateMargin(form.sale_price, cost)
-  const markup = calculateMarkup(form.sale_price, cost)
+  const effectiveMinimumMargin = toNumber(form.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20)
+  const effectiveTargetMargin = toNumber(form.target_margin ?? businessConfig?.target_margin_pct ?? 40)
+  const effectiveFeePct = toNumber(form.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0)
+  const effectiveFixedFee = toNumber(form.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0)
+  const effectiveCommercialRounding = Math.max(0.01, toNumber(form.commercial_rounding ?? businessConfig?.commercial_rounding ?? 10) || 10)
+  const profit = calculateProfit(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
+  const margin = calculateMargin(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
+  const markup = calculateMarkup(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
+  const pricingDecision = buildPricingDecision({
+    cost,
+    price: form.sale_price,
+    targetMargin: effectiveTargetMargin,
+    minimumMargin: effectiveMinimumMargin,
+    percentageFees: effectiveFeePct,
+    fixedFees: effectiveFixedFee,
+    commercialRounding: effectiveCommercialRounding,
+  })
+  const profitPerHour = calculateProfitPerHour(profit, form.service_hours)
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
   const materialById = useMemo(() => new Map((businessMaterials || []).map((material) => [material.id, material])), [businessMaterials])
   let recommendedPrice = 0
   try {
-    recommendedPrice = calculateRecommendedPrice(cost, form.target_margin)
+    recommendedPrice = calculateRecommendedPrice(cost, effectiveTargetMargin, effectiveFeePct, effectiveFixedFee)
   } catch {
     recommendedPrice = 0
   }
@@ -465,8 +496,16 @@ function CatalogDialog({
       toast.error('El impuesto debe estar entre 0% y 100%.')
       return
     }
-    if (toNumber(form.target_margin) < 0 || toNumber(form.target_margin) >= 100) {
+    if (effectiveTargetMargin < 0 || effectiveTargetMargin >= 100) {
       toast.error('El margen objetivo debe ser menor de 100%.')
+      return
+    }
+    if (effectiveMinimumMargin < 0 || effectiveMinimumMargin >= 100 || effectiveMinimumMargin > effectiveTargetMargin) {
+      toast.error('El margen mínimo debe ser válido y no superar el margen objetivo.')
+      return
+    }
+    if (effectiveFeePct < 0 || effectiveFeePct >= 100 || effectiveFixedFee < 0) {
+      toast.error('Revisa las comisiones o costos de pasarela.')
       return
     }
     if (
@@ -488,6 +527,30 @@ function CatalogDialog({
       sku: finalSku,
       costo_unitario: cost,
       margin_pct: margin,
+      minimum_margin: effectiveMinimumMargin,
+      target_margin: effectiveTargetMargin,
+      percentage_fees: effectiveFeePct,
+      fixed_fees: effectiveFixedFee,
+      commercial_rounding: effectiveCommercialRounding,
+      price_status: 'current',
+      price_calculated_at: new Date().toISOString(),
+      pricing_engine_version: 1,
+      pricing_snapshot: {
+        cost,
+        price: toNumber(form.sale_price),
+        profit,
+        margin,
+        markup,
+        minimum_price: pricingDecision.minimumPrice,
+        target_price: pricingDecision.targetPrice,
+        recommended_price: pricingDecision.recommendedPrice,
+        maximum_discount_to_cost_pct: pricingDecision.maxDiscountToCost,
+        maximum_discount_at_minimum_margin_pct: pricingDecision.maxDiscountAtMinimumMargin,
+        percentage_fees: effectiveFeePct,
+        fixed_fees: effectiveFixedFee,
+        minimum_margin: effectiveMinimumMargin,
+        target_margin: effectiveTargetMargin,
+      },
       direct_cost: directCost,
       labor_cost: laborCost,
       overhead_cost: overheadCost,
@@ -699,18 +762,32 @@ function CatalogDialog({
           </section> : null}
 
           <section className="rounded-2xl bg-primary/5 p-4">
-            <h3 className="font-semibold">Rentabilidad</h3>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div><h3 className="font-semibold">Precio inteligente</h3><p className="text-xs text-muted-foreground">CEO Rentable convierte tu costo real en una decisión de precio.</p></div>
+              <ProfitabilityBadge price={form.sale_price} cost={cost} minimumMargin={effectiveMinimumMargin} targetMargin={effectiveTargetMargin} percentageFees={effectiveFeePct} fixedFees={effectiveFixedFee} />
+            </div>
+            {profit < 0 ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Con este precio perderías <b>{formatMoney(Math.abs(profit))}</b>.</span></div> : margin < effectiveMinimumMargin ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Este precio cubre tus costos, pero deja un margen de solo <b>{margin.toFixed(1)}%</b>.</span></div> : null}
             <div className="mt-3 grid gap-3 sm:grid-cols-5">
               <div><p className="text-xs text-muted-foreground">Costo real</p><p className="font-bold">{formatMoney(cost)}</p></div>
-              <div><p className="text-xs text-muted-foreground">Utilidad</p><p className="font-bold">{formatMoney(profit)}</p></div>
-              <div><p className="text-xs text-muted-foreground">Margen</p><p className="font-bold">{margin.toFixed(1)}%</p></div>
-              <div><p className="text-xs text-muted-foreground">Markup</p><p className="font-bold">{markup == null ? '—' : `${markup.toFixed(1)}%`}</p></div>
-              <div><p className="text-xs text-muted-foreground">Clasificación</p><ProfitabilityBadge price={form.sale_price} cost={cost} /></div>
+              <div><p className="text-xs text-muted-foreground">Ganancia</p><p className="font-bold">{formatMoney(profit)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Margen</p><p className="font-bold">{margin.toFixed(1)}%</p><p className="text-[10px] text-muted-foreground">% de la venta que queda como ganancia bruta</p></div>
+              <div><p className="text-xs text-muted-foreground">Markup</p><p className="font-bold">{markup == null ? '—' : `${markup.toFixed(1)}%`}</p><p className="text-[10px] text-muted-foreground">% agregado sobre tu costo</p></div>
+              <div><p className="text-xs text-muted-foreground">Ganancia / hora</p><p className="font-bold">{profitPerHour == null ? '—' : formatMoney(profitPerHour)}</p></div>
             </div>
-            <div className="mt-4 grid items-end gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <div><Label>Margen mínimo %</Label><Input type="number" min="0" max="99.99" value={form.minimum_margin} onChange={(event) => update('minimum_margin', event.target.value)} /></div>
               <div><Label>Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={form.target_margin} onChange={(event) => update('target_margin', event.target.value)} /></div>
-              <div><p className="text-xs text-muted-foreground">Precio recomendado</p><p className="text-lg font-bold text-primary">{formatMoney(recommendedPrice)}</p></div>
-              <div><p className="text-xs text-muted-foreground">Diferencia</p><p className="font-semibold">{formatMoney(recommendedPrice - toNumber(form.sale_price))}</p></div>
+              <div><Label>Comisión / pasarela %</Label><Input type="number" min="0" max="99.99" step="0.01" value={form.percentage_fees} onChange={(event) => update('percentage_fees', event.target.value)} /></div>
+              <div><Label>Cargo fijo por venta</Label><Input type="number" min="0" step="0.01" value={form.fixed_fees} onChange={(event) => update('fixed_fees', event.target.value)} /></div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border bg-background p-3"><p className="text-xs text-muted-foreground">Precio mínimo</p><p className="text-lg font-bold">{formatMoney(pricingDecision.minimumPrice)}</p><p className="text-[11px] text-muted-foreground">Mantiene tu margen mínimo configurado.</p></div>
+              <div className="rounded-xl border border-primary/30 bg-background p-3"><p className="text-xs text-muted-foreground">Precio recomendado</p><p className="text-lg font-black text-primary">{formatMoney(pricingDecision.recommendedPrice)}</p><p className="text-[11px] text-muted-foreground">Basado en costo + margen objetivo y redondeo comercial.</p></div>
+              <div className="rounded-xl border bg-background p-3"><p className="text-xs text-muted-foreground">Precio objetivo técnico</p><p className="text-lg font-bold">{formatMoney(pricingDecision.targetPrice)}</p><p className="text-[11px] text-muted-foreground">{formatMoney(cost)} ÷ {(100 - effectiveTargetMargin - effectiveFeePct).toFixed(2)}% considerando comisiones.</p></div>
+            </div>
+            <div className="mt-4 rounded-xl border bg-background p-3">
+              <p className="text-sm font-semibold">Descuento seguro</p>
+              <p className="mt-1 text-sm">Puedes descontar hasta <b>{pricingDecision.maxDiscountAtMinimumMargin.toFixed(1)}%</b> manteniendo tu margen mínimo, o hasta <b>{pricingDecision.maxDiscountToCost.toFixed(1)}%</b> antes de dejar de cubrir costo y comisiones.</p>
             </div>
           </section>
         </fieldset>
@@ -725,38 +802,80 @@ function CatalogDialog({
 }
 
 function ProfitabilitySimulator({ formatMoney }) {
-  const [cost, setCost] = useState(600)
-  const [price, setPrice] = useState(1000)
+  const [cost, setCost] = useState(1500)
+  const [price, setPrice] = useState(2500)
   const [targetMargin, setTargetMargin] = useState(40)
-  const [desiredProfit, setDesiredProfit] = useState(50000)
-  const profit = calculateProfit(price, cost)
-  const requiredUnits = calculateRequiredUnits(desiredProfit, profit)
-  let recommendedPrice = null
+  const [minimumMargin, setMinimumMargin] = useState(25)
+  const [desiredUnitProfit, setDesiredUnitProfit] = useState(1000)
+  const [desiredMonthlyProfit, setDesiredMonthlyProfit] = useState(40000)
+  const [discountPct, setDiscountPct] = useState(10)
+  const [percentageFees, setPercentageFees] = useState(0)
+  const [fixedFees, setFixedFees] = useState(0)
+  const [hours, setHours] = useState(1)
+  const profit = calculateProfit(price, cost, percentageFees, fixedFees)
+  const margin = calculateMargin(price, cost, percentageFees, fixedFees)
+  const markup = calculateMarkup(price, cost, percentageFees, fixedFees)
+  const requiredUnits = calculateRequiredUnits(desiredMonthlyProfit, profit)
+  const discountImpact = calculateDiscountImpact({ price, cost, discountPct, percentageFees, fixedFees })
+  const maxSafeDiscount = calculateMaxSafeDiscount({ price, cost, percentageFees, fixedFees, minimumMargin })
+  const profitPerHour = calculateProfitPerHour(profit, hours)
+  let targetPrice = null
+  let desiredProfitPrice = null
+  let minimumPrice = null
   try {
-    recommendedPrice = calculateRecommendedPrice(cost, targetMargin)
+    targetPrice = calculatePriceForMargin(cost, targetMargin, percentageFees, fixedFees)
+    desiredProfitPrice = calculatePriceForDesiredProfit(cost, desiredUnitProfit, percentageFees, fixedFees)
+    minimumPrice = calculateMinimumPrice(cost, { percentageFees, fixedFees, minimumMargin })
   } catch {
-    recommendedPrice = null
+    targetPrice = null
+    desiredProfitPrice = null
+    minimumPrice = null
   }
 
   return (
     <Card className="p-5">
-      <div className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /><h2 className="font-bold">Simulador de rentabilidad</h2></div>
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border p-3">
+      <div className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /><h2 className="font-bold">Simulador de precio inteligente</h2></div>
+      <p className="mt-1 text-sm text-muted-foreground">Prueba precio, margen, utilidad o descuento sin modificar tu catálogo.</p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border p-4">
           <p className="text-sm font-semibold">Si vendo a este precio</p>
-          <Label className="mt-2 block text-xs">Costo</Label><Input type="number" min="0" value={cost} onChange={(event) => setCost(event.target.value)} />
-          <Label className="mt-2 block text-xs">Precio</Label><Input type="number" min="0" value={price} onChange={(event) => setPrice(event.target.value)} />
-          <p className="mt-2 text-sm">Ganas <b>{formatMoney(profit)}</b> · margen {calculateMargin(price, cost).toFixed(1)}%</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div><Label className="text-xs">Costo real</Label><Input type="number" min="0" value={cost} onChange={(event) => setCost(event.target.value)} /></div>
+            <div><Label className="text-xs">Precio</Label><Input type="number" min="0" value={price} onChange={(event) => setPrice(event.target.value)} /></div>
+            <div><Label className="text-xs">Comisión %</Label><Input type="number" min="0" max="99.99" value={percentageFees} onChange={(event) => setPercentageFees(event.target.value)} /></div>
+            <div><Label className="text-xs">Cargo fijo</Label><Input type="number" min="0" value={fixedFees} onChange={(event) => setFixedFees(event.target.value)} /></div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><div>Ganancia<br/><b>{formatMoney(profit)}</b></div><div>Margen<br/><b>{margin.toFixed(1)}%</b></div><div>Markup<br/><b>{markup == null ? '—' : `${markup.toFixed(1)}%`}</b></div></div>
         </div>
-        <div className="rounded-xl border p-3">
+        <div className="rounded-xl border p-4">
           <p className="text-sm font-semibold">Quiero este margen</p>
-          <Label className="mt-2 block text-xs">Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={targetMargin} onChange={(event) => setTargetMargin(event.target.value)} />
-          <p className="mt-2 text-sm">Precio recomendado: <b>{recommendedPrice == null ? 'Margen inválido' : formatMoney(recommendedPrice)}</b></p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div><Label className="text-xs">Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={targetMargin} onChange={(event) => setTargetMargin(event.target.value)} /></div>
+            <div><Label className="text-xs">Margen mínimo %</Label><Input type="number" min="0" max="99.99" value={minimumMargin} onChange={(event) => setMinimumMargin(event.target.value)} /></div>
+          </div>
+          <p className="mt-3 text-sm">Precio para tu margen: <b>{targetPrice == null ? 'Revisa los porcentajes' : formatMoney(targetPrice)}</b></p>
+          <p className="mt-1 text-sm">Precio mínimo con tu margen mínimo: <b>{minimumPrice == null ? '—' : formatMoney(minimumPrice)}</b></p>
         </div>
-        <div className="rounded-xl border p-3">
-          <p className="text-sm font-semibold">Quiero esta utilidad total</p>
-          <Label className="mt-2 block text-xs">Utilidad deseada</Label><Input type="number" min="0" value={desiredProfit} onChange={(event) => setDesiredProfit(event.target.value)} />
-          <p className="mt-2 text-sm">Necesitas vender <b>{requiredUnits == null ? '—' : requiredUnits}</b> unidades{requiredUnits == null ? ' (la utilidad por unidad debe ser positiva)' : ''}.</p>
+        <div className="rounded-xl border p-4">
+          <p className="text-sm font-semibold">Quiero ganar esta cantidad por venta</p>
+          <Label className="mt-2 block text-xs">Ganancia deseada</Label><Input type="number" min="0" value={desiredUnitProfit} onChange={(event) => setDesiredUnitProfit(event.target.value)} />
+          <p className="mt-3 text-sm">Precio necesario: <b>{desiredProfitPrice == null ? '—' : formatMoney(desiredProfitPrice)}</b></p>
+          <Label className="mt-3 block text-xs">Horas que consume</Label><Input type="number" min="0" step="0.25" value={hours} onChange={(event) => setHours(event.target.value)} />
+          <p className="mt-2 text-sm">Ganancia por hora al precio actual: <b>{profitPerHour == null ? '—' : formatMoney(profitPerHour)}</b></p>
+        </div>
+        <div className="rounded-xl border p-4">
+          <p className="text-sm font-semibold">¿Qué pasa si descuento?</p>
+          <Label className="mt-2 block text-xs">Descuento %</Label><Input type="number" min="0" max="100" value={discountPct} onChange={(event) => setDiscountPct(event.target.value)} />
+          <p className="mt-3 text-sm">Nuevo precio: <b>{formatMoney(discountImpact.finalPrice)}</b> · ganancia <b>{formatMoney(discountImpact.finalProfit)}</b> · margen <b>{discountImpact.margin.toFixed(1)}%</b>.</p>
+          <p className="mt-1 text-sm">Ese descuento reduce tu ganancia en <b>{discountImpact.profitReductionPct.toFixed(1)}%</b>.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Máximo manteniendo margen mínimo: {maxSafeDiscount.toFixed(1)}%.</p>
+        </div>
+        <div className="rounded-xl border p-4 lg:col-span-2">
+          <p className="text-sm font-semibold">Meta mensual</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div><Label className="text-xs">Ganancia que quieres lograr</Label><Input type="number" min="0" value={desiredMonthlyProfit} onChange={(event) => setDesiredMonthlyProfit(event.target.value)} /></div>
+            <div className="flex items-end"><p className="text-sm">Necesitas vender <b>{requiredUnits == null ? '—' : requiredUnits}</b> unidades al precio actual{requiredUnits == null ? ' porque la ganancia por unidad no es positiva.' : '.'}</p></div>
+          </div>
         </div>
       </div>
     </Card>
