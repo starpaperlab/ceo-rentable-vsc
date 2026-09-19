@@ -18,6 +18,35 @@ export const INDUSTRIES = {
   ],
 };
 
+export const OPERATION_OPTIONS = {
+  products: [
+    ['made_to_order','Principalmente por pedido'],
+    ['batch','Produzco por lotes'],
+    ['inventory','Mantengo inventario listo para vender'],
+    ['mixed','Combino varias formas'],
+  ],
+  services: [
+    ['appointment','Principalmente por citas o sesiones'],
+    ['project','Principalmente por proyectos'],
+    ['recurring','Servicios recurrentes / mensuales'],
+    ['mixed','Combino varias formas'],
+  ],
+  both: [
+    ['made_to_order','Productos principalmente por pedido'],
+    ['appointment','Servicios principalmente por citas'],
+    ['project','Servicios principalmente por proyectos'],
+    ['inventory','Mantengo inventario de productos'],
+    ['mixed','Combino varias formas'],
+  ],
+};
+
+export const LABOR_OPTIONS = [
+  ['solo','Trabajo principalmente sola'],
+  ['team','Trabajo con un equipo'],
+  ['contractors','Subcontrato parte del trabajo'],
+  ['mixed','Combino equipo y terceros'],
+];
+
 export const WORKPLACE_OPTIONS = [
   ['home','Desde mi casa'],['owned_location','Local propio'],['rented_location','Local alquilado'],
   ['shared_space','Espacio compartido'],['client_location','Me desplazo donde mis clientes'],
@@ -200,12 +229,14 @@ export function mergedIndustryTemplate(codes = []) {
 
 export function setupCompletion(config = {}, counts = {}) {
   const checks = [
-    [15, Boolean(config.business_model)],
-    [15, Array.isArray(config.industry_codes) && config.industry_codes.length > 0],
+    [10, Boolean(config.business_model)],
+    [10, Array.isArray(config.industry_codes) && config.industry_codes.length > 0],
     [10, Array.isArray(config.workplace_modes) && config.workplace_modes.length > 0],
     [10, config.work_days_per_week !== null && config.work_days_per_week !== undefined],
     [10, config.work_hours_per_day !== null && config.work_hours_per_day !== undefined],
     [10, Boolean(config.monthly_capacity_unknown) || (config.monthly_capacity !== null && config.monthly_capacity !== undefined)],
+    [5, Boolean(config.operation_mode)],
+    [5, Boolean(config.labor_mode)],
     [15, config.personal_income_goal !== null && config.personal_income_goal !== undefined && Number(config.personal_income_goal) >= 0],
     [5, Number(counts.expenses || 0) > 0],
     [5, config.business_model === 'services' || Number(counts.materials || 0) > 0],
