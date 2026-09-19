@@ -41,6 +41,7 @@ import {
   calculateRequiredUnits,
   calculateServiceCost,
   classifyProfitability,
+  resolvePricingSettings,
 } from '@/lib/catalogFinancials'
 import { buildCostConfidence, calculateBusinessStructure, calculateLaborCost, calculateLaborHourlyCost, calculateMaterialCost, calculateOverheadAllocation, calculateTotalCost, materialDisplayUnit } from '@/lib/costEngine'
 import {
@@ -250,6 +251,7 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     percentage_fees: product.percentage_fees ?? businessConfig.payment_fee_pct ?? 0,
     fixed_fees: product.fixed_fees ?? businessConfig.payment_fixed_fee ?? 0,
     commercial_rounding: product.commercial_rounding ?? businessConfig.commercial_rounding ?? 10,
+    pricing_override_enabled: product.pricing_override_enabled === true,
     cost_complexity: product.cost_complexity || 'standard',
     auto_allocate_general_tools: product.auto_allocate_general_tools !== false,
     linked_expense_ids: Array.isArray(product.linked_expense_ids) ? product.linked_expense_ids : [],
@@ -296,6 +298,7 @@ function CatalogDialog({
   businessEquipment,
   bundleItems,
   priceHistory,
+  categorySettings,
   currency,
   formatMoney,
   onClose,
@@ -399,11 +402,16 @@ function CatalogDialog({
     hasCapacity: !structure.missingCapacity,
     hasEquipment: (businessEquipment || []).length > 0,
   })
-  const effectiveMinimumMargin = toNumber(form.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20)
-  const effectiveTargetMargin = toNumber(form.target_margin ?? businessConfig?.target_margin_pct ?? 40)
-  const effectiveFeePct = toNumber(form.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0)
-  const effectiveFixedFee = toNumber(form.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0)
-  const effectiveCommercialRounding = Math.max(0.01, toNumber(form.commercial_rounding ?? businessConfig?.commercial_rounding ?? 10) || 10)
+  const pricingSettings = resolvePricingSettings({
+    product: form,
+    businessConfig: businessConfig || {},
+    categorySettings: categorySettings || [],
+  })
+  const effectiveMinimumMargin = pricingSettings.minimumMargin
+  const effectiveTargetMargin = pricingSettings.targetMargin
+  const effectiveFeePct = pricingSettings.percentageFees
+  const effectiveFixedFee = pricingSettings.fixedFees
+  const effectiveCommercialRounding = pricingSettings.commercialRounding
   const profit = calculateProfit(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
   const margin = calculateMargin(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
   const markup = calculateMarkup(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
@@ -560,6 +568,7 @@ function CatalogDialog({
       percentage_fees: effectiveFeePct,
       fixed_fees: effectiveFixedFee,
       commercial_rounding: effectiveCommercialRounding,
+      pricing_override_enabled: form.pricing_override_enabled === true,
       price_status: 'current',
       price_calculated_at: new Date().toISOString(),
       pricing_engine_version: 1,
@@ -802,11 +811,44 @@ function CatalogDialog({
               <div><p className="text-xs text-muted-foreground">Markup</p><p className="font-bold">{markup == null ? '—' : `${markup.toFixed(1)}%`}</p><p className="text-[10px] text-muted-foreground">% agregado sobre tu costo</p></div>
               <div><p className="text-xs text-muted-foreground">Ganancia / hora</p><p className="font-bold">{profitPerHour == null ? '—' : formatMoney(profitPerHour)}</p></div>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-4">
-              <div><Label>Margen mínimo %</Label><Input type="number" min="0" max="99.99" value={form.minimum_margin} onChange={(event) => update('minimum_margin', event.target.value)} /></div>
-              <div><Label>Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={form.target_margin} onChange={(event) => update('target_margin', event.target.value)} /></div>
-              <div><Label>Comisión / pasarela %</Label><Input type="number" min="0" max="99.99" step="0.01" value={form.percentage_fees} onChange={(event) => update('percentage_fees', event.target.value)} /></div>
-              <div><Label>Cargo fijo por venta</Label><Input type="number" min="0" step="0.01" value={form.fixed_fees} onChange={(event) => update('fixed_fees', event.target.value)} /></div>
+            <div className="mt-4 rounded-xl border bg-background p-3">
+              <label className="flex items-start gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={form.pricing_override_enabled === true}
+                  onChange={(event) => {
+                    const enabled = event.target.checked
+                    setForm((current) => ({
+                      ...current,
+                      pricing_override_enabled: enabled,
+                      ...(enabled ? {
+                        minimum_margin: effectiveMinimumMargin,
+                        target_margin: effectiveTargetMargin,
+                        percentage_fees: effectiveFeePct,
+                        fixed_fees: effectiveFixedFee,
+                        commercial_rounding: effectiveCommercialRounding,
+                      } : {}),
+                    }))
+                  }}
+                />
+                <span>
+                  <b>Personalizar rentabilidad para este producto o servicio</b>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {form.pricing_override_enabled
+                      ? 'Este ítem usa reglas propias.'
+                      : pricingSettings.source === 'category'
+                        ? `Hereda la regla de la categoría “${pricingSettings.categoryRule?.category || form.category}”.`
+                        : 'Hereda las reglas generales de Mi negocio.'}
+                  </span>
+                </span>
+              </label>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-4">
+              <div><Label>Margen mínimo %</Label><Input type="number" min="0" max="99.99" value={effectiveMinimumMargin} disabled={!form.pricing_override_enabled} onChange={(event) => update('minimum_margin', event.target.value)} /></div>
+              <div><Label>Margen objetivo %</Label><Input type="number" min="0" max="99.99" value={effectiveTargetMargin} disabled={!form.pricing_override_enabled} onChange={(event) => update('target_margin', event.target.value)} /></div>
+              <div><Label>Comisión / pasarela %</Label><Input type="number" min="0" max="99.99" step="0.01" value={effectiveFeePct} disabled={!form.pricing_override_enabled} onChange={(event) => update('percentage_fees', event.target.value)} /></div>
+              <div><Label>Cargo fijo por venta</Label><Input type="number" min="0" step="0.01" value={effectiveFixedFee} disabled={!form.pricing_override_enabled} onChange={(event) => update('fixed_fees', event.target.value)} /></div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border bg-background p-3"><p className="text-xs text-muted-foreground">Precio mínimo</p><p className="text-lg font-bold">{formatMoney(pricingDecision.minimumPrice)}</p><p className="text-[11px] text-muted-foreground">Mantiene tu margen mínimo configurado.</p></div>
@@ -1056,6 +1098,12 @@ export default function Products() {
     enabled,
   })
 
+  const { data: categorySettings = [], isLoading: loadingCategorySettings } = useQuery({
+    queryKey: ['pricing-category-settings', ...contextQueryKey],
+    queryFn: async () => fetchRows({ table: 'pricing_category_settings', orderBy: 'category', ascending: true }),
+    enabled,
+  })
+
   const { data: bundleItems = [], isLoading: loadingBundleItems } = useQuery({
     queryKey: ['product-bundle-items', ...contextQueryKey],
     queryFn: async () => fetchRows({ table: 'product_bundle_items', orderBy: 'sort_order', ascending: true }),
@@ -1295,6 +1343,7 @@ export default function Products() {
       percentage_fees: toNumber(form.percentage_fees),
       fixed_fees: toNumber(form.fixed_fees),
       commercial_rounding: toNumber(form.commercial_rounding) || 10,
+      pricing_override_enabled: form.pricing_override_enabled === true,
       margin_pct: toNumber(form.margin_pct),
       price_status: form.price_status || 'current',
       price_calculated_at: form.price_calculated_at || new Date().toISOString(),
@@ -1689,7 +1738,7 @@ export default function Products() {
     return generateUniqueSku(inventoryModalProduct.product.name, existingSkus)
   }, [existingSkus, inventoryForm.sku, inventoryModalProduct])
 
-  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBusinessMaterials || loadingBusinessExpenses || loadingBusinessEquipment || loadingBundleItems || loadingPriceHistory
+  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBusinessMaterials || loadingBusinessExpenses || loadingBusinessEquipment || loadingBundleItems || loadingPriceHistory || loadingCategorySettings
   if (isLoadingPage) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -2006,6 +2055,7 @@ export default function Products() {
           businessEquipment={businessEquipment}
           bundleItems={bundleItems}
           priceHistory={priceHistory}
+          categorySettings={categorySettings}
           currency={currency}
           formatMoney={formatMoney}
           onClose={() => setCatalogDialog(null)}
