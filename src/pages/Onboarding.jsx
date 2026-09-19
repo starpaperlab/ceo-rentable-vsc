@@ -95,7 +95,16 @@ export default function Onboarding() {
         if(cancelled)return;
         setConfigId(next.id);
         setConfig({...emptyConfig,...next,industry_codes:next.industry_codes||[],workplace_modes:next.workplace_modes||[]});
-        const initialStep = Number.isInteger(requestedStep) && requestedStep >= 0 && requestedStep < STEPS.length ? requestedStep : Math.min(Number(next.onboarding_step||0),STEPS.length-1);
+        const loadedCompletion = setupCompletion(
+          {...emptyConfig,...next,industry_codes:next.industry_codes||[],workplace_modes:next.workplace_modes||[]},
+          {expenses:(exp||[]).length,materials:(mat||[]).length,equipment:(eq||[]).length}
+        );
+        const isLegacyEmptySetup = next?.onboarding_answers?.legacy_completed === true && loadedCompletion === 0;
+        const initialStep = Number.isInteger(requestedStep) && requestedStep >= 0 && requestedStep < STEPS.length
+          ? requestedStep
+          : isLegacyEmptySetup
+            ? 0
+            : Math.min(Number(next.onboarding_step||0),STEPS.length-1);
         setStep(initialStep);
         setExpenses(exp||[]); setMaterials(mat||[]); setEquipment(eq||[]);
         hydrated.current=true;
