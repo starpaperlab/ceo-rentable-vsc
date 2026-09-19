@@ -35,7 +35,7 @@ import {
   calculateServiceCost,
   classifyProfitability,
 } from '@/lib/catalogFinancials'
-import { calculateLaborHourlyCost, calculateMaterialCost, materialDisplayUnit } from '@/lib/costEngine'
+import { buildCostConfidence, calculateBusinessStructure, calculateLaborCost, calculateLaborHourlyCost, calculateMaterialCost, calculateOverheadAllocation, calculateTotalCost, materialDisplayUnit } from '@/lib/costEngine'
 import {
   getProductTypeLabel,
   isBundleProductType,
@@ -239,6 +239,7 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     material_cost: product.material_cost ?? 0,
     other_cost: product.other_cost ?? 0,
     target_margin: product.target_margin ?? 40,
+    cost_complexity: product.cost_complexity || 'standard',
     components: product.id
       ? costComponents.filter((row) => row.product_id === product.id).map((row) => ({ ...row, usage_unit: row.usage_unit || row.unit || 'unidad' }))
       : [],
@@ -248,7 +249,7 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
   }
 }
 
-function getCatalogCost(form, products) {
+function getCatalogDirectCost(form, products) {
   if (normalizeProductType(form.product_type) === 'bundle') {
     const productById = new Map(products.map((product) => [product.id, product]))
     return form.bundleItems.reduce((total, row) => (
@@ -257,12 +258,7 @@ function getCatalogCost(form, products) {
   }
   if (form.cost_mode === 'detailed') return calculateDetailedCost(form.components)
   if (normalizeProductType(form.product_type) === 'service' && form.cost_mode === 'service') {
-    return calculateServiceCost({
-      hours: form.service_hours,
-      hourlyCost: form.hourly_cost,
-      materialsCost: form.material_cost,
-      otherCost: form.other_cost,
-    })
+    return toNumber(form.material_cost) + toNumber(form.other_cost)
   }
   return toNumber(form.manual_cost)
 }
@@ -278,6 +274,8 @@ function CatalogDialog({
   costComponents,
   businessMaterials,
   businessConfig,
+  businessExpenses,
+  businessEquipment,
   bundleItems,
   currency,
   formatMoney,
@@ -337,7 +335,43 @@ function CatalogDialog({
     if (toNumber(form.hourly_cost) > 0 || recommendedHourlyCost <= 0) return
     setForm((current) => ({ ...current, hourly_cost: recommendedHourlyCost }))
   }, [initial?.id, form.product_type, form.cost_mode, form.hourly_cost, recommendedHourlyCost])
-  const cost = getCatalogCost(form, products)
+  const directCost = getCatalogDirectCost(form, products)
+  const automaticCostMode = form.cost_mode === 'detailed' || (isServiceProductType(form.product_type) && form.cost_mode === 'service')
+  const laborCost = automaticCostMode ? calculateLaborCost(form.service_hours, form.hourly_cost) : 0
+  const structure = automaticCostMode ? calculateBusinessStructure({
+    expenses: businessExpenses || [],
+    equipment: businessEquipment || [],
+    config: businessConfig || {},
+    complexity: form.cost_complexity || 'standard',
+    units: 1,
+    hours: toNumber(form.service_hours),
+  }) : { monthlyExpenses: 0, monthlyEquipment: 0, monthlyOverhead: 0, amount: 0, method: 'manual', base: 0, rate: 0, missingCapacity: false }
+  const expenseAllocation = automaticCostMode ? calculateOverheadAllocation({
+    monthlyOverhead: structure.monthlyExpenses,
+    config: businessConfig || {},
+    method: structure.method,
+    complexity: form.cost_complexity || 'standard',
+    units: 1,
+    hours: toNumber(form.service_hours),
+  }) : { amount: 0 }
+  const equipmentAllocation = automaticCostMode ? calculateOverheadAllocation({
+    monthlyOverhead: structure.monthlyEquipment,
+    config: businessConfig || {},
+    method: structure.method,
+    complexity: form.cost_complexity || 'standard',
+    units: 1,
+    hours: toNumber(form.service_hours),
+  }) : { amount: 0 }
+  const overheadCost = expenseAllocation.amount || 0
+  const equipmentCost = equipmentAllocation.amount || 0
+  const cost = automaticCostMode ? calculateTotalCost({ directCosts: directCost, laborCost, overheadCost, equipmentCost }) : directCost
+  const confidence = buildCostConfidence({
+    hasDirectCosts: directCost > 0,
+    hasLabor: toNumber(form.service_hours) > 0 && toNumber(form.hourly_cost) > 0,
+    hasExpenses: (businessExpenses || []).some((item) => item.usage_scope !== 'personal' && item.frequency !== 'one_time'),
+    hasCapacity: !structure.missingCapacity,
+    hasEquipment: (businessEquipment || []).length > 0,
+  })
   const profit = calculateProfit(form.sale_price, cost)
   const margin = calculateMargin(form.sale_price, cost)
   const markup = calculateMarkup(form.sale_price, cost)
@@ -432,7 +466,34 @@ function CatalogDialog({
       toast.error('Agrega al menos un ítem válido al combo.')
       return
     }
-    onSave({ ...form, sku: finalSku, costo_unitario: cost, margin_pct: margin })
+    onSave({
+      ...form,
+      sku: finalSku,
+      costo_unitario: cost,
+      margin_pct: margin,
+      direct_cost: directCost,
+      labor_cost: laborCost,
+      overhead_cost: overheadCost,
+      equipment_cost: equipmentCost,
+      cost_status: automaticCostMode && structure.missingCapacity ? 'incomplete' : 'current',
+      cost_confidence_pct: confidence.score,
+      cost_calculated_at: new Date().toISOString(),
+      cost_engine_version: 1,
+      cost_breakdown: {
+        direct_cost: directCost,
+        labor_cost: laborCost,
+        overhead_cost: overheadCost,
+        equipment_cost: equipmentCost,
+        total_cost: cost,
+        monthly_expenses: structure.monthlyExpenses || 0,
+        monthly_equipment: structure.monthlyEquipment || 0,
+        allocation_method: structure.method,
+        allocation_base: structure.base,
+        allocation_rate: structure.rate,
+        complexity: form.cost_complexity || 'standard',
+        confidence,
+      },
+    })
   }
 
   return (
@@ -531,6 +592,12 @@ function CatalogDialog({
                 <div><h3 className="font-semibold">Costeo detallado</h3><p className="text-xs text-muted-foreground">Materia prima, mano de obra, empaque y otros.</p></div>
                 <Button type="button" variant="outline" size="sm" onClick={() => update('components', [...form.components, createEmptyCostComponent()])}><Plus className="mr-1 h-4 w-4" />Agregar</Button>
               </div>
+              <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:grid-cols-3">
+                <div><Label>Tiempo por unidad</Label><Input inputMode="decimal" type="number" min="0" step="0.25" value={form.service_hours} onChange={(event) => update('service_hours', event.target.value)} /></div>
+                <div><Label>Valor de tu hora</Label><Input inputMode="decimal" type="number" min="0" step="0.01" value={form.hourly_cost} onChange={(event) => update('hourly_cost', event.target.value)} /></div>
+                <div><Label>Uso de estructura</Label><Select value={form.cost_complexity || 'standard'} onValueChange={(value) => update('cost_complexity', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Bajo · usa pocos recursos</SelectItem><SelectItem value="standard">Normal</SelectItem><SelectItem value="high">Alto · usa más recursos</SelectItem></SelectContent></Select></div>
+                {recommendedHourlyCost > 0 ? <div className="sm:col-span-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>Hora sugerida por CEO Rentable: <b>{formatMoney(recommendedHourlyCost)}</b></span><Button type="button" variant="outline" size="sm" onClick={() => update('hourly_cost', recommendedHourlyCost)}>Usar recomendación</Button></div> : null}
+              </div>
               {form.components.map((row, index) => (
                 <div key={row.id || index} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-12">
                   <div className="sm:col-span-12">
@@ -585,6 +652,18 @@ function CatalogDialog({
               ))}
             </section>
           ) : null}
+
+          {automaticCostMode ? <section className="rounded-2xl border border-border bg-background p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">¿Cómo calculamos tu costo?</h3><p className="text-xs text-muted-foreground">El total se actualiza con los datos de tu negocio.</p></div><Badge variant="outline">{confidence.score}% configuración</Badge></div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Costos directos</span><b>{formatMoney(directCost)}</b></div>
+              <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Tu tiempo</span><b>{formatMoney(laborCost)}</b></div>
+              <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Gastos del negocio asignados</span><b>{formatMoney(overheadCost)}</b></div>
+              <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Uso / desgaste de equipos</span><b>{formatMoney(equipmentCost)}</b></div>
+            </div>
+            <div className="mt-3 flex justify-between border-t pt-3 text-base"><span className="font-semibold">Costo total real</span><span className="font-black text-primary">{formatMoney(cost)}</span></div>
+            {structure.missingCapacity ? <p className="mt-2 text-xs text-amber-700">Podemos calcular tus costos directos, pero completa la capacidad mensual para distribuir mejor los gastos de estructura.</p> : <p className="mt-2 text-xs text-muted-foreground">Estructura: {formatMoney(structure.monthlyOverhead)} al mes · método: {structure.method} · base {Number(structure.base||0).toFixed(1)}.</p>}
+          </section> : null}
 
           <section className="rounded-2xl bg-primary/5 p-4">
             <h3 className="font-semibold">Rentabilidad</h3>
@@ -727,6 +806,18 @@ export default function Products() {
       const rows = await fetchRows({ table: 'business_config', orderBy: 'updated_at', ascending: false })
       return rows?.[0] || null
     },
+    enabled,
+  })
+
+  const { data: businessExpenses = [], isLoading: loadingBusinessExpenses } = useQuery({
+    queryKey: ['business-expenses-cost', ...contextQueryKey],
+    queryFn: async () => fetchRows({ table: 'business_expenses', orderBy: 'created_at', ascending: true }),
+    enabled,
+  })
+
+  const { data: businessEquipment = [], isLoading: loadingBusinessEquipment } = useQuery({
+    queryKey: ['business-equipment-cost', ...contextQueryKey],
+    queryFn: async () => fetchRows({ table: 'business_equipment', orderBy: 'created_at', ascending: true }),
     enabled,
   })
 
@@ -959,6 +1050,16 @@ export default function Products() {
       other_cost: toNumber(form.other_cost),
       target_margin: toNumber(form.target_margin),
       margin_pct: toNumber(form.margin_pct),
+      cost_complexity: form.cost_complexity || 'standard',
+      cost_status: form.cost_status || 'current',
+      direct_cost: toNumber(form.direct_cost),
+      labor_cost: toNumber(form.labor_cost),
+      overhead_cost: toNumber(form.overhead_cost),
+      equipment_cost: toNumber(form.equipment_cost),
+      cost_breakdown: form.cost_breakdown || {},
+      cost_confidence_pct: toNumber(form.cost_confidence_pct),
+      cost_calculated_at: form.cost_calculated_at || new Date().toISOString(),
+      cost_engine_version: toNumber(form.cost_engine_version) || 1,
       updated_at: new Date().toISOString(),
     }
 
@@ -1613,6 +1714,8 @@ export default function Products() {
           costComponents={costComponents}
           businessMaterials={businessMaterials}
           businessConfig={businessConfig}
+          businessExpenses={businessExpenses}
+          businessEquipment={businessEquipment}
           bundleItems={bundleItems}
           currency={currency}
           formatMoney={formatMoney}
