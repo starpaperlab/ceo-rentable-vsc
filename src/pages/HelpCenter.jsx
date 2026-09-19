@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, GraduationCap, LayoutDashboard, Package, Receipt, CreditCard,
   Target, Settings, BookOpen, PlayCircle, CheckCircle2, ChevronRight,
@@ -192,11 +192,53 @@ function YouTubeLessonPlayer({ videoId, title, moduleNumber = 1, lessonNumber, o
 
 export default function HelpCenter() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [view, setView] = useState('home');
   const [activeLesson, setActiveLesson] = useState(null);
+
+  const lessonsWithModule = useMemo(
+    () => MODULES.flatMap(module => module.lessons.map(lesson => ({ ...lesson, moduleNumber: module.number }))),
+    []
+  );
+
+  useEffect(() => {
+    const isAcademy = searchParams.get('seccion') === 'academia';
+    const lessonKey = searchParams.get('leccion');
+    if (!isAcademy) {
+      setView('home');
+      setActiveLesson(null);
+      return;
+    }
+    setView('academy');
+    setActiveLesson(lessonKey ? lessonsWithModule.find(lesson => lesson.key === lessonKey) || null : null);
+  }, [searchParams, lessonsWithModule]);
+
+  const openAcademy = () => {
+    setView('academy');
+    setActiveLesson(null);
+    setSearchParams({ seccion: 'academia' });
+  };
+
+  const openLesson = (lesson, moduleNumber) => {
+    const selected = { ...lesson, moduleNumber };
+    setView('academy');
+    setActiveLesson(selected);
+    setSearchParams({ seccion: 'academia', leccion: lesson.key });
+  };
+
+  const backToAcademy = () => {
+    setActiveLesson(null);
+    setSearchParams({ seccion: 'academia' });
+  };
+
+  const backToHelpCenter = () => {
+    setView('home');
+    setActiveLesson(null);
+    setSearchParams({});
+  };
 
   const { data: progressRows = [] } = useQuery({
     queryKey: ['academy-progress', user?.id],
@@ -211,6 +253,9 @@ export default function HelpCenter() {
   const completed = useMemo(() => new Set(progressRows.filter(x => x.completed).map(x => x.lesson_key)), [progressRows]);
   const allLessons = MODULES.flatMap(m => m.lessons);
   const progressPct = allLessons.length ? Math.round((allLessons.filter(l => completed.has(l.key)).length / allLessons.length) * 100) : 0;
+  const activeLessonIndex = activeLesson ? lessonsWithModule.findIndex(lesson => lesson.key === activeLesson.key) : -1;
+  const previousLesson = activeLessonIndex > 0 ? lessonsWithModule[activeLessonIndex - 1] : null;
+  const nextLesson = activeLessonIndex >= 0 && activeLessonIndex < lessonsWithModule.length - 1 ? lessonsWithModule[activeLessonIndex + 1] : null;
 
   const markComplete = async (lesson) => {
     if (!user?.id) return;
@@ -229,7 +274,7 @@ export default function HelpCenter() {
   );
 
   const openCategory = (category) => {
-    if (category.academy) { setView('academy'); setActiveLesson(null); return; }
+    if (category.academy) { openAcademy(); return; }
     if (category.path) { navigate(category.path); return; }
     setSearch(category.title);
   };
@@ -238,9 +283,19 @@ export default function HelpCenter() {
     return (
       <div className="min-h-full bg-gradient-to-b from-[#FFF7FA] via-background to-background">
         <div className="mx-auto max-w-6xl p-4 lg:p-8">
-          <Button variant="ghost" className="mb-4 -ml-2 text-muted-foreground" onClick={() => { setView('home'); setActiveLesson(null); }}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Centro de Ayuda
-          </Button>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Button variant="ghost" className="-ml-2 text-muted-foreground" onClick={backToHelpCenter}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Centro de Ayuda
+            </Button>
+            {activeLesson ? (
+              <>
+                <span className="text-muted-foreground/50">/</span>
+                <Button variant="ghost" className="px-2 text-[#B83E70]" onClick={backToAcademy}>
+                  Academia · Todas las lecciones
+                </Button>
+              </>
+            ) : null}
+          </div>
 
           <div className="rounded-3xl border border-[#F1D7E2] bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -273,7 +328,13 @@ export default function HelpCenter() {
                     <Button onClick={() => markComplete(activeLesson)} className="bg-[#D45387] hover:bg-[#BC4778]">
                       <CheckCircle2 className="mr-2 h-4 w-4" /> {completed.has(activeLesson.key) ? 'Completada' : 'Marcar como completada'}
                     </Button>
-                    <Button variant="outline" onClick={() => setActiveLesson(null)}>Volver al módulo</Button>
+                    <Button variant="outline" onClick={backToAcademy}><ArrowLeft className="mr-2 h-4 w-4" /> Todas las lecciones</Button>
+                    {previousLesson ? (
+                      <Button variant="outline" onClick={() => openLesson(previousLesson, previousLesson.moduleNumber)}>Lección anterior</Button>
+                    ) : null}
+                    {nextLesson ? (
+                      <Button onClick={() => openLesson(nextLesson, nextLesson.moduleNumber)} className="bg-[#171217] text-white hover:bg-[#2b222b]">Siguiente lección <ChevronRight className="ml-2 h-4 w-4" /></Button>
+                    ) : null}
                   </div>
                 </Card>
               </div>
@@ -284,7 +345,7 @@ export default function HelpCenter() {
                 </div>
                 <div className="p-2">
                   {(MODULES.find(m => m.number === activeLesson.moduleNumber)?.lessons || []).map(lesson => (
-                    <button key={lesson.key} onClick={() => setActiveLesson({ ...lesson, moduleNumber: activeLesson.moduleNumber })} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/60">
+                    <button key={lesson.key} onClick={() => openLesson(lesson, activeLesson.moduleNumber)} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/60">
                       <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${completed.has(lesson.key)?'bg-emerald-100 text-emerald-700':'bg-[#D45387]/10 text-[#B83E70]'}`}>
                         {completed.has(lesson.key) ? '✓' : lesson.number}
                       </div>
@@ -305,7 +366,7 @@ export default function HelpCenter() {
                   </div>
                   <div>
                     {module.lessons.map(lesson => (
-                      <button key={lesson.key} onClick={() => setActiveLesson({ ...lesson, moduleNumber: module.number })} className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-[#FFF7FA]">
+                      <button key={lesson.key} onClick={() => openLesson(lesson, module.number)} className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-[#FFF7FA]">
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${completed.has(lesson.key)?'bg-emerald-100 text-emerald-700':'bg-[#D45387]/10 text-[#B83E70]'}`}>
                           {completed.has(lesson.key) ? <CheckCircle2 className="h-5 w-5"/> : <PlayCircle className="h-5 w-5"/>}
                         </div>
