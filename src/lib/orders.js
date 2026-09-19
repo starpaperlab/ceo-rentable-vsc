@@ -1,4 +1,4 @@
-import { calculateMargin, calculateProfit } from '@/lib/catalogFinancials'
+import { calculateMargin, calculateProfit } from './catalogFinancials.js'
 
 export const ORDER_STATUS = {
   draft: {
