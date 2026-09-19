@@ -39,8 +39,8 @@ const MODULES = [
   {
     id: 'm2',
     number: 2,
-    title: 'Configura tu negocio',
-    description: 'Prepara la información y configuración de tu empresa para trabajar correctamente dentro de CEO Rentable.',
+    title: 'Configura y organiza tu negocio',
+    description: 'Prepara la base operativa de CEO Rentable: configuración, catálogo, costos e inventario.',
     lessons: [
       {
         key: 'm2-l1',
@@ -48,6 +48,56 @@ const MODULES = [
         title: 'Configura tu negocio',
         youtubeId: 'OKImPNhzN4o',
         description: 'Configura los datos principales de tu negocio y deja CEO Rentable preparado para tu operación.',
+      },
+      {
+        key: 'm2-l2',
+        number: 2,
+        title: 'Productos, servicios y costos',
+        youtubeId: 'PcsXAA3-AbI',
+        description: 'Registra productos y servicios, organiza sus costos y deja lista la base para medir rentabilidad.',
+      },
+      {
+        key: 'm2-l3',
+        number: 3,
+        title: 'Control de inventario',
+        youtubeId: 'CVI0XkvzwQY',
+        description: 'Aprende a controlar existencias y mantener actualizado el inventario de tu negocio.',
+      },
+    ],
+  },
+  {
+    id: 'm3',
+    number: 3,
+    title: 'Ventas, facturación y seguimiento',
+    description: 'Gestiona el ciclo comercial completo desde el pedido hasta el cobro y el seguimiento del cliente.',
+    lessons: [
+      {
+        key: 'm3-l1',
+        number: 1,
+        title: 'Pedidos y ventas',
+        youtubeId: 'dYYGsLepSEk',
+        description: 'Registra pedidos y ventas y mantén organizada la operación comercial de tu negocio.',
+      },
+      {
+        key: 'm3-l2',
+        number: 2,
+        title: 'Facturación y cobros',
+        youtubeId: 'a0F-zNoOTQQ',
+        description: 'Crea facturas, registra cobros y da seguimiento al dinero pendiente de recibir.',
+      },
+      {
+        key: 'm3-l3',
+        number: 3,
+        title: 'Cotizaciones y recibos',
+        youtubeId: 'Z70FxdyImcI',
+        description: 'Crea cotizaciones y recibos y aprende a utilizarlos dentro del flujo comercial.',
+      },
+      {
+        key: 'm3-l4',
+        number: 4,
+        title: 'Clientes y seguimiento comercial',
+        youtubeId: 'iAk0I1Sou54',
+        description: 'Organiza tus clientes y oportunidades y mantén un seguimiento comercial constante.',
       },
     ],
   },
@@ -369,10 +419,10 @@ export default function HelpCenter() {
               <Card className="mt-6 overflow-hidden border-[#F0DCE5]">
                 <div className="flex items-center justify-between border-b bg-[#FFF9FB] p-4">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#B83E70]">Contenido de la Academia</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#B83E70]">Ruta del curso</p>
                     <p className="mt-1 text-sm text-muted-foreground">{MODULES.length} módulos · {allLessons.length} lecciones disponibles</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={backToAcademy}>Ver todo</Button>
+                  <Button variant="outline" size="sm" onClick={backToAcademy}>Ver todas las lecciones</Button>
                 </div>
                 <div className="divide-y">
                   {MODULES.map(module => (
