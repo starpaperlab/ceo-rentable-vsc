@@ -69,6 +69,8 @@ export function normalizeOrderItems(rawItems = []) {
         unit_cost_snapshot: safeUnitCostSnapshot,
         unit_profit_snapshot: unitProfitSnapshot,
         margin_pct_snapshot: marginPctSnapshot,
+        cost_breakdown_snapshot: item?.cost_breakdown_snapshot || item?.cost_breakdown || {},
+        cost_engine_version_snapshot: Number(item?.cost_engine_version_snapshot ?? item?.cost_engine_version ?? 1) || 1,
         total: safeQuantity * safeUnitPrice,
         sort_order: Number.isFinite(Number(item?.sort_order)) ? Number(item.sort_order) : index,
       };
@@ -164,6 +166,8 @@ export function buildInvoiceFromOrder({ order, items, invoiceNumber }) {
     unit_cost_snapshot: item.unit_cost_snapshot,
     unit_profit_snapshot: item.unit_profit_snapshot,
     margin_pct_snapshot: item.margin_pct_snapshot,
+    cost_breakdown_snapshot: item.cost_breakdown_snapshot || {},
+    cost_engine_version_snapshot: item.cost_engine_version_snapshot || 1,
     quantity: item.quantity,
     total: item.total,
   }));
