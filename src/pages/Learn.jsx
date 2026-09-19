@@ -25,9 +25,9 @@ const ACADEMY_MODULES = [
       {
         number: 1,
         title: 'Conociendo la interfaz principal',
-        description: 'Recorrido inicial por la interfaz de CEO Rentable OS™ y sus principales secciones.',
         youtubeId: 'Ly_UIS-Fe4U',
         duration: 'Video',
+        showDescription: false,
       },
     ],
   },
@@ -357,7 +357,9 @@ export default function Learn() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h4 className="font-semibold text-foreground">{lesson.title}</h4>
-                    <p className="mt-1 text-sm text-muted-foreground">{lesson.description}</p>
+                    {lesson.showDescription !== false && lesson.description ? (
+                      <p className="mt-1 text-sm text-muted-foreground">{lesson.description}</p>
+                    ) : null}
                     <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                       <PlayCircle className="h-3.5 w-3.5" />
                       {lesson.duration}
@@ -439,29 +441,46 @@ export default function Learn() {
               </DialogHeader>
 
               <div className="p-4 sm:p-6">
-                <div className="overflow-hidden rounded-2xl bg-black shadow-lg">
-                  <div className="aspect-video">
+                <div className="overflow-hidden rounded-[22px] border border-primary/20 bg-[#1A1A1A] shadow-[0_18px_55px_rgba(212,83,135,0.18)]">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-gradient-to-r from-primary/95 to-[#b84373] px-4 py-3 text-white">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
+                        <PlayCircle className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/75">Academia CEO Rentable</p>
+                        <p className="text-sm font-semibold">{openLesson.title}</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold">Módulo 1</span>
+                  </div>
+
+                  <div className="aspect-video bg-black">
                     <iframe
                       className="h-full w-full"
-                      src={`https://www.youtube.com/embed/${openLesson.youtubeId}?rel=0`}
+                      src={`https://www.youtube.com/embed/${openLesson.youtubeId}?rel=0&modestbranding=1&playsinline=1`}
                       title={openLesson.title}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
                     />
                   </div>
+
+                  <div className="h-1.5 bg-gradient-to-r from-primary via-[#D45387] to-[#F2B35B]" />
                 </div>
 
-                <div className="mt-5 rounded-2xl border bg-muted/20 p-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                    <div>
-                      <h3 className="font-semibold text-foreground">Objetivo de esta lección</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                        Familiarizarte con la interfaz principal de CEO Rentable OS™ para que sepas dónde encontrar las funciones que vas a utilizar durante el resto de la academia.
-                      </p>
+                {openLesson.showDescription !== false && openLesson.description ? (
+                  <div className="mt-5 rounded-2xl border bg-muted/20 p-4">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                      <div>
+                        <h3 className="font-semibold text-foreground">Sobre esta lección</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                          {openLesson.description}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             </>
           )}
