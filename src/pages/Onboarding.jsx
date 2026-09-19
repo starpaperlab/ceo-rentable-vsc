@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
 } from '@/config/industryTemplates';
 import { ExpenseStep, MaterialStep, EquipmentStep } from '@/components/onboarding/BusinessResourceSteps';
 
-const STEPS = ['Tu negocio','Industria','Lugar','Capacidad','Meta','Gastos','Materiales','Equipos','Resumen'];
+const STEPS = ['Tu negocio','Industria','Lugar','Capacidad','Meta','Gastos','Suscripciones','Materiales','Equipos','Resumen'];
 const FREQUENCIES = [
   ['monthly','Mensual'],['weekly','Semanal'],['quarterly','Trimestral'],
   ['semiannual','Semestral'],['annual','Anual'],['one_time','Pago único'],
@@ -56,6 +56,9 @@ function ToggleCard({ selected, title, subtitle, onClick }) {
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedStep = Number(searchParams.get('step'));
+  const editMode = searchParams.get('edit') === '1';
   const { user, refreshUserProfile } = useAuth();
   const { activeWorkspace, activeWorkspaceId, isLoadingWorkspace } = useWorkspace();
   const [step,setStep] = useState(0);
@@ -96,14 +99,15 @@ export default function Onboarding() {
         if(cancelled)return;
         setConfigId(next.id);
         setConfig({...emptyConfig,...next,industry_codes:next.industry_codes||[],workplace_modes:next.workplace_modes||[]});
-        setStep(Math.min(Number(next.onboarding_step||0),STEPS.length-1));
+        const initialStep = Number.isInteger(requestedStep) && requestedStep >= 0 && requestedStep < STEPS.length ? requestedStep : Math.min(Number(next.onboarding_step||0),STEPS.length-1);
+        setStep(initialStep);
         setExpenses(exp||[]); setMaterials(mat||[]); setEquipment(eq||[]);
         hydrated.current=true;
       } catch(e){ console.error(e); if(!cancelled)setError(e?.message||'No pudimos cargar la configuración.'); }
       finally{if(!cancelled)setLoading(false);}
     })();
     return()=>{cancelled=true;};
-  },[activeWorkspaceId,activeWorkspace?.name,activeWorkspace?.currency_code,activeWorkspace?.timezone,isLoadingWorkspace,user?.id,user?.email]);
+  },[activeWorkspaceId,activeWorkspace?.name,activeWorkspace?.currency_code,activeWorkspace?.timezone,isLoadingWorkspace,user?.id,user?.email,requestedStep]);
 
   useEffect(()=>{
     if(!hydrated.current || !configId || !activeWorkspaceId)return;
@@ -191,7 +195,7 @@ export default function Onboarding() {
       const {error:userError}=await supabase.from('users').update({onboarding_completed:true,currency:config.currency||'DOP',updated_at:now}).eq('id',user.id);
       if(userError)throw userError;
       await refreshUserProfile();
-      navigate('/Dashboard',{replace:true});
+      navigate(editMode?'/WorkspaceSettings':'/Dashboard',{replace:true});
     }catch(e){console.error(e);setError(e?.message||'No pudimos completar la configuración.');}
     finally{setSaving(false);}
   };
@@ -224,21 +228,23 @@ export default function Onboarding() {
 
           {step===4 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Cuánto te gustaría ganar personalmente al mes?</h2><p className="mt-2 text-sm text-muted-foreground">Es el dinero que quieres recibir tú. No son las ventas totales del negocio.</p></div><div className="max-w-sm"><label className="text-sm font-semibold">Meta mensual personal</label><div className="relative mt-2"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">RD$</span><Input className={`${inputClass} pl-12`} type="number" min="0" value={config.personal_income_goal??''} onChange={e=>setConfig(p=>({...p,personal_income_goal:e.target.value}))}/></div></div></div>}
 
-          {step===5 && <ExpenseStep suggestions={template.expenses} rows={expenses} setRows={setExpenses} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
+          {step===5 && <ExpenseStep mode="expenses" suggestions={template.expenses} rows={expenses} setRows={setExpenses} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
 
-          {step===6 && <MaterialStep title={productBusiness?'Materiales e insumos':'Materiales (opcional)'} subtitle={productBusiness?'Dinos cuánto pagaste y cuánta cantidad compraste. El costo unitario lo calculará CEO Rentable en el Bloque B.':'Si tu servicio utiliza materiales, puedes registrarlos ahora o completar después.'} suggestions={template.materials} rows={materials} setRows={setMaterials} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
+          {step===6 && <ExpenseStep mode="subscriptions" suggestions={template.subscriptions} rows={expenses} setRows={setExpenses} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
 
-          {step===7 && <EquipmentStep suggestions={template.equipment} rows={equipment} setRows={setEquipment} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
+          {step===7 && <MaterialStep title={productBusiness?'Materiales e insumos':'Materiales (opcional)'} subtitle={productBusiness?'Dinos cuánto pagaste y cuánta cantidad compraste. El costo unitario lo calculará CEO Rentable en el Bloque B.':'Si tu servicio utiliza materiales, puedes registrarlos ahora o completar después.'} suggestions={template.materials} rows={materials} setRows={setMaterials} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
 
-          {step===8 && <div className="space-y-5"><div className="rounded-2xl bg-primary/10 p-5"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-5 w-5"/></div><h2 className="text-2xl font-bold">Ya conocemos mejor tu negocio.</h2><p className="mt-2 text-sm text-muted-foreground">CEO Rentable utilizará esta información para calcular automáticamente tus costos, gastos indirectos, precio recomendado y rentabilidad en los siguientes motores.</p></div><div className="grid gap-3 sm:grid-cols-2"><Summary label="Qué vendes" value={BUSINESS_MODELS.find(x=>x.id===config.business_model)?.label}/><Summary label="Lugar de trabajo" value={WORKPLACE_OPTIONS.find(x=>config.workplace_modes.includes(x[0]))?.[1]}/><Summary label="Gastos registrados" value={expenses.length}/><Summary label="Materiales principales" value={materials.length}/><Summary label="Equipos" value={equipment.length}/><Summary label="Meta personal" value={money(config.personal_income_goal)}/></div><div className="rounded-2xl border p-4"><div className="flex items-center justify-between"><div><p className="font-semibold">Configuración del negocio</p><p className="text-xs text-muted-foreground">Porcentaje calculado con 10 criterios definidos, no de forma arbitraria.</p></div><span className="text-xl font-black text-primary">{completion}%</span></div></div></div>}
+          {step===8 && <EquipmentStep suggestions={template.equipment} rows={equipment} setRows={setEquipment} workspaceId={activeWorkspaceId} user={user} onError={setError}/>} 
+
+          {step===9 && <div className="space-y-5"><div className="rounded-2xl bg-primary/10 p-5"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-5 w-5"/></div><h2 className="text-2xl font-bold">Ya conocemos mejor tu negocio.</h2><p className="mt-2 text-sm text-muted-foreground">CEO Rentable utilizará esta información para calcular automáticamente tus costos, gastos indirectos, precio recomendado y rentabilidad en los siguientes motores.</p></div><div className="grid gap-3 sm:grid-cols-2"><Summary label="Qué vendes" value={BUSINESS_MODELS.find(x=>x.id===config.business_model)?.label}/><Summary label="Lugar de trabajo" value={WORKPLACE_OPTIONS.find(x=>config.workplace_modes.includes(x[0]))?.[1]}/><Summary label="Gastos registrados" value={expenses.length}/><Summary label="Materiales principales" value={materials.length}/><Summary label="Equipos" value={equipment.length}/><Summary label="Meta personal" value={money(config.personal_income_goal)}/></div><div className="rounded-2xl border p-4"><div className="flex items-center justify-between"><div><p className="font-semibold">Configuración del negocio</p><p className="text-xs text-muted-foreground">Porcentaje calculado con 10 criterios definidos, no de forma arbitraria.</p></div><span className="text-xl font-black text-primary">{completion}%</span></div></div></div>}
 
           {error && <div className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
           <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Button variant="outline" onClick={goBack} disabled={step===0}><ArrowLeft className="mr-2 h-4 w-4"/>Atrás</Button>
-            {step<STEPS.length-1 ? <Button onClick={goNext} disabled={!canContinue()}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button> : <Button onClick={complete} disabled={saving}>{saving?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<Check className="mr-2 h-4 w-4"/>}Entrar a CEO Rentable</Button>}
+            {step<STEPS.length-1 ? <Button onClick={goNext} disabled={!canContinue()}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button> : <Button onClick={complete} disabled={saving}>{saving?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<Check className="mr-2 h-4 w-4"/>}{editMode?'Guardar y volver a Mi negocio':'Entrar a CEO Rentable'}</Button>}
           </div>
-          {step>=5 && step<8 && <button type="button" onClick={goNext} className="mt-3 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline">Completar después</button>}
+          {step>=5 && step<9 && <button type="button" onClick={goNext} className="mt-3 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline">Completar después</button>}
         </div>
       </div>
     </div>
