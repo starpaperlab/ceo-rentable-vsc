@@ -1461,7 +1461,7 @@ export default function Products() {
     return generateUniqueSku(inventoryModalProduct.product.name, existingSkus)
   }, [existingSkus, inventoryForm.sku, inventoryModalProduct])
 
-  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBundleItems
+  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBusinessMaterials || loadingBusinessExpenses || loadingBusinessEquipment || loadingBundleItems
   if (isLoadingPage) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -1491,13 +1491,14 @@ export default function Products() {
         </Card>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {[
           ['Activos', activeProducts.length],
           ['Precio promedio', formatMoney(averageValue('sale_price'))],
           ['Margen promedio', `${averageValue('margin').toFixed(1)}%`],
           ['Margen bajo', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario) === 'review').length],
           ['Con pérdida', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario) === 'loss').length],
+          ['Costos por revisar', activeProducts.filter((product) => product.cost_status === 'review' || product.cost_status === 'incomplete').length],
         ].map(([label, value]) => (
           <Card key={label} className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></Card>
         ))}
