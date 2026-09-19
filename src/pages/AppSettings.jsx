@@ -112,7 +112,11 @@ function buildSettingsForm(config = {}, userProfile, ownerEmail) {
     next_invoice_number: Number(config.next_invoice_number || 1),
     next_quote_number: Number(config.next_quote_number || 1),
     quarterly_goal: Number(config.quarterly_goal || 0),
-    target_margin_pct: Number(config.target_margin_pct || 40),
+    target_margin_pct: Number(config.target_margin_pct ?? 40),
+    minimum_margin_pct: Number(config.minimum_margin_pct ?? 20),
+    payment_fee_pct: Number(config.payment_fee_pct ?? 0),
+    payment_fixed_fee: Number(config.payment_fixed_fee ?? 0),
+    commercial_rounding: Number(config.commercial_rounding ?? 10),
     logo_size: config.logo_size || 'medium',
     logo_width: Number(config.logo_width || LOGO_SIZE_OPTIONS.medium),
   };
@@ -132,6 +136,10 @@ function serializeSettingsForm(raw) {
     fiscal_address: raw.fiscal_address || raw.address || '',
     quarterly_goal: Number(raw.quarterly_goal || 0),
     target_margin_pct: Number(raw.target_margin_pct || 0),
+    minimum_margin_pct: Number(raw.minimum_margin_pct || 0),
+    payment_fee_pct: Number(raw.payment_fee_pct || 0),
+    payment_fixed_fee: Number(raw.payment_fixed_fee || 0),
+    commercial_rounding: Math.max(0.01, Number(raw.commercial_rounding || 10)),
     tax_rate: Number(raw.tax_rate || 0),
     next_invoice_number: Math.max(1, Number(raw.next_invoice_number || 1)),
     next_quote_number: Math.max(1, Number(raw.next_quote_number || 1)),
@@ -152,7 +160,10 @@ function isMeaningfulSettingsDraft(payload) {
     Boolean(`${payload?.whatsapp_url || ''}`.trim()) ||
     payload?.currency !== 'USD' ||
     Number(payload?.quarterly_goal || 0) > 0 ||
-    Number(payload?.target_margin_pct || 0) !== 40
+    Number(payload?.target_margin_pct || 0) !== 40 ||
+    Number(payload?.minimum_margin_pct || 0) !== 20 ||
+    Number(payload?.payment_fee_pct || 0) > 0 ||
+    Number(payload?.payment_fixed_fee || 0) > 0
   );
 }
 
@@ -639,8 +650,31 @@ export default function AppSettings() {
                 <Input type="number" value={form.quarterly_goal || ''} onChange={(e) => update('quarterly_goal', parseFloat(e.target.value) || 0)} className="mt-1" />
               </div>
               <div>
-                <Label className="text-xs">Meta de margen (%)</Label>
-                <Input type="number" value={form.target_margin_pct || ''} onChange={(e) => update('target_margin_pct', parseFloat(e.target.value) || 0)} className="mt-1" />
+                <Label className="text-xs">Margen objetivo (%)</Label>
+                <Input type="number" min="0" max="99.99" value={form.target_margin_pct ?? ''} onChange={(e) => update('target_margin_pct', Number(e.target.value || 0))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs">Margen mínimo (%)</Label>
+                <Input type="number" min="0" max="99.99" value={form.minimum_margin_pct ?? ''} onChange={(e) => update('minimum_margin_pct', Number(e.target.value || 0))} className="mt-1" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Por debajo de este nivel CEO Rentable te pedirá revisar el precio.</p>
+              </div>
+              <div>
+                <Label className="text-xs">Comisión / pasarela (%)</Label>
+                <Input type="number" min="0" max="99.99" step="0.01" value={form.payment_fee_pct ?? ''} onChange={(e) => update('payment_fee_pct', Number(e.target.value || 0))} className="mt-1" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Ej.: tarjeta, Hotmart, PayPal o marketplace.</p>
+              </div>
+              <div>
+                <Label className="text-xs">Cargo fijo por venta</Label>
+                <Input type="number" min="0" step="0.01" value={form.payment_fixed_fee ?? ''} onChange={(e) => update('payment_fixed_fee', Number(e.target.value || 0))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs">Redondeo comercial</Label>
+                <Select value={String(form.commercial_rounding || 10)} onValueChange={(value) => update('commercial_rounding', Number(value))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[1, 5, 10, 25, 50, 100].map((step) => <SelectItem key={step} value={String(step)}>Al múltiplo de {step}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </Card>
