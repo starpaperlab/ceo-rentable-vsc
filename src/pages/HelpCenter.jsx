@@ -251,7 +251,7 @@ export default function HelpCenter() {
                   </div>
                 </Card>
               </div>
-              <Card className="h-fit overflow-hidden">
+              <Card className={\`h-fit overflow-hidden \${MODULES[0].lessons.length === 1 ? 'hidden lg:block' : ''}\`}>
                 <div className="border-b bg-[#FFF4F8] p-4">
                   <p className="text-xs font-bold text-[#B83E70]">MÓDULO 1</p>
                   <h3 className="mt-1 font-bold">Conociendo CEO Rentable</h3>
