@@ -1,0 +1,29 @@
+name: Block B CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/costEngine.js'
+      - 'src/lib/catalogFinancials.js'
+      - 'src/pages/Products.jsx'
+      - 'src/components/onboarding/BusinessResourceSteps.jsx'
+      - 'tests/block-b-cost-engine.test.js'
+      - 'tests/catalog-financials.test.js'
+      - 'supabase/migrations/*block_b*.sql'
+      - '.github/workflows/block-b-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/block-b-cost-engine.test.js tests/catalog-financials.test.js
+      - run: npm run build
