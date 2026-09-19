@@ -35,6 +35,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       currency: item.currency || null,
       costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
       margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
+      cost_breakdown: item.cost_breakdown || item.cost_breakdown_snapshot || {},
+      cost_engine_version: item.cost_engine_version || item.cost_engine_version_snapshot || 1,
     }));
 
     const normalizedFromProducts = (products || []).map((item) => ({
@@ -54,6 +56,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       currency: item.currency || null,
       costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
       margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
+      cost_breakdown: item.cost_breakdown || item.cost_breakdown_snapshot || {},
+      cost_engine_version: item.cost_engine_version || item.cost_engine_version_snapshot || 1,
     }));
 
     const normalizedLocal = (localCreatedProducts || []).map((item) => ({
@@ -73,6 +77,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       currency: item.currency || null,
       costo_unitario: Number(item.costo_unitario ?? item.unit_cost_snapshot ?? 0),
       margin_pct: Number(item.margin_pct ?? item.margin_pct_snapshot ?? 0),
+      cost_breakdown: item.cost_breakdown || item.cost_breakdown_snapshot || {},
+      cost_engine_version: item.cost_engine_version || item.cost_engine_version_snapshot || 1,
     }));
 
     const map = new Map();
@@ -134,6 +140,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
       newItem.unit_cost_snapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;
       newItem.unit_profit_snapshot = Number.isFinite(unitProfitSnapshot) ? unitProfitSnapshot : 0;
       newItem.margin_pct_snapshot = unitPriceSnapshot > 0 ? (unitProfitSnapshot / unitPriceSnapshot) * 100 : 0;
+      newItem.cost_breakdown_snapshot = invItem.cost_breakdown || invItem.cost_breakdown_snapshot || {};
+      newItem.cost_engine_version_snapshot = invItem.cost_engine_version || invItem.cost_engine_version_snapshot || 1;
       if (invItem.descripcion != null) newItem.item_description = invItem.descripcion;
       if (invItem.sale_price != null) {
         newItem.unit_price = invItem.sale_price;
@@ -232,6 +240,8 @@ export default function LineItemsTable({ items, onChange, products = [], invento
               costo_unitario: Number(newItem.costo_unitario ?? newItem.unit_cost_snapshot ?? 0),
               tax_pct: Number(newItem.tax_pct || 0),
               currency: newItem.currency || null,
+              cost_breakdown: newItem.cost_breakdown || {},
+              cost_engine_version: newItem.cost_engine_version || 1,
             });
             setCreateModal(null);
           }}
