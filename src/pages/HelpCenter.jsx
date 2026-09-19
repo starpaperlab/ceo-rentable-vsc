@@ -53,6 +53,18 @@ const MODULES = [
   },
 ];
 
+const FINANCE_CONCEPTS = [
+  { term:'Rentabilidad', plain:'Te dice si el esfuerzo y el dinero que pones en tu negocio realmente están produciendo una ganancia suficiente.', example:'Si vendes RD$100,000, no significa que ganaste RD$100,000. La rentabilidad mira lo que queda después de considerar los costos.' },
+  { term:'Ganancia o utilidad', plain:'Es el dinero que queda después de restar a tus ventas todos los costos y gastos que corresponden.', example:'Vendiste RD$10,000 y entre producir y operar gastaste RD$7,000: tu ganancia es RD$3,000.' },
+  { term:'Margen de ganancia', plain:'Es qué porcentaje de cada venta termina convirtiéndose en ganancia.', example:'Si vendes algo en RD$1,000 y ganas RD$300, tu margen es 30%.' },
+  { term:'Markup', plain:'Es cuánto aumentas el costo para construir el precio de venta. No es lo mismo que margen.', example:'Si algo cuesta RD$500 y agregas 50% sobre ese costo, el precio sería RD$750.' },
+  { term:'Costos fijos', plain:'Son gastos que normalmente debes pagar aunque vendas poco o no vendas ese mes.', example:'Alquiler, internet, ciertos salarios o suscripciones.' },
+  { term:'Costos variables', plain:'Son costos que aumentan o disminuyen según lo que produces o vendes.', example:'Ingredientes, empaques, materiales o comisiones por venta.' },
+  { term:'Punto de equilibrio', plain:'Es el nivel de ventas en el que cubres tus costos, pero todavía no has generado ganancia.', example:'Por debajo pierdes dinero; al llegar al punto de equilibrio cubres tus costos; por encima comienzas a generar ganancia.' },
+  { term:'Cuentas por cobrar', plain:'Es dinero que tus clientes todavía te deben por ventas que ya realizaste.', example:'Entregaste un pedido de RD$8,000 y el cliente pagó RD$5,000: quedan RD$3,000 por cobrar.' },
+  { term:'Flujo de caja', plain:'Muestra el dinero que realmente entra y sale de tu negocio en un período.', example:'Puedes tener ventas registradas y aun así tener poco efectivo disponible si tus clientes todavía no te han pagado.' },
+];
+
 const HELP_CATEGORIES = [
   { key:'academy', title:'Academia CEO Rentable', description:'Curso paso a paso para dominar el sistema.', icon:GraduationCap, academy:true },
   { key:'dashboard', title:'Dashboard y CEO Score™', description:'Entiende tus indicadores y la salud de tu negocio.', icon:LayoutDashboard },
@@ -60,6 +72,7 @@ const HELP_CATEGORIES = [
   { key:'billing', title:'Cotizaciones y facturas', description:'Crea, envía y gestiona documentos comerciales.', icon:Receipt },
   { key:'receivables', title:'Cuentas por cobrar', description:'Da seguimiento a saldos y pagos pendientes.', icon:CreditCard },
   { key:'pipeline', title:'Pipeline y clientes', description:'Organiza oportunidades y seguimiento comercial.', icon:Target },
+  { key:'concepts', title:'Conceptos financieros sin complicaciones', description:'Rentabilidad, margen, punto de equilibrio y otros términos explicados en lenguaje sencillo.', icon:BookOpen, concepts:true },
   { key:'guides', title:'Guías de rentabilidad', description:'Conceptos y acciones para tomar mejores decisiones.', icon:BookOpen, path:'/Learn' },
   { key:'settings', title:'Configuración de tu negocio', description:'Personaliza los datos y preferencias de tu empresa.', icon:Settings },
 ];
@@ -205,8 +218,14 @@ export default function HelpCenter() {
   );
 
   useEffect(() => {
-    const isAcademy = searchParams.get('seccion') === 'academia';
+    const section = searchParams.get('seccion');
+    const isAcademy = section === 'academia';
     const lessonKey = searchParams.get('leccion');
+    if (section === 'conceptos') {
+      setView('concepts');
+      setActiveLesson(null);
+      return;
+    }
     if (!isAcademy) {
       setView('home');
       setActiveLesson(null);
@@ -275,9 +294,41 @@ export default function HelpCenter() {
 
   const openCategory = (category) => {
     if (category.academy) { openAcademy(); return; }
+    if (category.concepts) { setView('concepts'); setActiveLesson(null); setSearchParams({ seccion: 'conceptos' }); return; }
     if (category.path) { navigate(category.path); return; }
     setSearch(category.title);
   };
+
+  if (view === 'concepts') {
+    return (
+      <div className="min-h-full bg-gradient-to-b from-[#FFF7FA] via-background to-background">
+        <div className="mx-auto max-w-5xl p-4 lg:p-8">
+          <Button variant="ghost" className="mb-4 -ml-2 text-muted-foreground" onClick={backToHelpCenter}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Centro de Ayuda
+          </Button>
+          <div className="rounded-3xl border border-[#F1D7E2] bg-white p-6 shadow-sm lg:p-8">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#D45387]/10 px-3 py-1.5 text-xs font-bold text-[#B83E70]">
+              <BookOpen className="h-4 w-4" /> APRENDE SIN COMPLICACIONES
+            </div>
+            <h1 className="mt-3 text-2xl font-bold lg:text-3xl">Conceptos financieros que necesitas conocer</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">No necesitas ser contadora para entender tus números. Aquí explicamos cada término como lo usarías en tu negocio, con ejemplos sencillos.</p>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {FINANCE_CONCEPTS.map(item => (
+              <Card key={item.term} className="border-[#F0DCE5] p-5">
+                <h2 className="text-lg font-bold">{item.term}</h2>
+                <p className="mt-2 text-sm leading-6 text-foreground/80">{item.plain}</p>
+                <div className="mt-4 rounded-xl bg-[#FFF4F8] p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#B83E70]">Ejemplo sencillo</p>
+                  <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{item.example}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'academy') {
     return (
@@ -324,6 +375,17 @@ export default function HelpCenter() {
                 <Card className="mt-5 p-5">
                   <h3 className="font-semibold">Sobre esta lección</h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{activeLesson.description}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setView('concepts'); setActiveLesson(null); setSearchParams({ seccion: 'conceptos' }); }}
+                    className="mt-4 flex w-full items-center justify-between rounded-xl border border-[#F0DCE5] bg-[#FFF9FB] p-4 text-left transition hover:bg-[#FFF4F8]"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">¿Hay algún término que no entiendes?</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Consulta rentabilidad, margen, punto de equilibrio y otros conceptos.</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-[#B83E70]" />
+                  </button>
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Button onClick={() => markComplete(activeLesson)} className="bg-[#D45387] hover:bg-[#BC4778]">
                       <CheckCircle2 className="mr-2 h-4 w-4" /> {completed.has(activeLesson.key) ? 'Completada' : 'Marcar como completada'}
