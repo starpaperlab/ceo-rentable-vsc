@@ -403,22 +403,39 @@ function CatalogDialog({
   const profit = calculateProfit(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
   const margin = calculateMargin(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
   const markup = calculateMarkup(form.sale_price, cost, effectiveFeePct, effectiveFixedFee)
-  const pricingDecision = buildPricingDecision({
-    cost,
-    price: form.sale_price,
-    targetMargin: effectiveTargetMargin,
-    minimumMargin: effectiveMinimumMargin,
-    percentageFees: effectiveFeePct,
-    fixedFees: effectiveFixedFee,
-    commercialRounding: effectiveCommercialRounding,
-  })
+  let pricingDecision = {
+    minimumPrice: 0,
+    targetPrice: 0,
+    recommendedPrice: 0,
+    maxDiscountToCost: 0,
+    maxDiscountAtMinimumMargin: 0,
+  }
+  let pricingError = null
+  try {
+    pricingDecision = buildPricingDecision({
+      cost,
+      price: form.sale_price,
+      targetMargin: effectiveTargetMargin,
+      minimumMargin: effectiveMinimumMargin,
+      percentageFees: effectiveFeePct,
+      fixedFees: effectiveFixedFee,
+      commercialRounding: effectiveCommercialRounding,
+    })
+  } catch (error) {
+    pricingError = error?.message || 'Revisa margen y comisiones.'
+  }
   const profitPerHour = calculateProfitPerHour(profit, form.service_hours)
   const monthlyProfitGoal = Math.max(0, toNumber(businessConfig?.personal_income_goal))
   const requiredUnitsForGoal = monthlyProfitGoal > 0 ? calculateRequiredUnits(monthlyProfitGoal, profit) : 0
   const configuredCapacity = businessConfig?.monthly_capacity_unknown ? null : Math.max(0, toNumber(businessConfig?.monthly_capacity))
-  const capacityPrice = configuredCapacity > 0 && monthlyProfitGoal > 0
-    ? calculatePriceForDesiredProfit(cost, monthlyProfitGoal / configuredCapacity, effectiveFeePct, effectiveFixedFee)
-    : null
+  let capacityPrice = null
+  if (configuredCapacity > 0 && monthlyProfitGoal > 0) {
+    try {
+      capacityPrice = calculatePriceForDesiredProfit(cost, monthlyProfitGoal / configuredCapacity, effectiveFeePct, effectiveFixedFee)
+    } catch {
+      capacityPrice = null
+    }
+  }
   const contributionPerSale = calculateProfit(form.sale_price, directCost + laborCost, effectiveFeePct, effectiveFixedFee)
   const breakEvenUnits = automaticCostMode && structure.monthlyOverhead > 0
     ? calculateBreakEven(structure.monthlyOverhead, contributionPerSale)
@@ -509,6 +526,10 @@ function CatalogDialog({
     }
     if (effectiveFeePct < 0 || effectiveFeePct >= 100 || effectiveFixedFee < 0) {
       toast.error('Revisa las comisiones o costos de pasarela.')
+      return
+    }
+    if (effectiveTargetMargin + effectiveFeePct >= 100 || effectiveMinimumMargin + effectiveFeePct >= 100) {
+      toast.error('Margen + comisión debe ser menor de 100%.')
       return
     }
     if (
@@ -769,7 +790,7 @@ function CatalogDialog({
               <div><h3 className="font-semibold">Precio inteligente</h3><p className="text-xs text-muted-foreground">CEO Rentable convierte tu costo real en una decisión de precio.</p></div>
               <ProfitabilityBadge price={form.sale_price} cost={cost} minimumMargin={effectiveMinimumMargin} targetMargin={effectiveTargetMargin} percentageFees={effectiveFeePct} fixedFees={effectiveFixedFee} />
             </div>
-            {profit < 0 ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Con este precio perderías <b>{formatMoney(Math.abs(profit))}</b>.</span></div> : margin < effectiveMinimumMargin ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Este precio cubre tus costos, pero deja un margen de solo <b>{margin.toFixed(1)}%</b>.</span></div> : null}
+            {pricingError ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{pricingError}</span></div> : profit < 0 ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Con este precio perderías <b>{formatMoney(Math.abs(profit))}</b>.</span></div> : margin < effectiveMinimumMargin ? <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Este precio cubre tus costos, pero deja un margen de solo <b>{margin.toFixed(1)}%</b>.</span></div> : null}
             <div className="mt-3 grid gap-3 sm:grid-cols-5">
               <div><p className="text-xs text-muted-foreground">Costo real</p><p className="font-bold">{formatMoney(cost)}</p></div>
               <div><p className="text-xs text-muted-foreground">Ganancia</p><p className="font-bold">{formatMoney(profit)}</p></div>
@@ -839,25 +860,26 @@ function ProfitabilitySimulator({ formatMoney }) {
   const markup = calculateMarkup(price, cost, percentageFees, fixedFees)
   const requiredUnits = calculateRequiredUnits(desiredMonthlyProfit, profit)
   const discountImpact = calculateDiscountImpact({ price, cost, discountPct, percentageFees, fixedFees })
-  const maxSafeDiscount = calculateMaxSafeDiscount({ price, cost, percentageFees, fixedFees, minimumMargin })
   const profitPerHour = calculateProfitPerHour(profit, hours)
   let targetPrice = null
   let desiredProfitPrice = null
   let minimumPrice = null
+  let maxSafeDiscount = 0
+  let simulatorError = null
   try {
     targetPrice = calculatePriceForMargin(cost, targetMargin, percentageFees, fixedFees)
     desiredProfitPrice = calculatePriceForDesiredProfit(cost, desiredUnitProfit, percentageFees, fixedFees)
     minimumPrice = calculateMinimumPrice(cost, { percentageFees, fixedFees, minimumMargin })
-  } catch {
-    targetPrice = null
-    desiredProfitPrice = null
-    minimumPrice = null
+    maxSafeDiscount = calculateMaxSafeDiscount({ price, cost, percentageFees, fixedFees, minimumMargin })
+  } catch (error) {
+    simulatorError = error?.message || 'Revisa los porcentajes.'
   }
 
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /><h2 className="font-bold">Simulador de precio inteligente</h2></div>
       <p className="mt-1 text-sm text-muted-foreground">Prueba precio, margen, utilidad o descuento sin modificar tu catálogo.</p>
+      {simulatorError ? <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">{simulatorError}</div> : null}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border p-4">
           <p className="text-sm font-semibold">Si vendo a este precio</p>
