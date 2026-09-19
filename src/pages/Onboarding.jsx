@@ -1,634 +1,251 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/lib/AuthContext'
-import { supabase } from '@/lib/supabase'
-import { ensureDbUserRecord } from '@/lib/ensureDbUser'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { ArrowRight, AlertCircle, Store, Package2, Settings2 } from 'lucide-react'
-import { hasOwnerConstraintIssue, isMissingColumnError } from '@/lib/supabaseOwnership'
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
+import {
+  BUSINESS_MODELS,
+  WORKPLACE_OPTIONS,
+  industryOptionsFor,
+  mergedIndustryTemplate,
+  setupCompletion,
+} from '@/config/industryTemplates';
 
-const ONBOARDING_AUDIT_SEED_KEY = 'ceo_onboarding_audit_seed'
+const STEPS = ['Tu negocio','Industria','Lugar','Capacidad','Meta','Gastos','Materiales','Equipos','Resumen'];
+const FREQUENCIES = [
+  ['monthly','Mensual'],['weekly','Semanal'],['quarterly','Trimestral'],
+  ['semiannual','Semestral'],['annual','Anual'],['one_time','Pago único'],
+];
+const UNITS = ['unidad','hoja','paquete','caja','libra','kilogramo','gramo','litro','mililitro','metro','pie','yarda','docena','otro'];
+const EXPENSE_CATEGORIES = [
+  ['operacion','Operación'],['software','Software y herramientas'],['administracion','Administración'],
+  ['marketing','Marketing'],['equipos','Equipos'],['otro','Otro'],
+];
 
-function persistAuditSeed({ userId, userEmail, seed }) {
-  if (typeof window === 'undefined') return
+const emptyConfig = {
+  business_name: '', currency: 'DOP', business_model: null, industry_codes: [], custom_industry: '',
+  workplace_modes: [], custom_workplace: '', work_days_per_week: '', work_hours_per_day: '',
+  monthly_capacity: '', monthly_capacity_unknown: false, personal_income_goal: '',
+  onboarding_status: 'not_started', onboarding_step: 0, onboarding_answers: {},
+};
 
-  const normalizedEmail = `${userEmail || ''}`.trim().toLowerCase()
-  const payload = JSON.stringify(seed)
+const cardBase = 'rounded-2xl border p-4 text-left transition';
+const inputClass = 'h-11 rounded-xl bg-background';
 
-  window.localStorage.setItem(ONBOARDING_AUDIT_SEED_KEY, payload)
-  if (userId) {
-    window.localStorage.setItem(`${ONBOARDING_AUDIT_SEED_KEY}:${userId}`, payload)
-  }
-  if (normalizedEmail) {
-    window.localStorage.setItem(`${ONBOARDING_AUDIT_SEED_KEY}:${normalizedEmail}`, payload)
-  }
+function money(value) {
+  const n = Number(value || 0);
+  return new Intl.NumberFormat('es-DO',{style:'currency',currency:'DOP',maximumFractionDigits:0}).format(Number.isFinite(n)?n:0);
 }
 
-function buildAuditSeed(formData) {
-  const price = parseFloat(formData.first_product_price || 0)
-  const cost = parseFloat(formData.first_product_cost || 0)
-
-  return {
-    source: 'onboarding',
-    name: formData.first_product_name.trim(),
-    type: 'fisico',
-    price: Number.isFinite(price) ? `${price}` : '',
-    materials: Number.isFinite(cost) ? `${cost}` : '',
-    hidden: '',
-    time: '',
-    hourly: '',
-    commission: '',
-    ads: '',
-    created_at: new Date().toISOString(),
-  }
-}
-
-function isOnConflictTargetError(error) {
-  const message = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
+function ToggleCard({ selected, title, subtitle, onClick }) {
   return (
-    error?.code === '42P10' ||
-    message.includes('no unique or exclusion constraint matching the on conflict specification')
-  )
+    <button type="button" onClick={onClick} className={`${cardBase} ${selected ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-card hover:border-primary/40'}`}>
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>
+          {selected && <Check className="h-3.5 w-3.5" />}
+        </div>
+        <div><p className="font-semibold text-foreground">{title}</p>{subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}</div>
+      </div>
+    </button>
+  );
 }
 
 export default function Onboarding() {
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const [step, setStep] = useState(0)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
+  const navigate = useNavigate();
+  const { user, refreshUserProfile } = useAuth();
+  const { activeWorkspace, activeWorkspaceId, isLoadingWorkspace } = useWorkspace();
+  const [step,setStep] = useState(0);
+  const [config,setConfig] = useState(emptyConfig);
+  const [configId,setConfigId] = useState(null);
+  const [expenses,setExpenses] = useState([]);
+  const [materials,setMaterials] = useState([]);
+  const [equipment,setEquipment] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [saving,setSaving] = useState(false);
+  const [error,setError] = useState('');
+  const hydrated = useRef(false);
 
-  const [formData, setFormData] = useState({
-    business_name: '',
-    currency: 'DOP',
-    timezone: 'America/Santo_Domingo',
-    first_product_name: '',
-    first_product_price: '',
-    first_product_cost: '',
-  })
+  const template = useMemo(()=>mergedIndustryTemplate(config.industry_codes || []),[config.industry_codes]);
+  const completion = useMemo(()=>setupCompletion(config,{expenses:expenses.length,materials:materials.length,equipment:equipment.length}),[config,expenses.length,materials.length,equipment.length]);
+  const productBusiness = config.business_model === 'products' || config.business_model === 'both';
 
-  const calculateMargin = () => {
-    if (!formData.first_product_price || !formData.first_product_cost) return null
-    const price = parseFloat(formData.first_product_price)
-    const cost = parseFloat(formData.first_product_cost)
-    return ((price - cost) / price) * 100
-  }
-
-  const margin = calculateMargin()
-  const progress = ((step + 1) / 3) * 100
-  const inputClassName =
-    'h-12 rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#D45387]/25 focus:border-[#D45387]'
-
-  const handleStep0 = () => {
-    if (!formData.business_name.trim()) {
-      setError('Por favor ingresa el nombre de tu negocio')
-      return
-    }
-    setError(null)
-    setStep(1)
-  }
-
-  const handleStep1 = () => {
-    if (!formData.first_product_name.trim()) {
-      setError('Por favor ingresa el nombre del producto')
-      return
-    }
-    if (!formData.first_product_price || !formData.first_product_cost) {
-      setError('Por favor ingresa precio y costo')
-      return
-    }
-
-    persistAuditSeed({
-      userId: user?.id,
-      userEmail: user?.email,
-      seed: buildAuditSeed(formData),
-    })
-
-    setError(null)
-    setStep(2)
-  }
-
-  const handleSubmit = async () => {
-    if (!user) {
-      setError('Usuario no autenticado')
-      return
-    }
-
-    setSaving(true)
-    setError(null)
-
-    try {
-      const price = parseFloat(formData.first_product_price)
-      const cost = parseFloat(formData.first_product_cost)
-      const marginPct = ((price - cost) / price) * 100
-      const auditSeed = buildAuditSeed(formData)
-
-      // Guardamos seed primero para asegurar handoff hacia Rentabilidad
-      persistAuditSeed({
-        userId: user.id,
-        userEmail: user.email,
-        seed: auditSeed,
-      })
-
-      // 1) Asegurar perfil base en users
-      await ensureDbUserRecord({
-        user,
-        userProfile: {
-          id: user.id,
-          email: user.email,
-          currency: formData.currency,
-          timezone: formData.timezone,
-          onboarding_completed: true,
-          has_access: true,
-          role: 'user',
-          plan: 'free',
-        },
-      })
-
-      // 2) Marcar onboarding completo en users (solo columnas compatibles)
-      const updateUser = async (payload) => {
-        const { error } = await supabase
-          .from('users')
-          .update(payload)
-          .eq('id', user.id)
-        if (error) throw error
-      }
-
+  useEffect(()=>{
+    if (isLoadingWorkspace || !user?.id || !activeWorkspaceId) return;
+    let cancelled=false;
+    (async()=>{
+      setLoading(true); setError('');
       try {
-        await updateUser({
-          currency: formData.currency,
-          timezone: formData.timezone,
-          onboarding_completed: true,
-          updated_at: new Date().toISOString(),
-        })
-      } catch (userError) {
-        if (
-          isMissingColumnError(userError, 'users.currency') ||
-          isMissingColumnError(userError, 'currency') ||
-          isMissingColumnError(userError, 'users.timezone') ||
-          isMissingColumnError(userError, 'timezone') ||
-          isMissingColumnError(userError, 'users.onboarding_completed') ||
-          isMissingColumnError(userError, 'onboarding_completed')
-        ) {
-          await updateUser({ updated_at: new Date().toISOString() })
-        } else {
-          throw new Error(`Error actualizando usuario: ${userError.message}`)
+        const [{data:cfg,error:cfgError},{data:exp,error:expError},{data:mat,error:matError},{data:eq,error:eqError}] = await Promise.all([
+          supabase.from('business_config').select('*').eq('workspace_id',activeWorkspaceId).maybeSingle(),
+          supabase.from('business_expenses').select('*').eq('workspace_id',activeWorkspaceId).order('created_at'),
+          supabase.from('business_materials').select('*').eq('workspace_id',activeWorkspaceId).order('created_at'),
+          supabase.from('business_equipment').select('*').eq('workspace_id',activeWorkspaceId).order('created_at'),
+        ]);
+        if (cfgError) throw cfgError; if (expError) throw expError; if (matError) throw matError; if (eqError) throw eqError;
+        let next=cfg;
+        if (!next) {
+          const payload={user_id:user.id,created_by:(user.email||'').toLowerCase(),workspace_id:activeWorkspaceId,business_name:activeWorkspace?.name||'Mi negocio',currency:activeWorkspace?.currency_code||'DOP',timezone:activeWorkspace?.timezone||'America/Santo_Domingo',onboarding_status:'in_progress',onboarding_step:0};
+          const created=await supabase.from('business_config').insert(payload).select('*').single();
+          if (created.error) throw created.error;
+          next=created.data;
         }
-      }
+        if(cancelled)return;
+        setConfigId(next.id);
+        setConfig({...emptyConfig,...next,industry_codes:next.industry_codes||[],workplace_modes:next.workplace_modes||[]});
+        setStep(Math.min(Number(next.onboarding_step||0),STEPS.length-1));
+        setExpenses(exp||[]); setMaterials(mat||[]); setEquipment(eq||[]);
+        hydrated.current=true;
+      } catch(e){ console.error(e); if(!cancelled)setError(e?.message||'No pudimos cargar la configuración.'); }
+      finally{if(!cancelled)setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[activeWorkspaceId,activeWorkspace?.name,activeWorkspace?.currency_code,activeWorkspace?.timezone,isLoadingWorkspace,user?.id,user?.email]);
 
-      // 3) Guardar/actualizar configuración de negocio
-      const configPayload = {
-        user_id: user.id,
-        created_by: (user.email || '').toLowerCase(),
-        business_name: formData.business_name,
-        currency: formData.currency,
-        quarterly_goal: 0,
-        target_margin_pct: 40,
-        updated_at: new Date().toISOString(),
-      }
+  useEffect(()=>{
+    if(!hydrated.current || !configId || !activeWorkspaceId)return;
+    const timer=setTimeout(async()=>{
+      const payload={
+        business_name: config.business_name || activeWorkspace?.name || 'Mi negocio',
+        currency: config.currency || activeWorkspace?.currency_code || 'DOP',
+        business_model: config.business_model || null,
+        industry_codes: config.industry_codes || [],
+        custom_industry: config.custom_industry || null,
+        workplace_modes: config.workplace_modes || [],
+        custom_workplace: config.custom_workplace || null,
+        work_days_per_week: config.work_days_per_week === '' ? null : Number(config.work_days_per_week),
+        work_hours_per_day: config.work_hours_per_day === '' ? null : Number(config.work_hours_per_day),
+        monthly_capacity: config.monthly_capacity === '' ? null : Number(config.monthly_capacity),
+        monthly_capacity_unknown: Boolean(config.monthly_capacity_unknown),
+        personal_income_goal: config.personal_income_goal === '' ? null : Number(config.personal_income_goal),
+        onboarding_status: config.onboarding_status === 'completed' ? 'completed' : 'in_progress',
+        onboarding_step: step,
+        onboarding_answers: {...(config.onboarding_answers||{}),setup_completion_pct:completion},
+        updated_at:new Date().toISOString(),
+      };
+      const {error:saveError}=await supabase.from('business_config').update(payload).eq('id',configId).eq('workspace_id',activeWorkspaceId);
+      if(saveError){console.error(saveError);setError('No pudimos guardar automáticamente este cambio.');}
+    },550);
+    return()=>clearTimeout(timer);
+  },[config,configId,activeWorkspaceId,activeWorkspace?.name,activeWorkspace?.currency_code,step,completion]);
 
-      const upsertConfig = async (payload) => {
-        const { error } = await supabase
-          .from('business_config')
-          .upsert(payload, { onConflict: 'user_id' })
-        if (error) throw error
-      }
-
-      const saveConfigWithoutOnConflict = async (payload) => {
-        const nowIso = new Date().toISOString()
-
-        const findExistingByUserId = async () => {
-          if (!payload.user_id) return null
-
-          const { data, error } = await supabase
-            .from('business_config')
-            .select('id')
-            .eq('user_id', payload.user_id)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-
-          if (error) throw error
-          return data?.[0]?.id || null
-        }
-
-        const findExistingByCreatedBy = async () => {
-          if (!payload.created_by) return null
-
-          const { data, error } = await supabase
-            .from('business_config')
-            .select('id')
-            .eq('created_by', payload.created_by)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-
-          if (error) throw error
-          return data?.[0]?.id || null
-        }
-
-        let existingId = null
-
-        try {
-          existingId = await findExistingByUserId()
-        } catch (lookupByUserError) {
-          if (
-            !isMissingColumnError(lookupByUserError, 'business_config.user_id') &&
-            !isMissingColumnError(lookupByUserError, 'user_id')
-          ) {
-            throw lookupByUserError
-          }
-        }
-
-        if (!existingId) {
-          try {
-            existingId = await findExistingByCreatedBy()
-          } catch (lookupByCreatedByError) {
-            if (
-              !isMissingColumnError(lookupByCreatedByError, 'business_config.created_by') &&
-              !isMissingColumnError(lookupByCreatedByError, 'created_by')
-            ) {
-              throw lookupByCreatedByError
-            }
-          }
-        }
-
-        if (existingId) {
-          const updatePayload = {
-            business_name: payload.business_name,
-            currency: payload.currency,
-            quarterly_goal: payload.quarterly_goal,
-            target_margin_pct: payload.target_margin_pct,
-            updated_at: nowIso,
-          }
-
-          const { error } = await supabase
-            .from('business_config')
-            .update(updatePayload)
-            .eq('id', existingId)
-
-          if (error) throw error
-          return
-        }
-
-        const insertPayload = {
-          ...payload,
-          created_at: nowIso,
-          updated_at: nowIso,
-        }
-
-        const { error } = await supabase
-          .from('business_config')
-          .insert(insertPayload)
-
-        if (error) throw error
-      }
-
-      try {
-        await upsertConfig(configPayload)
-      } catch (configError) {
-        if (isOnConflictTargetError(configError)) {
-          await saveConfigWithoutOnConflict(configPayload)
-        } else if (
-          isMissingColumnError(configError, 'business_config.user_id') ||
-          isMissingColumnError(configError, 'user_id') ||
-          isMissingColumnError(configError, 'business_config.created_by') ||
-          isMissingColumnError(configError, 'created_by')
-        ) {
-          const legacy = { ...configPayload }
-          delete legacy.user_id
-          delete legacy.created_by
-          const { error: retryError } = await supabase.from('business_config').insert({
-            ...legacy,
-            created_at: new Date().toISOString(),
-          })
-          if (retryError) throw retryError
-        } else if (hasOwnerConstraintIssue(configError, 'business_config')) {
-          const legacy = { ...configPayload }
-          delete legacy.user_id
-          const { error: retryError } = await supabase.from('business_config').insert({
-            ...legacy,
-            created_at: new Date().toISOString(),
-          })
-          if (retryError) throw retryError
-        } else {
-          throw configError
-        }
-      }
-
-      // 4) Crear primer producto
-      const productPayload = {
-        user_id: user.id,
-        created_by: (user.email || '').toLowerCase(),
-        name: formData.first_product_name,
-        sale_price: price,
-        costo_unitario: cost,
-        margin_pct: marginPct,
-        current_stock: 0,
-        status: 'active',
-      }
-
-      const { error: productError } = await supabase
-        .from('products')
-        .insert(productPayload)
-
-      if (productError) {
-        if (
-          isMissingColumnError(productError, 'products.user_id') ||
-          isMissingColumnError(productError, 'user_id') ||
-          isMissingColumnError(productError, 'products.created_by') ||
-          isMissingColumnError(productError, 'created_by')
-        ) {
-          const legacy = { ...productPayload }
-          delete legacy.user_id
-          delete legacy.created_by
-          const { error: retryError } = await supabase.from('products').insert(legacy)
-          if (retryError) throw new Error(`Error creando producto: ${retryError.message}`)
-        } else if (hasOwnerConstraintIssue(productError, 'products')) {
-          const legacy = { ...productPayload }
-          delete legacy.user_id
-          const { error: retryError } = await supabase.from('products').insert(legacy)
-          if (retryError) throw new Error(`Error creando producto: ${retryError.message}`)
-        } else {
-          throw new Error(`Error creando producto: ${productError.message}`)
-        }
-      }
-
-      navigate('/Profitability', { state: { onboardingAuditSeed: auditSeed, fromOnboarding: true } })
-    } catch (err) {
-      console.error('Onboarding error:', err)
-      const auditSeed = buildAuditSeed(formData)
-
-      persistAuditSeed({
-        userId: user?.id,
-        userEmail: user?.email,
-        seed: auditSeed,
-      })
-
-      // Fallback: aunque falle una escritura secundaria, permitimos continuar
-      // al panel de auditoría con los datos cargados para no bloquear onboarding.
-      navigate('/Profitability', {
-        state: {
-          onboardingAuditSeed: auditSeed,
-          fromOnboarding: true,
-          onboardingWarning: err?.message || 'Continuamos a rentabilidad con guardado parcial.',
-        },
-      })
+  const toggleIndustry=(code)=>{
+    if(config.business_model==='both'){
+      setConfig(p=>({...p,industry_codes:p.industry_codes.includes(code)?p.industry_codes.filter(x=>x!==code):[...p.industry_codes.filter(x=>x!=='other'),code]}));
+    } else {
+      setConfig(p=>({...p,industry_codes:[code]}));
     }
+  };
+
+  const canContinue=()=>{
+    if(step===0)return Boolean(config.business_model);
+    if(step===1)return config.industry_codes.length>0 && (!config.industry_codes.includes('other') || config.custom_industry.trim());
+    if(step===2)return config.workplace_modes.length>0 && (!config.workplace_modes.includes('other') || config.custom_workplace.trim());
+    if(step===3)return config.work_days_per_week!=='' && config.work_hours_per_day!=='' && (config.monthly_capacity_unknown || config.monthly_capacity!=='');
+    if(step===4)return config.personal_income_goal!=='';
+    return true;
+  };
+
+  const goNext=()=>{if(!canContinue()){setError('Completa la información principal de este paso.');return;}setError('');setStep(s=>Math.min(s+1,STEPS.length-1));};
+  const goBack=()=>{setError('');setStep(s=>Math.max(0,s-1));};
+
+  const addExpense=async(preset='')=>{
+    if(!preset) preset=window.prompt('Nombre del gasto')||'';
+    if(!preset.trim())return;
+    const amount=Number(window.prompt('Monto aproximado en RD$','0')||0);
+    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),amount:Number.isFinite(amount)?amount:0,category:'operacion',frequency:'monthly',usage_scope:'business',is_subscription:false,source:'onboarding'};
+    const {data,error:e}=await supabase.from('business_expenses').insert(payload).select('*').single();
+    if(e){setError(e.message);return;} setExpenses(x=>[...x,data]);
+  };
+  const addMaterial=async(preset='')=>{
+    if(!preset) preset=window.prompt('Nombre del material o insumo')||'';
+    if(!preset.trim())return;
+    const purchasePrice=Number(window.prompt('¿Cuánto pagaste? RD$','0')||0);
+    const quantity=Number(window.prompt('¿Cuántas unidades trae o compraste?','1')||1);
+    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),purchase_price:Math.max(0,purchasePrice||0),purchase_quantity:Math.max(0.0001,quantity||1),unit:'unidad',source:'onboarding'};
+    const {data,error:e}=await supabase.from('business_materials').insert(payload).select('*').single();
+    if(e){setError(e.message);return;} setMaterials(x=>[...x,data]);
+  };
+  const addEquipment=async(preset='')=>{
+    if(!preset) preset=window.prompt('Nombre del equipo o herramienta')||'';
+    if(!preset.trim())return;
+    const price=Number(window.prompt('Precio aproximado en RD$','0')||0);
+    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),estimated_price:Math.max(0,price||0),usage_scope:'business',usage_intensity:'regular',source:'onboarding'};
+    const {data,error:e}=await supabase.from('business_equipment').insert(payload).select('*').single();
+    if(e){setError(e.message);return;} setEquipment(x=>[...x,data]);
+  };
+  const removeRow=async(table,id,setter)=>{
+    const {error:e}=await supabase.from(table).delete().eq('id',id).eq('workspace_id',activeWorkspaceId);
+    if(e){setError(e.message);return;} setter(rows=>rows.filter(x=>x.id!==id));
+  };
+
+  const complete=async()=>{
+    setSaving(true);setError('');
+    try{
+      const now=new Date().toISOString();
+      const {error:cfgError}=await supabase.from('business_config').update({onboarding_status:'completed',onboarding_step:STEPS.length-1,onboarding_completed_at:now,onboarding_answers:{...(config.onboarding_answers||{}),setup_completion_pct:completion},updated_at:now}).eq('id',configId).eq('workspace_id',activeWorkspaceId);
+      if(cfgError)throw cfgError;
+      const {error:userError}=await supabase.from('users').update({onboarding_completed:true,currency:config.currency||'DOP',updated_at:now}).eq('id',user.id);
+      if(userError)throw userError;
+      await refreshUserProfile();
+      navigate('/Dashboard',{replace:true});
+    }catch(e){console.error(e);setError(e?.message||'No pudimos completar la configuración.');}
+    finally{setSaving(false);}
+  };
+
+  if(loading || isLoadingWorkspace){
+    return <div className="min-h-[100dvh] bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>;
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#F7F3EE] via-[#fffdfd] to-[#F7E6EF] flex items-center justify-center p-4">
-      <div className="pointer-events-none absolute -top-32 -left-28 h-72 w-72 rounded-full bg-[#D45387]/15 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[#D45387]/12 blur-3xl" />
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="w-full max-w-xl"
-      >
-        <div className="mb-4 flex justify-center">
-          <div className="inline-flex items-center gap-3 rounded-2xl border border-[#EED8E3] bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
-            <img
-              src="/brand/isotipo.png"
-              alt="CEO Rentable OS"
-              className="h-9 w-9 object-contain"
-            />
-            <div className="leading-tight">
-              <p className="text-sm font-bold text-[#D45387]">CEO Rentable OS™</p>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Plataforma financiera</p>
-            </div>
-          </div>
+    <div className="min-h-[100dvh] bg-background text-foreground">
+      <div className="mx-auto w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3"><img src="/brand/isotipo.png" alt="CEO Rentable" className="h-10 w-10"/><div><p className="font-bold">CEO Rentable OS™</p><p className="text-xs text-muted-foreground">Tú conoces tu negocio. CEO Rentable hace los cálculos.</p></div></div>
+          <div className="text-right"><p className="text-xs text-muted-foreground">Configuración</p><p className="font-bold text-primary">{completion}%</p></div>
         </div>
 
-        <div className="rounded-[28px] border border-[#EDD6E2] bg-white/95 p-6 shadow-[0_30px_80px_rgba(212,83,135,0.16)] sm:p-8">
-          <div className="mb-6">
-            <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-              <span>Paso {step + 1} de 3</span>
-              <span>{step === 0 ? 'Negocio' : step === 1 ? 'Producto' : 'Configuración'}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[#F2E7ED]">
-              <motion.div
-                initial={false}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.35, ease: 'easeOut' }}
-                className="h-full rounded-full bg-gradient-to-r from-[#D45387] to-[#C63C77]"
-              />
-            </div>
-          </div>
-
-        <AnimatePresence mode="wait">
-          {/* STEP 0: Nombre del negocio */}
-          {step === 0 && (
-            <motion.div
-              key="step0"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-6"
-            >
-              <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
-                  <Store className="h-6 w-6" />
-                </div>
-                <h1 className="text-3xl font-black text-slate-900">
-                  Bienvenida a <span className="text-[#D45387]">CEO Rentable</span>
-                </h1>
-                <p className="mt-2 text-sm text-slate-600">Configura tu negocio en menos de 2 minutos.</p>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    ¿Cómo se llama tu negocio?
-                  </label>
-                  <Input
-                    placeholder="Ej: Mi Tienda Online"
-                    value={formData.business_name}
-                    onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-                    className={inputClassName}
-                  />
-                </div>
-
-                {error && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleStep0}
-                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76]"
-                >
-                  Continuar <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 1: Primer producto */}
-          {step === 1 && (
-            <motion.div
-              key="step1"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-5"
-            >
-              <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
-                  <Package2 className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900">Tu primer producto</h2>
-                <p className="text-sm text-slate-600 mt-1">Este dato alimenta tus análisis desde el primer día.</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">
-                    Nombre del producto
-                  </label>
-                  <Input
-                    placeholder="Ej: Camiseta Premium"
-                    value={formData.first_product_name}
-                    onChange={(e) => setFormData({ ...formData, first_product_name: e.target.value })}
-                    className={inputClassName}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700">
-                      Precio de venta
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="0.00"
-                      value={formData.first_product_price}
-                      onChange={(e) => setFormData({ ...formData, first_product_price: e.target.value })}
-                      className={inputClassName}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700">
-                      Costo
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="0.00"
-                      value={formData.first_product_cost}
-                      onChange={(e) => setFormData({ ...formData, first_product_cost: e.target.value })}
-                      className={inputClassName}
-                    />
-                  </div>
-                </div>
-
-                {margin !== null && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    <p className="text-sm">
-                      <span className="text-slate-600">Margen estimado: </span>
-                      <span className="font-bold text-emerald-600">{margin.toFixed(1)}%</span>
-                    </p>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleStep1}
-                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76]"
-                >
-                  Continuar <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* STEP 2: Configuración */}
-          {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-5"
-            >
-              <div className="text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#D45387]/12 text-[#D45387]">
-                  <Settings2 className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900">Casi listo</h2>
-                <p className="text-sm text-slate-600 mt-1">Confirma tu moneda y zona horaria para personalizar reportes.</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">
-                    Moneda
-                  </label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="h-12 w-full rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:border-[#D45387] focus:outline-none focus:ring-2 focus:ring-[#D45387]/25"
-                  >
-                    <option value="DOP">RD$ (Peso Dominicano)</option>
-                    <option value="USD">$ (Dólar USD)</option>
-                    <option value="EUR">€ (Euro)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">
-                    Zona horaria
-                  </label>
-                  <select
-                    value={formData.timezone}
-                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                    className="h-12 w-full rounded-xl border border-[#E7DDE6] bg-[#FCFAFD] px-3 text-sm text-slate-800 focus:border-[#D45387] focus:outline-none focus:ring-2 focus:ring-[#D45387]/25"
-                  >
-                    <option value="America/Santo_Domingo">Santo Domingo (AST)</option>
-                    <option value="America/New_York">Nueva York (EST)</option>
-                    <option value="America/Los_Angeles">Los Angeles (PST)</option>
-                    <option value="America/Mexico_City">Mexico City (CST)</option>
-                  </select>
-                </div>
-
-                {error && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                )}
-
-                {saving && (
-                  <div className="flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
-                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-blue-700">Configurando tu negocio...</p>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleSubmit}
-                  disabled={saving}
-                  className="h-12 w-full rounded-xl bg-[#D45387] font-bold text-white hover:bg-[#C03A76] disabled:opacity-50"
-                >
-                  {saving ? 'Un momento...' : '¡Comenzar!'}
-                </Button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="mb-6">
+          <div className="mb-2 flex justify-between text-xs text-muted-foreground"><span>Paso {step+1} de {STEPS.length}</span><span>{STEPS[step]}</span></div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{width:`${((step+1)/STEPS.length)*100}%`}}/></div>
         </div>
-      </motion.div>
+
+        <div className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-7">
+          {step===0 && <div className="space-y-5"><div><h1 className="text-2xl font-black sm:text-3xl">¿Qué vende tu negocio?</h1><p className="mt-2 text-sm text-muted-foreground">Esto define las preguntas que verás después.</p></div><div className="grid gap-3 sm:grid-cols-3">{BUSINESS_MODELS.map(x=><ToggleCard key={x.id} selected={config.business_model===x.id} title={x.label} subtitle={x.description} onClick={()=>setConfig(p=>({...p,business_model:x.id,industry_codes:[]}))}/>)}</div></div>}
+
+          {step===1 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-sm text-muted-foreground">Selecciona la opción que más se parezca. Si combinas actividades, puedes marcar varias.</p></div><div className="grid gap-2 sm:grid-cols-2">{industryOptionsFor(config.business_model).map(([id,label])=><ToggleCard key={id} selected={config.industry_codes.includes(id)} title={label} onClick={()=>toggleIndustry(id)}/>)}</div>{config.industry_codes.includes('other')&&<Input className={inputClass} value={config.custom_industry||''} onChange={e=>setConfig(p=>({...p,custom_industry:e.target.value}))} placeholder="Escribe tu tipo de negocio"/>}</div>}
+
+          {step===2 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Desde dónde trabajas principalmente?</h2><p className="mt-2 text-sm text-muted-foreground">Esto nos ayudará luego a separar correctamente los gastos del negocio y del hogar.</p></div><div className="grid gap-2 sm:grid-cols-2">{WORKPLACE_OPTIONS.map(([id,label])=><ToggleCard key={id} selected={config.workplace_modes.includes(id)} title={label} onClick={()=>setConfig(p=>({...p,workplace_modes:id==='combined'?[id]:[id]}))}/>)}</div>{config.workplace_modes.includes('other')&&<Input className={inputClass} value={config.custom_workplace||''} onChange={e=>setConfig(p=>({...p,custom_workplace:e.target.value}))} placeholder="¿Desde dónde trabajas?"/>}</div>}
+
+          {step===3 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">Cuéntanos tu capacidad normal</h2><p className="mt-2 text-sm text-muted-foreground">No buscamos exactitud contable. Una aproximación útil es suficiente.</p></div><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2 text-sm font-semibold">Días por semana<Input className={inputClass} type="number" min="0" max="7" value={config.work_days_per_week??''} onChange={e=>setConfig(p=>({...p,work_days_per_week:e.target.value}))}/></label><label className="space-y-2 text-sm font-semibold">Horas al día<Input className={inputClass} type="number" min="0" max="24" step="0.5" value={config.work_hours_per_day??''} onChange={e=>setConfig(p=>({...p,work_hours_per_day:e.target.value}))}/></label></div><label className="block space-y-2 text-sm font-semibold">{template.capacityLabel}<Input className={inputClass} type="number" min="0" disabled={config.monthly_capacity_unknown} value={config.monthly_capacity??''} onChange={e=>setConfig(p=>({...p,monthly_capacity:e.target.value,monthly_capacity_unknown:false}))}/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.monthly_capacity_unknown} onChange={e=>setConfig(p=>({...p,monthly_capacity_unknown:e.target.checked,monthly_capacity:e.target.checked?'':p.monthly_capacity}))}/> No estoy segura</label></div>}
+
+          {step===4 && <div className="space-y-5"><div><h2 className="text-2xl font-bold">¿Cuánto te gustaría ganar personalmente al mes?</h2><p className="mt-2 text-sm text-muted-foreground">Es el dinero que quieres recibir tú. No son las ventas totales del negocio.</p></div><div className="max-w-sm"><label className="text-sm font-semibold">Meta mensual personal</label><div className="relative mt-2"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">RD$</span><Input className={`${inputClass} pl-12`} type="number" min="0" value={config.personal_income_goal??''} onChange={e=>setConfig(p=>({...p,personal_income_goal:e.target.value}))}/></div></div></div>}
+
+          {step===5 && <CollectionStep title="Gastos del negocio" subtitle="Empieza por los más importantes. Luego podrás completar los demás." suggestions={template.expenses} onSuggestion={addExpense} onAdd={()=>addExpense()} rows={expenses} renderRow={x=><><div><p className="font-semibold">{x.name}</p><p className="text-xs text-muted-foreground">{money(x.amount)} · {FREQUENCIES.find(f=>f[0]===x.frequency)?.[1]||x.frequency}</p></div><button onClick={()=>removeRow('business_expenses',x.id,setExpenses)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4"/></button></>}/>}
+
+          {step===6 && <CollectionStep title={productBusiness?'Materiales e insumos':'Materiales (opcional)'} subtitle={productBusiness?'Dinos cuánto pagaste y cuánta cantidad compraste. El costo unitario lo calculará CEO Rentable.':'Si tu servicio utiliza materiales, puedes registrarlos ahora o completar después.'} suggestions={template.materials} onSuggestion={addMaterial} onAdd={()=>addMaterial()} rows={materials} renderRow={x=><><div><p className="font-semibold">{x.name}</p><p className="text-xs text-muted-foreground">{money(x.purchase_price)} · {x.purchase_quantity} {x.unit}</p></div><button onClick={()=>removeRow('business_materials',x.id,setMaterials)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4"/></button></>}/>}
+
+          {step===7 && <CollectionStep title="Equipos y herramientas" subtitle="No te pediremos depreciación ni vida útil. Solo información sencilla que usaremos después." suggestions={template.equipment} onSuggestion={addEquipment} onAdd={()=>addEquipment()} rows={equipment} renderRow={x=><><div><p className="font-semibold">{x.name}</p><p className="text-xs text-muted-foreground">{money(x.estimated_price)} · uso {x.usage_intensity==='high'?'alto':x.usage_intensity==='low'?'bajo':'regular'}</p></div><button onClick={()=>removeRow('business_equipment',x.id,setEquipment)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4"/></button></>}/>}
+
+          {step===8 && <div className="space-y-5"><div className="rounded-2xl bg-primary/10 p-5"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-5 w-5"/></div><h2 className="text-2xl font-bold">Ya conocemos mejor tu negocio.</h2><p className="mt-2 text-sm text-muted-foreground">CEO Rentable utilizará esta información para calcular automáticamente tus costos, gastos indirectos, precio recomendado y rentabilidad en los siguientes motores.</p></div><div className="grid gap-3 sm:grid-cols-2"><Summary label="Qué vendes" value={BUSINESS_MODELS.find(x=>x.id===config.business_model)?.label}/><Summary label="Lugar de trabajo" value={WORKPLACE_OPTIONS.find(x=>config.workplace_modes.includes(x[0]))?.[1]}/><Summary label="Gastos registrados" value={expenses.length}/><Summary label="Materiales principales" value={materials.length}/><Summary label="Equipos" value={equipment.length}/><Summary label="Meta personal" value={money(config.personal_income_goal)}/></div><div className="rounded-2xl border p-4"><div className="flex items-center justify-between"><div><p className="font-semibold">Configuración del negocio</p><p className="text-xs text-muted-foreground">Porcentaje calculado con 10 criterios definidos, no de forma arbitraria.</p></div><span className="text-xl font-black text-primary">{completion}%</span></div></div></div>}
+
+          {error && <div className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+
+          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button variant="outline" onClick={goBack} disabled={step===0}><ArrowLeft className="mr-2 h-4 w-4"/>Atrás</Button>
+            {step<STEPS.length-1 ? <Button onClick={goNext} disabled={!canContinue()}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button> : <Button onClick={complete} disabled={saving}>{saving?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<Check className="mr-2 h-4 w-4"/>}Entrar a CEO Rentable</Button>}
+          </div>
+          {step>=5 && step<8 && <button type="button" onClick={goNext} className="mt-3 w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline">Completar después</button>}
+        </div>
+      </div>
     </div>
-  )
+  );
 }
+
+function CollectionStep({title,subtitle,suggestions,onSuggestion,onAdd,rows,renderRow}){
+  return <div className="space-y-5"><div><h2 className="text-2xl font-bold">{title}</h2><p className="mt-2 text-sm text-muted-foreground">{subtitle}</p></div>{suggestions?.length>0&&<div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sugerencias para tu negocio</p><div className="flex flex-wrap gap-2">{suggestions.map(item=><button key={item} type="button" onClick={()=>onSuggestion(item)} className="rounded-full border bg-background px-3 py-2 text-sm hover:border-primary hover:text-primary">+ {item}</button>)}</div></div>}<Button type="button" variant="outline" onClick={onAdd}><Plus className="mr-2 h-4 w-4"/>Agregar otro</Button><div className="space-y-2">{rows.map(row=><div key={row.id} className="flex items-center justify-between rounded-xl border bg-background p-3">{renderRow(row)}</div>)}{!rows.length&&<p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">Todavía no has agregado ninguno.</p>}</div></div>;
+}
+
+function Summary({label,value}){return <div className="rounded-xl border bg-background p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold">{value||'Pendiente'}</p></div>;}
