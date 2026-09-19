@@ -20,6 +20,15 @@ export function normalizeInvoiceTotal(invoice = {}) {
   }, 0));
 }
 
+export function getInvoiceNetRevenue(invoice = {}) {
+  const beforeTax = Number(invoice.subtotal_before_tax);
+  if (Number.isFinite(beforeTax) && beforeTax >= 0) return roundMoney(beforeTax);
+
+  const total = normalizeInvoiceTotal(invoice);
+  const tax = Number(invoice.tax_amount || 0);
+  return roundMoney(Math.max(0, total - (Number.isFinite(tax) ? tax : 0)));
+}
+
 export function getInvoiceDirectCost(invoice = {}) {
   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
   const fromLines = lineItems.reduce((sum, item) => {
@@ -90,8 +99,9 @@ export function getConfiguredMonthlyFixedCosts(items = []) {
 function getPeriodSales(invoices, monthKey) {
   const rows = invoices.filter((invoice) => !isCanceled(invoice) && getMonthKey(invoiceDate(invoice)) === monthKey);
   const billed = roundMoney(rows.reduce((sum, invoice) => sum + normalizeInvoiceTotal(invoice), 0));
+  const netRevenue = roundMoney(rows.reduce((sum, invoice) => sum + getInvoiceNetRevenue(invoice), 0));
   const directCosts = roundMoney(rows.reduce((sum, invoice) => sum + getInvoiceDirectCost(invoice), 0));
-  return { rows, billed, directCosts };
+  return { rows, billed, netRevenue, directCosts };
 }
 
 function getCollectionsForMonth({ invoices, paymentsByInvoice, monthKey }) {
@@ -129,13 +139,14 @@ function getPeriodSnapshot({ invoices, paymentsByInvoice, monthlyRecords, monthK
     : sales.directCosts > MONEY_EPSILON
       ? sales.directCosts
       : null;
-  const profit = expenses == null ? null : roundMoney(sales.billed - expenses);
-  const margin = expenses != null && sales.billed > MONEY_EPSILON ? (profit / sales.billed) * 100 : null;
+  const profit = expenses == null ? null : roundMoney(sales.netRevenue - expenses);
+  const margin = expenses != null && sales.netRevenue > MONEY_EPSILON ? (profit / sales.netRevenue) * 100 : null;
   const collected = getCollectionsForMonth({ invoices, paymentsByInvoice, monthKey });
 
   return {
     monthKey,
     billed: sales.billed,
+    netRevenue: sales.netRevenue,
     collected,
     directCosts: sales.directCosts,
     expenses,
@@ -198,8 +209,8 @@ export function buildDashboardFinancials({
 
   const receivables = buildReceivablesSnapshot({ invoices, invoicePayments, now });
   const configuredFixedCosts = getConfiguredMonthlyFixedCosts(costLibraryItems);
-  const contributionMarginRatio = current.billed > MONEY_EPSILON
-    ? Math.max(0, Math.min(1, (current.billed - current.directCosts) / current.billed))
+  const contributionMarginRatio = current.netRevenue > MONEY_EPSILON
+    ? Math.max(0, Math.min(1, (current.netRevenue - current.directCosts) / current.netRevenue))
     : 0;
 
   let breakEven = null;
@@ -255,6 +266,7 @@ export function buildSixMonthTrend({
       monthKey,
       periodo: date.toLocaleDateString('es-DO', { month: 'short' }),
       facturado: sales.billed,
+      ingresoNeto: sales.netRevenue,
       cobrado: getCollectionsForMonth({ invoices, paymentsByInvoice, monthKey }),
       gastos: hasExpenses ? roundMoney(Number(record.expenses || 0)) : null,
       gastosRegistrados: hasExpenses,
@@ -273,6 +285,8 @@ export function buildCeoScore({
   financials,
   products = [],
   overdueOperationalItems = 0,
+  targetMargin = 40,
+  minimumMargin = 20,
 } = {}) {
   const current = financials?.current || {};
   const receivables = financials?.receivables || {};
@@ -294,7 +308,9 @@ export function buildCeoScore({
 
   const hasMargin = current.margin != null;
   const margin = hasMargin ? Number(current.margin) : null;
-  const marginScore = hasMargin ? clampScore((margin / 40) * 100) : null;
+  const safeTargetMargin = Math.max(1, Number(targetMargin || 40));
+  const safeMinimumMargin = Math.max(0, Number(minimumMargin ?? 20));
+  const marginScore = hasMargin ? clampScore((margin / safeTargetMargin) * 100) : null;
 
   const growthValue = Number(financials?.growth?.billed || 0);
   const growthScore = clampScore(50 + Math.max(-50, Math.min(50, growthValue)));
@@ -316,7 +332,10 @@ export function buildCeoScore({
   const collectionScore = clampScore((collectionRate * 80) + ((1 - overdueRatio) * 20));
 
   const activeProducts = products.filter((product) => (product.status || 'active') !== 'inactive');
-  const lowMarginProducts = activeProducts.filter((product) => Number(product.margin_pct || 0) < 20);
+  const lowMarginProducts = activeProducts.filter((product) => {
+    const threshold = Number(product.minimum_margin ?? safeMinimumMargin);
+    return Number(product.margin_pct || 0) < threshold;
+  });
   const lossProducts = activeProducts.filter((product) => Number(product.margin_pct || 0) < 0);
   const productScore = activeProducts.length
     ? clampScore(100 - ((lowMarginProducts.length / activeProducts.length) * 70) - ((lossProducts.length / activeProducts.length) * 30))
@@ -354,11 +373,11 @@ export function buildCeoScore({
 
   const actions = [];
   if (overdueAmount > MONEY_EPSILON) actions.push('Prioriza el cobro de facturas vencidas.');
-  if (margin != null && margin < 20 && billed > MONEY_EPSILON) actions.push('Revisa costos y precios para recuperar margen.');
+  if (margin != null && margin < safeMinimumMargin && billed > MONEY_EPSILON) actions.push('Revisa costos y precios para recuperar margen.');
   if (growthValue < -10) actions.push('Activa seguimiento comercial para recuperar ventas del mes.');
   if (expenseRatio != null && expenseRatio > 0.8 && billed > MONEY_EPSILON) actions.push('Revisa gastos: están consumiendo más del 80% de lo facturado.');
   if (lossProducts.length > 0) actions.push('Corrige productos que se están vendiendo con pérdida.');
-  else if (lowMarginProducts.length > 0) actions.push('Ajusta los productos con margen menor al 20%.');
+  else if (lowMarginProducts.length > 0) actions.push('Ajusta los productos que están por debajo de su margen mínimo.');
   if (overdueOperationalItems > 0) actions.push('Completa o reprograma seguimientos y actividades vencidas.');
   if (!actions.length) actions.push('Mantén el ritmo actual y revisa semanalmente margen, cobros y crecimiento.');
 
