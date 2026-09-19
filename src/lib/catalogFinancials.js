@@ -150,6 +150,49 @@ export function calculateCommercialPrice(price, increment = 10) {
   return roundMoney(Math.ceil(safePrice / step) * step)
 }
 
+export function resolvePricingSettings({
+  product = {},
+  businessConfig = {},
+  categorySettings = [],
+} = {}) {
+  const categoryKey = `${product.category || ''}`.trim().toLowerCase()
+  const categoryRule = categoryKey
+    ? categorySettings.find((rule) => `${rule?.category || ''}`.trim().toLowerCase() === categoryKey)
+    : null
+  const override = product.pricing_override_enabled === true
+  const source = override ? 'product' : categoryRule ? 'category' : 'business'
+
+  const business = {
+    targetMargin: toFiniteNumber(businessConfig.target_margin_pct ?? 40),
+    minimumMargin: toFiniteNumber(businessConfig.minimum_margin_pct ?? 20),
+    percentageFees: toFiniteNumber(businessConfig.payment_fee_pct ?? 0),
+    fixedFees: toFiniteNumber(businessConfig.payment_fixed_fee ?? 0),
+    commercialRounding: Math.max(0.01, toFiniteNumber(businessConfig.commercial_rounding ?? 10) || 10),
+  }
+
+  if (override) {
+    return {
+      source,
+      categoryRule,
+      targetMargin: toFiniteNumber(product.target_margin ?? business.targetMargin),
+      minimumMargin: toFiniteNumber(product.minimum_margin ?? business.minimumMargin),
+      percentageFees: toFiniteNumber(product.percentage_fees ?? business.percentageFees),
+      fixedFees: toFiniteNumber(product.fixed_fees ?? business.fixedFees),
+      commercialRounding: Math.max(0.01, toFiniteNumber(product.commercial_rounding ?? business.commercialRounding) || business.commercialRounding),
+    }
+  }
+
+  return {
+    source,
+    categoryRule,
+    targetMargin: toFiniteNumber(categoryRule?.target_margin ?? business.targetMargin),
+    minimumMargin: toFiniteNumber(categoryRule?.minimum_margin ?? business.minimumMargin),
+    percentageFees: toFiniteNumber(categoryRule?.percentage_fees ?? business.percentageFees),
+    fixedFees: toFiniteNumber(categoryRule?.fixed_fees ?? business.fixedFees),
+    commercialRounding: Math.max(0.01, toFiniteNumber(categoryRule?.commercial_rounding ?? business.commercialRounding) || business.commercialRounding),
+  }
+}
+
 export function buildPricingDecision({
   cost = 0,
   price = 0,
