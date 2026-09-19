@@ -426,7 +426,7 @@ export function buildTopProducts({
   const invoicedOrderIds = new Set(activeInvoices.filter((invoice) => invoice.order_id).map((invoice) => invoice.order_id));
   const metrics = new Map();
 
-  const add = ({ productId = null, name, revenue = 0, quantity = 0, cost = null }) => {
+  const add = ({ productId = null, name, revenue = 0, quantity = 0, cost = null, profit = null }) => {
     const normalized = normalizedName(name);
     if (!normalized) return;
     const matchedProduct = productId ? productsById.get(productId) : productsByName.get(normalized);
@@ -439,6 +439,8 @@ export function buildTopProducts({
       knownCost: 0,
       costCoverageRevenue: 0,
       transactions: 0,
+      knownProfit: 0,
+      profitCoverageRevenue: 0,
     };
 
     const safeRevenue = roundMoney(revenue);
@@ -448,6 +450,10 @@ export function buildTopProducts({
     if (cost != null && Number.isFinite(Number(cost))) {
       current.knownCost = roundMoney(current.knownCost + Number(cost || 0));
       current.costCoverageRevenue = roundMoney(current.costCoverageRevenue + safeRevenue);
+    }
+    if (profit != null && Number.isFinite(Number(profit))) {
+      current.knownProfit = roundMoney(current.knownProfit + Number(profit || 0));
+      current.profitCoverageRevenue = roundMoney(current.profitCoverageRevenue + safeRevenue);
     }
     metrics.set(key, current);
   };
@@ -459,12 +465,14 @@ export function buildTopProducts({
       const revenue = Number(item.total || (quantity * Number(item.unit_price || 0)) || 0);
       const unitCost = Number(item.unit_cost_snapshot || 0);
       const hasCostSnapshot = unitCost > MONEY_EPSILON;
+      const unitProfit = Number(item.unit_profit_snapshot);
       add({
         productId: item.product_id || null,
         name: item.description || item.item_description || productsById.get(item.product_id)?.name,
         revenue,
         quantity,
         cost: hasCostSnapshot ? quantity * unitCost : null,
+        profit: Number.isFinite(unitProfit) ? quantity * unitProfit : null,
       });
     });
 
@@ -478,22 +486,28 @@ export function buildTopProducts({
         const productId = item.product_id || null;
         const name = item.description || item.name || productsById.get(productId)?.name || 'Producto';
         const snapshotCost = Number(item.unit_cost_snapshot ?? item.unit_cost ?? item.cost ?? 0);
+        const snapshotProfit = Number(item.unit_profit_snapshot);
         add({
           productId,
           name,
           revenue,
           quantity,
           cost: snapshotCost > MONEY_EPSILON ? quantity * snapshotCost : null,
+          profit: Number.isFinite(snapshotProfit) ? quantity * snapshotProfit : null,
         });
       });
     });
 
   const rows = Array.from(metrics.values()).map((item) => {
-    const profit = item.costCoverageRevenue > MONEY_EPSILON
-      ? roundMoney(item.costCoverageRevenue - item.knownCost)
-      : null;
-    const margin = profit != null && item.costCoverageRevenue > MONEY_EPSILON
-      ? (profit / item.costCoverageRevenue) * 100
+    const hasProfitSnapshots = item.profitCoverageRevenue > MONEY_EPSILON;
+    const profit = hasProfitSnapshots
+      ? roundMoney(item.knownProfit)
+      : item.costCoverageRevenue > MONEY_EPSILON
+        ? roundMoney(item.costCoverageRevenue - item.knownCost)
+        : null;
+    const profitRevenueBase = hasProfitSnapshots ? item.profitCoverageRevenue : item.costCoverageRevenue;
+    const margin = profit != null && profitRevenueBase > MONEY_EPSILON
+      ? (profit / profitRevenueBase) * 100
       : null;
     return {
       ...item,
