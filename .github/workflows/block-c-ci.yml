@@ -1,0 +1,29 @@
+name: Block C CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/catalogFinancials.js'
+      - 'src/pages/Products.jsx'
+      - 'src/components/billing/LineItemsTable.jsx'
+      - 'src/lib/orders.js'
+      - 'tests/block-c-pricing-engine.test.js'
+      - 'tests/catalog-financials.test.js'
+      - 'supabase/migrations/*block_c*.sql'
+      - '.github/workflows/block-c-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/block-c-pricing-engine.test.js tests/catalog-financials.test.js tests/block-b-cost-engine.test.js
+      - run: npm run build
