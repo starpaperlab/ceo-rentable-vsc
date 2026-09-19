@@ -295,6 +295,7 @@ function CatalogDialog({
   businessExpenses,
   businessEquipment,
   bundleItems,
+  priceHistory,
   currency,
   formatMoney,
   onClose,
@@ -331,6 +332,9 @@ function CatalogDialog({
       // Storage can be unavailable in private/restricted browser contexts.
     }
   }, [draftKey, form])
+  const itemPriceHistory = initial?.id
+    ? (priceHistory || []).filter((row) => row.product_id === initial.id).slice(0, 5)
+    : []
   const existingCatalogSkus = products.map((product) => product?.sku).filter(Boolean)
   const updateName = (value) => {
     setForm((current) => ({
@@ -833,6 +837,22 @@ function CatalogDialog({
               </div>
             ) : null}
           </section>
+
+          {itemPriceHistory.length > 0 ? (
+            <section className="rounded-2xl border border-border bg-background p-4">
+              <div><h3 className="font-semibold">Historial de precios</h3><p className="text-xs text-muted-foreground">Los cambios anteriores conservan el costo y margen que existían en ese momento.</p></div>
+              <div className="mt-3 space-y-2">
+                {itemPriceHistory.map((entry) => (
+                  <div key={entry.id} className="grid gap-2 rounded-xl bg-muted/30 p-3 text-sm sm:grid-cols-4">
+                    <div><p className="text-[11px] text-muted-foreground">Cambio</p><p className="font-semibold">{formatMoney(entry.old_price)} → {formatMoney(entry.new_price)}</p></div>
+                    <div><p className="text-[11px] text-muted-foreground">Costo al momento</p><p className="font-semibold">{formatMoney(entry.cost_snapshot)}</p></div>
+                    <div><p className="text-[11px] text-muted-foreground">Margen</p><p className="font-semibold">{Number(entry.margin_snapshot || 0).toFixed(1)}%</p></div>
+                    <div><p className="text-[11px] text-muted-foreground">Fecha</p><p className="font-semibold">{entry.changed_at ? format(new Date(entry.changed_at), 'dd/MM/yy HH:mm') : '—'}</p></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </fieldset>
 
         <div className="sticky bottom-0 z-20 flex shrink-0 justify-end gap-2 border-t bg-background p-4 sm:p-6 sm:pt-4">
@@ -1023,6 +1043,12 @@ export default function Products() {
     enabled,
   })
 
+  const { data: priceHistory = [], isLoading: loadingPriceHistory } = useQuery({
+    queryKey: ['product-price-history', ...contextQueryKey],
+    queryFn: async () => fetchRows({ table: 'product_price_history', orderBy: 'changed_at', ascending: false }),
+    enabled,
+  })
+
   const refreshCatalog = () => {
     queryClient.invalidateQueries({ queryKey: ['products'] })
     queryClient.invalidateQueries({ queryKey: ['product-cost-components'] })
@@ -1030,6 +1056,7 @@ export default function Products() {
     queryClient.invalidateQueries({ queryKey: ['product-bundle-items'] })
     queryClient.invalidateQueries({ queryKey: ['products-inventory-items'] })
     queryClient.invalidateQueries({ queryKey: ['inventory-items'] })
+    queryClient.invalidateQueries({ queryKey: ['product-price-history'] })
   }
 
   const inventoryLookup = useMemo(() => {
@@ -1643,7 +1670,7 @@ export default function Products() {
     return generateUniqueSku(inventoryModalProduct.product.name, existingSkus)
   }, [existingSkus, inventoryForm.sku, inventoryModalProduct])
 
-  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBusinessMaterials || loadingBusinessExpenses || loadingBusinessEquipment || loadingBundleItems
+  const isLoadingPage = isLoading || loadingInventoryItems || loadingCostComponents || loadingBusinessMaterials || loadingBusinessExpenses || loadingBusinessEquipment || loadingBundleItems || loadingPriceHistory
   if (isLoadingPage) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -1959,6 +1986,7 @@ export default function Products() {
           businessExpenses={businessExpenses}
           businessEquipment={businessEquipment}
           bundleItems={bundleItems}
+          priceHistory={priceHistory}
           currency={currency}
           formatMoney={formatMoney}
           onClose={() => setCatalogDialog(null)}
