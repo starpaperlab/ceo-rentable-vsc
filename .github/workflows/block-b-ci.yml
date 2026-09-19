@@ -7,6 +7,7 @@ on:
       - 'src/lib/costEngine.js'
       - 'src/lib/catalogFinancials.js'
       - 'src/pages/Products.jsx'
+      - 'src/pages/Onboarding.jsx'
       - 'src/components/onboarding/BusinessResourceSteps.jsx'
       - 'tests/block-b-cost-engine.test.js'
       - 'tests/catalog-financials.test.js'
