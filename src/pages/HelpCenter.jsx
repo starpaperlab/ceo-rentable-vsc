@@ -27,6 +27,13 @@ const MODULES = [
         youtubeId: 'Ly_UIS-Fe4U',
         description: 'Recorre la interfaz principal de CEO Rentable y ubica las áreas esenciales del sistema.',
       },
+      {
+        key: 'm1-l2',
+        number: 2,
+        title: 'Visión 360 y CEO Score™',
+        youtubeId: 'x4WWC2jHHTM',
+        description: 'Conoce la Visión 360 de tu negocio y aprende a interpretar tu CEO Score™ desde el dashboard.',
+      },
     ],
   },
 ];
@@ -42,7 +49,7 @@ const HELP_CATEGORIES = [
   { key:'settings', title:'Configuración de tu negocio', description:'Personaliza los datos y preferencias de tu empresa.', icon:Settings },
 ];
 
-function YouTubeLessonPlayer({ videoId, title, onEnded }) {
+function YouTubeLessonPlayer({ videoId, title, moduleNumber = 1, lessonNumber, onEnded }) {
   const mountRef = useRef(null);
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
@@ -144,7 +151,7 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
             </div>
           </div>
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-5 pb-5 pt-14">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/75">Módulo 1 · Lección 1</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/75">Módulo {moduleNumber} · Lección {lessonNumber}</p>
             <p className="mt-1 text-base font-bold text-white sm:text-lg">{ready ? title : 'Preparando la lección…'}</p>
           </div>
         </button>
@@ -243,7 +250,7 @@ export default function HelpCenter() {
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B83E70]">Módulo 1 · Lección {activeLesson.number}</p>
                   <h2 className="mt-1 text-2xl font-bold">{activeLesson.title}</h2>
                 </div>
-                <YouTubeLessonPlayer videoId={activeLesson.youtubeId} title={activeLesson.title} onEnded={() => markComplete(activeLesson)} />
+                <YouTubeLessonPlayer videoId={activeLesson.youtubeId} title={activeLesson.title} moduleNumber={1} lessonNumber={activeLesson.number} onEnded={() => markComplete(activeLesson)} />
                 <Card className="mt-5 p-5">
                   <h3 className="font-semibold">Sobre esta lección</h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{activeLesson.description}</p>
