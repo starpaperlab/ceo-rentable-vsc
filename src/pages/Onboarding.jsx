@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
@@ -16,16 +16,6 @@ import {
 import { ExpenseStep, MaterialStep, EquipmentStep } from '@/components/onboarding/BusinessResourceSteps';
 
 const STEPS = ['Tu negocio','Industria','Lugar','Capacidad','Meta','Gastos','Suscripciones','Materiales','Equipos','Resumen'];
-const FREQUENCIES = [
-  ['monthly','Mensual'],['weekly','Semanal'],['quarterly','Trimestral'],
-  ['semiannual','Semestral'],['annual','Anual'],['one_time','Pago único'],
-];
-const UNITS = ['unidad','hoja','paquete','caja','libra','kilogramo','gramo','litro','mililitro','metro','pie','yarda','docena','otro'];
-const EXPENSE_CATEGORIES = [
-  ['operacion','Operación'],['software','Software y herramientas'],['administracion','Administración'],
-  ['marketing','Marketing'],['equipos','Equipos'],['otro','Otro'],
-];
-
 const emptyConfig = {
   business_name: '', currency: 'DOP', business_model: null, industry_codes: [], custom_industry: '',
   workplace_modes: [], custom_workplace: '', work_days_per_week: '', work_hours_per_day: '',
@@ -157,36 +147,6 @@ export default function Onboarding() {
   const goNext=()=>{if(!canContinue()){setError('Completa la información principal de este paso.');return;}setError('');setStep(s=>Math.min(s+1,STEPS.length-1));};
   const goBack=()=>{setError('');setStep(s=>Math.max(0,s-1));};
 
-  const addExpense=async(preset='')=>{
-    if(!preset) preset=window.prompt('Nombre del gasto')||'';
-    if(!preset.trim())return;
-    const amount=Number(window.prompt('Monto aproximado en RD$','0')||0);
-    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),amount:Number.isFinite(amount)?amount:0,category:'operacion',frequency:'monthly',usage_scope:'business',is_subscription:false,source:'onboarding'};
-    const {data,error:e}=await supabase.from('business_expenses').insert(payload).select('*').single();
-    if(e){setError(e.message);return;} setExpenses(x=>[...x,data]);
-  };
-  const addMaterial=async(preset='')=>{
-    if(!preset) preset=window.prompt('Nombre del material o insumo')||'';
-    if(!preset.trim())return;
-    const purchasePrice=Number(window.prompt('¿Cuánto pagaste? RD$','0')||0);
-    const quantity=Number(window.prompt('¿Cuántas unidades trae o compraste?','1')||1);
-    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),purchase_price:Math.max(0,purchasePrice||0),purchase_quantity:Math.max(0.0001,quantity||1),unit:'unidad',source:'onboarding'};
-    const {data,error:e}=await supabase.from('business_materials').insert(payload).select('*').single();
-    if(e){setError(e.message);return;} setMaterials(x=>[...x,data]);
-  };
-  const addEquipment=async(preset='')=>{
-    if(!preset) preset=window.prompt('Nombre del equipo o herramienta')||'';
-    if(!preset.trim())return;
-    const price=Number(window.prompt('Precio aproximado en RD$','0')||0);
-    const payload={workspace_id:activeWorkspaceId,user_id:user.id,created_by:(user.email||'').toLowerCase(),name:preset.trim(),estimated_price:Math.max(0,price||0),usage_scope:'business',usage_intensity:'regular',source:'onboarding'};
-    const {data,error:e}=await supabase.from('business_equipment').insert(payload).select('*').single();
-    if(e){setError(e.message);return;} setEquipment(x=>[...x,data]);
-  };
-  const removeRow=async(table,id,setter)=>{
-    const {error:e}=await supabase.from(table).delete().eq('id',id).eq('workspace_id',activeWorkspaceId);
-    if(e){setError(e.message);return;} setter(rows=>rows.filter(x=>x.id!==id));
-  };
-
   const complete=async()=>{
     setSaving(true);setError('');
     try{
@@ -250,10 +210,6 @@ export default function Onboarding() {
       </div>
     </div>
   );
-}
-
-function CollectionStep({title,subtitle,suggestions,onSuggestion,onAdd,rows,renderRow}){
-  return <div className="space-y-5"><div><h2 className="text-2xl font-bold">{title}</h2><p className="mt-2 text-sm text-muted-foreground">{subtitle}</p></div>{suggestions?.length>0&&<div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sugerencias para tu negocio</p><div className="flex flex-wrap gap-2">{suggestions.map(item=><button key={item} type="button" onClick={()=>onSuggestion(item)} className="rounded-full border bg-background px-3 py-2 text-sm hover:border-primary hover:text-primary">+ {item}</button>)}</div></div>}<Button type="button" variant="outline" onClick={onAdd}><Plus className="mr-2 h-4 w-4"/>Agregar otro</Button><div className="space-y-2">{rows.map(row=><div key={row.id} className="flex items-center justify-between rounded-xl border bg-background p-3">{renderRow(row)}</div>)}{!rows.length&&<p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">Todavía no has agregado ninguno.</p>}</div></div>;
 }
 
 function Summary({label,value}){return <div className="rounded-xl border bg-background p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold">{value||'Pendiente'}</p></div>;}
