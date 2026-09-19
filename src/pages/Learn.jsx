@@ -31,6 +31,69 @@ const ACADEMY_MODULES = [
       },
     ],
   },
+  {
+    number: 2,
+    title: 'Configura y organiza tu negocio',
+    description: 'Prepara la base operativa de CEO Rentable: datos del negocio, catálogo, costos e inventario.',
+    lessons: [
+      {
+        number: 1,
+        title: 'Configura tu negocio',
+        youtubeId: 'OKImPNhzN4o',
+        duration: 'Video',
+        showDescription: false,
+      },
+      {
+        number: 2,
+        title: 'Productos, servicios y costos',
+        youtubeId: 'PcsXAA3-AbI',
+        duration: 'Video',
+        showDescription: false,
+      },
+      {
+        number: 3,
+        title: 'Control de inventario',
+        youtubeId: 'CVI0XkvzwQY',
+        duration: 'Video',
+        showDescription: false,
+      },
+    ],
+  },
+  {
+    number: 3,
+    title: 'Ventas, facturación y seguimiento',
+    description: 'Gestiona el ciclo comercial completo: pedidos, ventas, cobros, documentos y seguimiento de clientes.',
+    lessons: [
+      {
+        number: 1,
+        title: 'Pedidos y ventas',
+        youtubeId: 'dYYGsLepSEk',
+        duration: 'Video',
+        showDescription: false,
+      },
+      {
+        number: 2,
+        title: 'Facturación y cobros',
+        youtubeId: 'a0F-zNoOTQQ',
+        duration: 'Video',
+        showDescription: false,
+      },
+      {
+        number: 3,
+        title: 'Cotizaciones y recibos',
+        youtubeId: 'Z70FxdyImcI',
+        duration: 'Video',
+        showDescription: false,
+      },
+      {
+        number: 4,
+        title: 'Clientes y seguimiento comercial',
+        youtubeId: 'iAk0I1Sou54',
+        duration: 'Video',
+        showDescription: false,
+      },
+    ],
+  },
 ];
 
 const GUIDES = [
@@ -365,7 +428,7 @@ export default function Learn() {
                       {lesson.duration}
                     </div>
                   </div>
-                  <Button onClick={() => setOpenLesson(lesson)} className="sm:self-center">
+                  <Button onClick={() => setOpenLesson({ ...lesson, moduleNumber: module.number })} className="sm:self-center">
                     <PlayCircle className="mr-2 h-4 w-4" />
                     Ver lección
                   </Button>
@@ -436,7 +499,7 @@ export default function Learn() {
           {openLesson && (
             <>
               <DialogHeader className="border-b px-5 py-4 pr-12 text-left">
-                <p className="text-xs font-bold uppercase tracking-widest text-primary">Módulo 1 · Lección {openLesson.number}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">Módulo {openLesson.moduleNumber} · Lección {openLesson.number}</p>
                 <DialogTitle className="text-left text-xl">{openLesson.title}</DialogTitle>
               </DialogHeader>
 
@@ -452,7 +515,7 @@ export default function Learn() {
                         <p className="text-sm font-semibold">{openLesson.title}</p>
                       </div>
                     </div>
-                    <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold">Módulo 1</span>
+                    <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold">Módulo {openLesson.moduleNumber}</span>
                   </div>
 
                   <div className="aspect-video bg-black">
