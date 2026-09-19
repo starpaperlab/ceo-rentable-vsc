@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Upload, Info, Loader2 } from 'lucide-react';
+import { Save, Upload, Info, Loader2, Plus, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import PageTour from '@/components/shared/PageTour';
@@ -167,6 +167,52 @@ function isMeaningfulSettingsDraft(payload) {
   );
 }
 
+function CategoryPricingRuleRow({ rule, businessDefaults, writable, saving, onSave, onDelete }) {
+  const [draft, setDraft] = useState(() => ({
+    ...rule,
+    target_margin: rule.target_margin ?? '',
+    minimum_margin: rule.minimum_margin ?? '',
+    percentage_fees: rule.percentage_fees ?? '',
+    fixed_fees: rule.fixed_fees ?? '',
+    commercial_rounding: rule.commercial_rounding ?? '',
+  }));
+
+  useEffect(() => {
+    setDraft({
+      ...rule,
+      target_margin: rule.target_margin ?? '',
+      minimum_margin: rule.minimum_margin ?? '',
+      percentage_fees: rule.percentage_fees ?? '',
+      fixed_fees: rule.fixed_fees ?? '',
+      commercial_rounding: rule.commercial_rounding ?? '',
+    });
+  }, [rule]);
+
+  const effectiveTarget = draft.target_margin === '' ? Number(businessDefaults.target_margin_pct ?? 40) : Number(draft.target_margin);
+  const effectiveMinimum = draft.minimum_margin === '' ? Number(businessDefaults.minimum_margin_pct ?? 20) : Number(draft.minimum_margin);
+  const effectiveFee = draft.percentage_fees === '' ? Number(businessDefaults.payment_fee_pct ?? 0) : Number(draft.percentage_fees);
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><p className="font-semibold">{rule.category}</p><p className="text-[11px] text-muted-foreground">Los campos vacíos heredan la configuración general.</p></div>
+        {writable ? <Button type="button" variant="ghost" size="icon" onClick={() => onDelete(rule)} disabled={saving} title="Eliminar regla"><Trash2 className="h-4 w-4" /></Button> : null}
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-5">
+        <div><Label className="text-xs">Margen mínimo</Label><Input type="number" min="0" max="99.99" placeholder={String(businessDefaults.minimum_margin_pct ?? 20)} value={draft.minimum_margin} disabled={!writable} onChange={(e) => setDraft((current) => ({ ...current, minimum_margin: e.target.value }))} /></div>
+        <div><Label className="text-xs">Margen objetivo</Label><Input type="number" min="0" max="99.99" placeholder={String(businessDefaults.target_margin_pct ?? 40)} value={draft.target_margin} disabled={!writable} onChange={(e) => setDraft((current) => ({ ...current, target_margin: e.target.value }))} /></div>
+        <div><Label className="text-xs">Comisión %</Label><Input type="number" min="0" max="99.99" step="0.01" placeholder={String(businessDefaults.payment_fee_pct ?? 0)} value={draft.percentage_fees} disabled={!writable} onChange={(e) => setDraft((current) => ({ ...current, percentage_fees: e.target.value }))} /></div>
+        <div><Label className="text-xs">Cargo fijo</Label><Input type="number" min="0" step="0.01" placeholder={String(businessDefaults.payment_fixed_fee ?? 0)} value={draft.fixed_fees} disabled={!writable} onChange={(e) => setDraft((current) => ({ ...current, fixed_fees: e.target.value }))} /></div>
+        <div><Label className="text-xs">Redondeo</Label><Input type="number" min="0.01" step="0.01" placeholder={String(businessDefaults.commercial_rounding ?? 10)} value={draft.commercial_rounding} disabled={!writable} onChange={(e) => setDraft((current) => ({ ...current, commercial_rounding: e.target.value }))} /></div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">Efectivo: mínimo {effectiveMinimum.toFixed(1)}% · objetivo {effectiveTarget.toFixed(1)}% · comisión {effectiveFee.toFixed(2)}%</p>
+        {writable ? <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => onSave({ ...draft, id: rule.id, category: rule.category })}><Save className="mr-1 h-3.5 w-3.5" />Guardar regla</Button> : null}
+      </div>
+    </div>
+  );
+}
+
 export default function AppSettings() {
   const { setCurrency } = useCurrency();
   const {
@@ -202,6 +248,27 @@ export default function AppSettings() {
   });
 
   const config = configs[0] || {};
+
+  const { data: categoryPricingRules = [], isLoading: loadingCategoryPricingRules } = useQuery({
+    queryKey: ['pricing-category-settings', contextKey],
+    queryFn: () => fetchRows({
+      table: 'pricing_category_settings',
+      orderBy: 'category',
+      ascending: true,
+    }),
+    enabled,
+  });
+
+  const { data: pricingProducts = [] } = useQuery({
+    queryKey: ['settings-pricing-products', contextKey],
+    queryFn: () => fetchRows({ table: 'products', orderBy: 'category', ascending: true }),
+    enabled,
+  });
+
+  const productCategories = useMemo(
+    () => Array.from(new Set(pricingProducts.map((product) => `${product.category || ''}`.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')),
+    [pricingProducts]
+  );
   const baselineForm = useMemo(
     () => buildSettingsForm({
       ...config,
@@ -221,6 +288,7 @@ export default function AppSettings() {
   const [currentRemoteUpdatedAt, setCurrentRemoteUpdatedAt] = useState(null);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [hasUserEdited, setHasUserEdited] = useState(false);
+  const [newPricingCategory, setNewPricingCategory] = useState('');
 
   useEffect(() => {
     setCurrentConfigId(null);
@@ -437,6 +505,65 @@ export default function AppSettings() {
     },
   });
 
+  const saveCategoryPricingMutation = useMutation({
+    mutationFn: async (draft) => {
+      if (!writable) throw new Error('Tu acceso es de solo lectura.');
+      const targetMargin = draft.target_margin === '' || draft.target_margin == null ? null : Number(draft.target_margin);
+      const minimumMargin = draft.minimum_margin === '' || draft.minimum_margin == null ? null : Number(draft.minimum_margin);
+      const percentageFees = draft.percentage_fees === '' || draft.percentage_fees == null ? null : Number(draft.percentage_fees);
+      const fixedFees = draft.fixed_fees === '' || draft.fixed_fees == null ? null : Number(draft.fixed_fees);
+      const commercialRounding = draft.commercial_rounding === '' || draft.commercial_rounding == null ? null : Number(draft.commercial_rounding);
+      const effectiveTarget = targetMargin ?? Number(form.target_margin_pct ?? 40);
+      const effectiveMinimum = minimumMargin ?? Number(form.minimum_margin_pct ?? 20);
+      const effectiveFee = percentageFees ?? Number(form.payment_fee_pct ?? 0);
+      if (!draft.category?.trim()) throw new Error('Selecciona una categoría.');
+      if (effectiveMinimum < 0 || effectiveTarget < 0 || effectiveMinimum > effectiveTarget) throw new Error('Revisa los márgenes de la categoría.');
+      if (effectiveTarget + effectiveFee >= 100 || effectiveMinimum + effectiveFee >= 100) throw new Error('Margen + comisión debe ser menor de 100%.');
+      if ((fixedFees ?? 0) < 0 || (commercialRounding != null && commercialRounding <= 0)) throw new Error('Revisa cargo fijo y redondeo.');
+
+      const payload = {
+        workspace_id: activeWorkspaceId,
+        user_id: writeOwnerId || user?.id,
+        created_by: writeOwnerEmail || user?.email || ownerEmail,
+        category: draft.category.trim(),
+        target_margin: targetMargin,
+        minimum_margin: minimumMargin,
+        percentage_fees: percentageFees,
+        fixed_fees: fixedFees,
+        commercial_rounding: commercialRounding,
+      };
+
+      if (draft.id) {
+        const { error } = await supabase.from('pricing_category_settings').update(payload).eq('id', draft.id);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase.from('pricing_category_settings').insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNewPricingCategory('');
+      queryClient.invalidateQueries({ queryKey: ['pricing-category-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Regla de categoría guardada');
+    },
+    onError: (error) => toast.error(error.message || 'No se pudo guardar la regla de categoría.'),
+  });
+
+  const deleteCategoryPricingMutation = useMutation({
+    mutationFn: async (rule) => {
+      if (!writable) throw new Error('Tu acceso es de solo lectura.');
+      const { error } = await supabase.from('pricing_category_settings').delete().eq('id', rule.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-category-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Regla eliminada; la categoría vuelve a heredar la configuración general.');
+    },
+    onError: (error) => toast.error(error.message || 'No se pudo eliminar la regla.'),
+  });
+
   const update = (field, value) => {
     if (!writable) return;
     setHasUserEdited(true);
@@ -502,7 +629,7 @@ export default function AppSettings() {
 
   const autosaveStatus = saveMutation.isPending ? 'saving' : autosave.status;
 
-  if (isLoading || !hasBootstrapped) {
+  if (isLoading || loadingCategoryPricingRules || !hasBootstrapped) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
@@ -691,6 +818,52 @@ export default function AppSettings() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 space-y-5">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Rentabilidad por categoría</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Jerarquía: producto personalizado → categoría → configuración general. No necesitas repetir reglas producto por producto.</p>
+            </div>
+
+            {productCategories.length > 0 ? (
+              <div className="flex flex-wrap items-end gap-3 rounded-xl border border-dashed p-3">
+                <div className="min-w-[220px] flex-1">
+                  <Label className="text-xs">Categoría</Label>
+                  <Select value={newPricingCategory || undefined} onValueChange={setNewPricingCategory} disabled={!writable}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Selecciona una categoría" /></SelectTrigger>
+                    <SelectContent>
+                      {productCategories
+                        .filter((category) => !categoryPricingRules.some((rule) => rule.category_key === category.trim().toLowerCase()))
+                        .map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!writable || !newPricingCategory || saveCategoryPricingMutation.isPending}
+                  onClick={() => saveCategoryPricingMutation.mutate({ category: newPricingCategory })}
+                >
+                  <Plus className="mr-1 h-4 w-4" />Agregar regla
+                </Button>
+              </div>
+            ) : <p className="text-xs text-muted-foreground">Cuando tus productos tengan categorías, podrás definir aquí márgenes específicos para ellas.</p>}
+
+            <div className="space-y-3">
+              {categoryPricingRules.map((rule) => (
+                <CategoryPricingRuleRow
+                  key={rule.id}
+                  rule={rule}
+                  businessDefaults={form}
+                  writable={writable}
+                  saving={saveCategoryPricingMutation.isPending || deleteCategoryPricingMutation.isPending}
+                  onSave={(draft) => saveCategoryPricingMutation.mutate(draft)}
+                  onDelete={(currentRule) => deleteCategoryPricingMutation.mutate(currentRule)}
+                />
+              ))}
+              {categoryPricingRules.length === 0 ? <p className="text-xs text-muted-foreground">Sin reglas específicas: todas las categorías usan la configuración general.</p> : null}
             </div>
           </Card>
         </TabsContent>
