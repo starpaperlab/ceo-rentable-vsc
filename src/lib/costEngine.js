@@ -257,3 +257,150 @@ export function calculateMaterialDisplayUnitCost(material = {}) {
   if (material.cost_method === MATERIAL_COST_METHODS.estimated_use) return roundInternal(material.estimated_cost_per_use)
   return calculateUnitCost({ purchasePrice: material.purchase_price, purchaseQuantity: material.purchase_quantity })
 }
+
+
+export const COMPLEXITY_FACTORS = Object.freeze({
+  low: 0.75,
+  standard: 1,
+  high: 1.5,
+})
+
+export function calculateMonthlyBusinessExpense(expense = {}) {
+  if (expense.usage_scope === 'personal') return 0
+  if (expense.frequency === 'one_time') return 0
+  const monthly = calculateMonthlyEquivalent(expense.amount, expense.frequency || 'monthly')
+  const pct = expense.usage_scope === 'business' ? 100 : finite(expense.business_use_pct, 50)
+  return roundInternal(calculateBusinessShare(monthly, pct))
+}
+
+export function calculateMonthlyBusinessExpenses(expenses = []) {
+  return roundInternal((expenses || []).reduce((total, expense) => total + calculateMonthlyBusinessExpense(expense), 0))
+}
+
+export function calculateMonthlyEquipmentCost(equipment = []) {
+  return roundInternal((equipment || []).reduce((total, item) => {
+    const override = Number(item?.monthly_cost_override)
+    if (Number.isFinite(override) && override >= 0) return total + override
+    return total + calculateEquipmentMonthlyCost({
+      acquisitionCost: item?.estimated_price,
+      usefulMonths: item?.operational_life_months || 36,
+      businessUsePct: item?.usage_scope === 'shared' ? finite(item?.business_use_pct, 50) : 100,
+      intensity: item?.usage_intensity || 'regular',
+    })
+  }, 0))
+}
+
+export function recommendOverheadAllocationMethod(config = {}) {
+  const explicit = config.overhead_allocation_method
+  if (explicit && explicit !== 'adaptive') return explicit
+
+  const industries = new Set(config.industry_codes || [])
+  const operation = config.operation_mode
+
+  if (operation === 'appointment') return 'services'
+  if (operation === 'project') return 'projects'
+  if (operation === 'recurring') return 'clients'
+  if (operation === 'inventory') return 'units'
+
+  const hourHeavy = ['graphic_design','interior_design','consulting','digital_services','marketing','professional_services','photo_video']
+  if (hourHeavy.some((code) => industries.has(code))) return operation === 'project' ? 'projects' : 'hours'
+
+  const serviceHeavy = ['nails','hair','makeup','beauty']
+  if (serviceHeavy.some((code) => industries.has(code))) return 'services'
+
+  const unitHeavy = ['retail','fashion','accessories','cosmetics']
+  if (unitHeavy.some((code) => industries.has(code))) return 'units'
+
+  return 'orders'
+}
+
+export function calculateAllocationBase(config = {}, method = recommendOverheadAllocationMethod(config)) {
+  if (method === 'hours') {
+    return calculateProductiveHours({
+      workDaysPerWeek: config.work_days_per_week,
+      workHoursPerDay: config.work_hours_per_day,
+      productivePct: config.productive_time_pct || 70,
+    })
+  }
+  return finite(config.monthly_capacity)
+}
+
+export function calculateOverheadAllocation({
+  monthlyOverhead = 0,
+  config = {},
+  method = recommendOverheadAllocationMethod(config),
+  complexity = 'standard',
+  units = 1,
+  hours = 0,
+} = {}) {
+  const base = calculateAllocationBase(config, method)
+  if (base <= 0) return {
+    amount: 0,
+    method,
+    base: 0,
+    rate: 0,
+    complexityFactor: COMPLEXITY_FACTORS[complexity] || 1,
+    missingCapacity: true,
+  }
+
+  const rate = roundInternal(finite(monthlyOverhead) / base)
+  const factor = COMPLEXITY_FACTORS[complexity] || 1
+  const quantity = method === 'hours' ? Math.max(finite(hours), 0) : Math.max(finite(units, 1), 0)
+  return {
+    amount: roundInternal(rate * quantity * factor),
+    method,
+    base,
+    rate,
+    complexityFactor: factor,
+    missingCapacity: false,
+  }
+}
+
+export function calculateBusinessStructure({
+  expenses = [],
+  equipment = [],
+  config = {},
+  complexity = 'standard',
+  units = 1,
+  hours = 0,
+} = {}) {
+  const monthlyExpenses = calculateMonthlyBusinessExpenses(expenses)
+  const monthlyEquipment = calculateMonthlyEquipmentCost(equipment)
+  const monthlyOverhead = roundInternal(monthlyExpenses + monthlyEquipment)
+  const allocation = calculateOverheadAllocation({
+    monthlyOverhead,
+    config,
+    complexity,
+    units,
+    hours,
+  })
+  return {
+    monthlyExpenses,
+    monthlyEquipment,
+    monthlyOverhead,
+    ...allocation,
+  }
+}
+
+export function buildCostConfidence({
+  hasDirectCosts = false,
+  hasLabor = false,
+  hasExpenses = false,
+  hasCapacity = false,
+  hasEquipment = false,
+} = {}) {
+  const checks = [hasDirectCosts, hasLabor, hasExpenses, hasCapacity, hasEquipment]
+  const completed = checks.filter(Boolean).length
+  const score = Math.round((completed / checks.length) * 100)
+  return {
+    score,
+    level: score >= 80 ? 'high' : score >= 50 ? 'medium' : 'basic',
+    missing: [
+      !hasDirectCosts ? 'costos directos' : null,
+      !hasLabor ? 'tiempo / mano de obra' : null,
+      !hasExpenses ? 'gastos del negocio' : null,
+      !hasCapacity ? 'capacidad mensual' : null,
+      !hasEquipment ? 'equipos' : null,
+    ].filter(Boolean),
+  }
+}
