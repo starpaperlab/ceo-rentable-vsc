@@ -45,7 +45,10 @@ const HELP_CATEGORIES = [
 function YouTubeLessonPlayer({ videoId, title, onEnded }) {
   const mountRef = useRef(null);
   const playerRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
   const [ended, setEnded] = useState(false);
+
+  useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +69,7 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
           onStateChange: (event) => {
             if (event.data === window.YT.PlayerState.ENDED) {
               setEnded(true);
-              onEnded?.();
+              onEndedRef.current?.();
             }
           },
         },
@@ -94,7 +97,7 @@ function YouTubeLessonPlayer({ videoId, title, onEnded }) {
       try { playerRef.current?.destroy?.(); } catch {}
       playerRef.current = null;
     };
-  }, [videoId, onEnded]);
+  }, [videoId]);
 
   const replay = () => {
     setEnded(false);
