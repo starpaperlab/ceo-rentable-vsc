@@ -87,6 +87,13 @@ export default function Reports() {
     enabled,
   });
 
+  const { data: businessConfigs = [] } = useQuery({
+    queryKey: ['reports-business-config', ...contextQueryKey],
+    queryFn: () => fetchRows({ table: 'business_config', orderBy: 'updated_at', ascending: false }),
+    enabled,
+  });
+  const businessConfig = businessConfigs[0] || {};
+
   const { data: invoices = [], isLoading: loadingInv } = useQuery({
     queryKey: ['reports-invoices', ...contextQueryKey],
     queryFn: () => fetchRows({ table: 'invoices' }),
@@ -217,19 +224,34 @@ export default function Reports() {
         if (!map[name]) map[name] = { producto: name, ingresos: 0, costos: 0, ganancia: 0, ventas: 0 };
         const qty = parseFloat(li.quantity) || 1;
         const price = parseFloat(li.unit_price) || 0;
-        map[name].ingresos += price * qty;
+        const revenue = price * qty;
+        map[name].ingresos += revenue;
         map[name].ventas += qty;
-        const invMatch = inventoryItems.find(i => i.product_name?.toLowerCase() === name.toLowerCase());
-        map[name].costos += (invMatch?.costo_unitario || 0) * qty;
+
+        const snapshotCost = Number(li.unit_cost_snapshot);
+        const inventoryMatch = inventoryItems.find(i => i.product_name?.toLowerCase() === name.toLowerCase());
+        const unitCost = Number.isFinite(snapshotCost) ? snapshotCost : Number(inventoryMatch?.costo_unitario || 0);
+        map[name].costos += unitCost * qty;
+
+        const snapshotProfit = Number(li.unit_profit_snapshot);
+        if (Number.isFinite(snapshotProfit)) {
+          map[name].ganancia += snapshotProfit * qty;
+        } else {
+          const feePct = Number(li.percentage_fees_snapshot || 0);
+          const fixedFee = Number(li.fixed_fees_snapshot || 0);
+          map[name].ganancia += (price - unitCost - (price * feePct / 100) - fixedFee) * qty;
+        }
       });
     });
     return Object.values(map).map(r => {
-      r.ganancia = r.ingresos - r.costos;
       r.margen_pct = r.ingresos > 0 ? ((r.ganancia / r.ingresos) * 100).toFixed(1) : '0.0';
-      r._level = parseFloat(r.margen_pct) >= 30 ? 'green' : parseFloat(r.margen_pct) >= 15 ? 'yellow' : 'red';
+      const margin = parseFloat(r.margen_pct);
+      const minimum = Number(businessConfig.minimum_margin_pct ?? 20);
+      const target = Number(businessConfig.target_margin_pct ?? 40);
+      r._level = margin >= target ? 'green' : margin >= minimum ? 'yellow' : 'red';
       return r;
     });
-  }, [filteredInvoices, inventoryItems]);
+  }, [businessConfig.minimum_margin_pct, businessConfig.target_margin_pct, filteredInvoices, inventoryItems]);
 
   const salesRows = useMemo(() => {
     const byMonth = {};
@@ -249,21 +271,42 @@ export default function Reports() {
     const map = {};
     filteredInvoices.forEach(inv => {
       const name = inv.client_name || 'Sin nombre';
-      if (!map[name]) map[name] = { cliente: name, total_comprado: 0, num_compras: 0 };
-      map[name].total_comprado += inv.total_final || 0;
+      if (!map[name]) map[name] = { cliente: name, total_comprado: 0, ingreso_sin_impuesto: 0, costos: 0, ganancia: 0, margen_pct: 0, num_compras: 0 };
+      map[name].total_comprado += Number(inv.total_final || 0);
       map[name].num_compras += 1;
+      (inv.line_items || []).forEach((li) => {
+        const qty = Number(li.quantity || 1);
+        const price = Number(li.unit_price || 0);
+        const cost = Number(li.unit_cost_snapshot ?? 0);
+        const snapshotProfit = Number(li.unit_profit_snapshot);
+        map[name].ingreso_sin_impuesto += price * qty;
+        map[name].costos += cost * qty;
+        map[name].ganancia += Number.isFinite(snapshotProfit)
+          ? snapshotProfit * qty
+          : (price - cost - (price * Number(li.percentage_fees_snapshot || 0) / 100) - Number(li.fixed_fees_snapshot || 0)) * qty;
+      });
     });
-    return Object.values(map).sort((a, b) => b.total_comprado - a.total_comprado);
+    return Object.values(map)
+      .map((row) => ({
+        ...row,
+        margen_pct: row.ingreso_sin_impuesto > 0 ? (row.ganancia / row.ingreso_sin_impuesto) * 100 : 0,
+      }))
+      .sort((a, b) => b.total_comprado - a.total_comprado);
   }, [filteredInvoices]);
 
   const alertRows = useMemo(() => {
     const rows = [];
     products.filter(p => p.status === 'active').forEach(p => {
-      if ((p.margin_pct || 0) < 15) rows.push({ tipo: 'Margen Crítico', producto: p.name, detalle: `Margen: ${(p.margin_pct || 0).toFixed(1)}%`, _level: 'red' });
-      else if ((p.margin_pct || 0) < 30) rows.push({ tipo: 'Margen Bajo', producto: p.name, detalle: `Margen: ${(p.margin_pct || 0).toFixed(1)}%`, _level: 'yellow' });
+      const margin = Number(p.margin_pct || 0);
+      const minimum = Number(p.minimum_margin ?? businessConfig.minimum_margin_pct ?? 20);
+      const target = Number(p.target_margin ?? businessConfig.target_margin_pct ?? 40);
+      if (margin < minimum) rows.push({ tipo: 'Margen crítico', producto: p.name, detalle: `Margen: ${margin.toFixed(1)}% · mínimo: ${minimum.toFixed(1)}%`, _level: 'red' });
+      else if (margin < target) rows.push({ tipo: 'Por debajo del objetivo', producto: p.name, detalle: `Margen: ${margin.toFixed(1)}% · objetivo: ${target.toFixed(1)}%`, _level: 'yellow' });
+      if (p.price_status === 'review') rows.push({ tipo: 'Revisar precio', producto: p.name, detalle: 'Cambió un costo o una regla de rentabilidad.', _level: 'yellow' });
+      if (p.price_status === 'outdated') rows.push({ tipo: 'Precio desactualizado', producto: p.name, detalle: 'El precio acumula cambios de costo o rentabilidad sin revisión.', _level: 'red' });
     });
     return rows;
-  }, [products]);
+  }, [businessConfig.minimum_margin_pct, businessConfig.target_margin_pct, products]);
 
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[400px]">
