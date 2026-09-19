@@ -359,6 +359,7 @@ export default function Profitability() {
   const location = useLocation();
   const { formatMoney, currency } = useCurrency();
   const {
+    activeWorkspaceId,
     adminMode,
     canWrite,
     enabled,
