@@ -26,6 +26,7 @@ export const WORKPLACE_OPTIONS = [
 
 const COMMON_EXPENSES = ['Electricidad','Agua','Internet','Teléfono','Alquiler','Limpieza','Transporte'];
 const COMMON_EQUIPMENT = ['Computadora','Teléfono'];
+const COMMON_SUBSCRIPTIONS = [];
 
 export const INDUSTRY_TEMPLATES = {
   bakery: {
@@ -38,13 +39,15 @@ export const INDUSTRY_TEMPLATES = {
     capacityLabel: '¿Cuántas órdenes aproximadamente produces al mes?',
     materials: ['Papel','Cartulina','Tinta','Vinilo','Laminado','Adhesivos','Encuadernación','Empaques'],
     equipment: ['Impresora','Cricut / Silhouette','Laminadora','Guillotina','Computadora'],
-    expenses: [...COMMON_EXPENSES,'Software de diseño'],
+    expenses: [...COMMON_EXPENSES],
+    subscriptions: ['Software de diseño'],
   },
   personalization: {
     capacityLabel: '¿Cuántas órdenes aproximadamente produces al mes?',
     materials: ['Vinilo','Papel transfer','Tinta','Sustratos','Adhesivos','Empaques'],
     equipment: ['Impresora','Cricut / Silhouette','Sublimadora','Plancha','Computadora'],
-    expenses: [...COMMON_EXPENSES,'Software de diseño'],
+    expenses: [...COMMON_EXPENSES],
+    subscriptions: ['Software de diseño'],
   },
   nails: {
     capacityLabel: '¿Cuántas clientas atiendes aproximadamente al mes?',
@@ -62,25 +65,29 @@ export const INDUSTRY_TEMPLATES = {
     capacityLabel: '¿Cuántos servicios o proyectos realizas aproximadamente al mes?',
     materials: ['Impresiones','Muestras'],
     equipment: ['Computadora'],
-    expenses: [...COMMON_EXPENSES,'Software 3D','Renders','Canva','Adobe','Visitas'],
+    expenses: [...COMMON_EXPENSES,'Renders','Visitas'],
+    subscriptions: ['Software 3D','Canva','Adobe'],
   },
   digital_services: {
     capacityLabel: '¿Cuántos servicios o proyectos realizas aproximadamente al mes?',
     materials: [],
     equipment: ['Computadora','Teléfono'],
-    expenses: ['ChatGPT','Canva','Adobe','Microsoft 365','Google Workspace','Hosting','Dominios','GitHub','Vercel','Supabase','CRM','Email marketing','Internet','Teléfono'],
+    expenses: ['Internet','Teléfono'],
+    subscriptions: ['ChatGPT','Canva','Adobe','Microsoft 365','Google Workspace','Hosting','Dominios','GitHub','Vercel','Supabase','CRM','Email marketing'],
   },
   consulting: {
     capacityLabel: '¿Cuántos servicios o proyectos realizas aproximadamente al mes?',
     materials: [],
     equipment: COMMON_EQUIPMENT,
-    expenses: ['Internet','Teléfono','Transporte','Canva','Microsoft 365','Google Workspace','Videollamadas'],
+    expenses: ['Internet','Teléfono','Transporte'],
+    subscriptions: ['Canva','Microsoft 365','Google Workspace','Videollamadas'],
   },
   graphic_design: {
     capacityLabel: '¿Cuántos proyectos aproximadamente realizas al mes?',
     materials: [],
     equipment: ['Computadora','Tableta gráfica','Teléfono'],
-    expenses: ['Adobe','Canva','ChatGPT','Internet','Hosting','Dominios'],
+    expenses: ['Internet'],
+    subscriptions: ['Adobe','Canva','ChatGPT','Hosting','Dominios'],
   },
 };
 
@@ -93,18 +100,20 @@ export function industryOptionsFor(model) {
 }
 
 export function mergedIndustryTemplate(codes = []) {
-  const result = { materials: [], equipment: [], expenses: [], capacityLabel: '¿Cuántas órdenes, productos o servicios realizas aproximadamente al mes?' };
+  const result = { materials: [], equipment: [], expenses: [], subscriptions: [...COMMON_SUBSCRIPTIONS], capacityLabel: '¿Cuántas órdenes, productos o servicios realizas aproximadamente al mes?' };
   for (const code of codes) {
     const template = INDUSTRY_TEMPLATES[code];
     if (!template) continue;
     result.materials.push(...(template.materials || []));
     result.equipment.push(...(template.equipment || []));
     result.expenses.push(...(template.expenses || []));
+    result.subscriptions.push(...(template.subscriptions || []));
     if (template.capacityLabel) result.capacityLabel = template.capacityLabel;
   }
   result.materials = [...new Set(result.materials)];
   result.equipment = [...new Set(result.equipment)];
   result.expenses = [...new Set(result.expenses)];
+  result.subscriptions = [...new Set(result.subscriptions)];
   return result;
 }
 
