@@ -9,35 +9,109 @@ const toFiniteNumber = (value) => {
   return Number.isFinite(number) ? number : 0
 }
 
+const assertPercentBelow100 = (value, label = 'El porcentaje') => {
+  const pct = Number(value)
+  if (!Number.isFinite(pct) || pct < 0 || pct >= 100) {
+    throw new Error(`${label} debe estar entre 0% y menos de 100%.`)
+  }
+  return pct
+}
+
 const roundMoney = (value) => {
   const rounded = Math.round((toFiniteNumber(value) + Number.EPSILON) * 100) / 100
   return Number.isFinite(rounded) ? rounded : 0
 }
 
-export function calculateProfit(price, cost) {
-  return roundMoney(toFiniteNumber(price) - toFiniteNumber(cost))
+export function calculateProfit(price, cost, percentageFees = 0, fixedFees = 0) {
+  const safePrice = toFiniteNumber(price)
+  const safeCost = toFiniteNumber(cost)
+  const feePct = Math.max(0, toFiniteNumber(percentageFees))
+  const feeFixed = Math.max(0, toFiniteNumber(fixedFees))
+  return roundMoney(safePrice - safeCost - (safePrice * feePct / 100) - feeFixed)
 }
 
-export function calculateMargin(price, cost) {
+export function calculateMargin(price, cost, percentageFees = 0, fixedFees = 0) {
   const safePrice = toFiniteNumber(price)
   if (safePrice <= 0) return 0
-  return roundMoney((calculateProfit(safePrice, cost) / safePrice) * 100)
+  return roundMoney((calculateProfit(safePrice, cost, percentageFees, fixedFees) / safePrice) * 100)
 }
 
-export function calculateMarkup(price, cost) {
+export function calculateMarkup(price, cost, percentageFees = 0, fixedFees = 0) {
   const safeCost = toFiniteNumber(cost)
   if (safeCost <= 0) return null
-  return roundMoney((calculateProfit(price, safeCost) / safeCost) * 100)
+  return roundMoney((calculateProfit(price, safeCost, percentageFees, fixedFees) / safeCost) * 100)
 }
 
-export function calculateRecommendedPrice(cost, targetMargin) {
+export function calculatePriceForMargin(cost, targetMargin, percentageFees = 0, fixedFees = 0) {
   const safeCost = Number(cost || 0)
-  const safeMargin = Number(targetMargin)
+  const margin = assertPercentBelow100(targetMargin, 'El margen objetivo')
+  const feePct = assertPercentBelow100(percentageFees, 'Las comisiones porcentuales')
+  const feeFixed = Math.max(0, toFiniteNumber(fixedFees))
   if (!Number.isFinite(safeCost) || safeCost < 0) throw new Error('El costo debe ser un número mayor o igual a cero.')
-  if (!Number.isFinite(safeMargin) || safeMargin < 0 || safeMargin >= 100) {
-    throw new Error('El margen objetivo debe estar entre 0% y menos de 100%.')
+  const denominator = 1 - ((margin + feePct) / 100)
+  if (denominator <= 0) throw new Error('Margen objetivo + comisiones debe ser menor de 100%.')
+  return roundMoney((safeCost + feeFixed) / denominator)
+}
+
+export function calculateRecommendedPrice(cost, targetMargin, percentageFees = 0, fixedFees = 0) {
+  return calculatePriceForMargin(cost, targetMargin, percentageFees, fixedFees)
+}
+
+export function calculateMinimumPrice(cost, {
+  percentageFees = 0,
+  fixedFees = 0,
+  minimumMargin = 0,
+} = {}) {
+  return calculatePriceForMargin(cost, minimumMargin, percentageFees, fixedFees)
+}
+
+export function calculatePriceForDesiredProfit(cost, desiredProfit, percentageFees = 0, fixedFees = 0) {
+  const safeCost = Math.max(0, toFiniteNumber(cost))
+  const profit = Math.max(0, toFiniteNumber(desiredProfit))
+  const feePct = assertPercentBelow100(percentageFees, 'Las comisiones porcentuales')
+  const feeFixed = Math.max(0, toFiniteNumber(fixedFees))
+  return roundMoney((safeCost + profit + feeFixed) / (1 - feePct / 100))
+}
+
+export function calculateDiscountImpact({
+  price = 0,
+  cost = 0,
+  discountPct = 0,
+  percentageFees = 0,
+  fixedFees = 0,
+} = {}) {
+  const originalPrice = Math.max(0, toFiniteNumber(price))
+  const discount = Math.max(0, Math.min(100, toFiniteNumber(discountPct)))
+  const finalPrice = roundMoney(originalPrice * (1 - discount / 100))
+  const originalProfit = calculateProfit(originalPrice, cost, percentageFees, fixedFees)
+  const finalProfit = calculateProfit(finalPrice, cost, percentageFees, fixedFees)
+  const profitReductionPct = originalProfit > 0
+    ? roundMoney(((originalProfit - finalProfit) / originalProfit) * 100)
+    : 0
+  return {
+    discountPct: discount,
+    originalPrice,
+    finalPrice,
+    originalProfit,
+    finalProfit,
+    margin: calculateMargin(finalPrice, cost, percentageFees, fixedFees),
+    markup: calculateMarkup(finalPrice, cost, percentageFees, fixedFees),
+    profitReductionPct,
   }
-  return roundMoney(safeCost / (1 - safeMargin / 100))
+}
+
+export function calculateMaxSafeDiscount({
+  price = 0,
+  cost = 0,
+  percentageFees = 0,
+  fixedFees = 0,
+  minimumMargin = 0,
+} = {}) {
+  const safePrice = Math.max(0, toFiniteNumber(price))
+  if (safePrice <= 0) return 0
+  const floorPrice = calculateMinimumPrice(cost, { percentageFees, fixedFees, minimumMargin })
+  if (floorPrice >= safePrice) return 0
+  return roundMoney(((safePrice - floorPrice) / safePrice) * 100)
 }
 
 export function calculateRequiredUnits(desiredProfit, unitProfit) {
@@ -48,11 +122,88 @@ export function calculateRequiredUnits(desiredProfit, unitProfit) {
   return Math.ceil(desired / perUnit)
 }
 
-export function classifyProfitability(price, cost) {
-  const margin = calculateMargin(price, cost)
-  if (calculateProfit(price, cost) <= 0 || margin <= PROFITABILITY_THRESHOLDS.lossMax) return 'loss'
-  if (margin < PROFITABILITY_THRESHOLDS.lowMarginMax) return 'review'
-  if (margin < PROFITABILITY_THRESHOLDS.healthyMarginMax) return 'profitable'
+export function calculateUnitsForGoal(goal, unitProfit) {
+  return calculateRequiredUnits(goal, unitProfit)
+}
+
+export function calculateBreakEven(fixedCosts, contributionPerUnit) {
+  const fixed = Math.max(0, toFiniteNumber(fixedCosts))
+  const contribution = toFiniteNumber(contributionPerUnit)
+  if (fixed === 0) return 0
+  if (contribution <= 0) return null
+  return Math.ceil(fixed / contribution)
+}
+
+export function calculateProfitPerHour(profit, hours) {
+  const safeHours = toFiniteNumber(hours)
+  if (safeHours <= 0) return null
+  return roundMoney(toFiniteNumber(profit) / safeHours)
+}
+
+export function calculateContribution(price, variableCost = 0, percentageFees = 0, fixedFees = 0) {
+  return calculateProfit(price, variableCost, percentageFees, fixedFees)
+}
+
+export function calculateCommercialPrice(price, increment = 10) {
+  const safePrice = Math.max(0, toFiniteNumber(price))
+  const step = Math.max(0.01, toFiniteNumber(increment) || 10)
+  return roundMoney(Math.ceil(safePrice / step) * step)
+}
+
+export function buildPricingDecision({
+  cost = 0,
+  price = 0,
+  targetMargin = 40,
+  minimumMargin = 0,
+  percentageFees = 0,
+  fixedFees = 0,
+  commercialRounding = 10,
+} = {}) {
+  const minimumPrice = calculateMinimumPrice(cost, { percentageFees, fixedFees, minimumMargin })
+  const targetPrice = calculatePriceForMargin(cost, targetMargin, percentageFees, fixedFees)
+  const recommendedPrice = calculateCommercialPrice(targetPrice, commercialRounding)
+  const profit = calculateProfit(price, cost, percentageFees, fixedFees)
+  const margin = calculateMargin(price, cost, percentageFees, fixedFees)
+  const markup = calculateMarkup(price, cost, percentageFees, fixedFees)
+  const maxDiscountToCost = calculateMaxSafeDiscount({
+    price,
+    cost,
+    percentageFees,
+    fixedFees,
+    minimumMargin: 0,
+  })
+  const maxDiscountAtMinimumMargin = calculateMaxSafeDiscount({
+    price,
+    cost,
+    percentageFees,
+    fixedFees,
+    minimumMargin,
+  })
+  return {
+    cost: roundMoney(cost),
+    price: roundMoney(price),
+    profit,
+    margin,
+    markup,
+    minimumPrice,
+    targetPrice,
+    recommendedPrice,
+    maxDiscountToCost,
+    maxDiscountAtMinimumMargin,
+  }
+}
+
+export function classifyProfitability(price, cost, {
+  minimumMargin = PROFITABILITY_THRESHOLDS.lowMarginMax,
+  targetMargin = PROFITABILITY_THRESHOLDS.healthyMarginMax,
+  percentageFees = 0,
+  fixedFees = 0,
+} = {}) {
+  const profit = calculateProfit(price, cost, percentageFees, fixedFees)
+  const margin = calculateMargin(price, cost, percentageFees, fixedFees)
+  if (profit <= 0 || margin <= PROFITABILITY_THRESHOLDS.lossMax) return 'loss'
+  if (margin < toFiniteNumber(minimumMargin)) return 'review'
+  if (margin < toFiniteNumber(targetMargin)) return 'profitable'
   return 'star'
 }
 
