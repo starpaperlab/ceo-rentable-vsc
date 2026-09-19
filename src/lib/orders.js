@@ -1,3 +1,5 @@
+import { calculateMargin, calculateProfit } from '@/lib/catalogFinancials'
+
 export const ORDER_STATUS = {
   draft: {
     label: 'Borrador',
@@ -50,8 +52,10 @@ export function normalizeOrderItems(rawItems = []) {
       const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
       const unitCostSnapshot = Number(item?.unit_cost_snapshot ?? item?.costo_unitario ?? 0);
       const safeUnitCostSnapshot = Number.isFinite(unitCostSnapshot) ? unitCostSnapshot : 0;
-      const unitProfitSnapshot = safeUnitPrice - safeUnitCostSnapshot;
-      const marginPctSnapshot = safeUnitPrice > 0 ? (unitProfitSnapshot / safeUnitPrice) * 100 : 0;
+      const percentageFeesSnapshot = Number(item?.percentage_fees_snapshot ?? item?.percentage_fees ?? 0);
+      const fixedFeesSnapshot = Number(item?.fixed_fees_snapshot ?? item?.fixed_fees ?? 0);
+      const unitProfitSnapshot = calculateProfit(safeUnitPrice, safeUnitCostSnapshot, percentageFeesSnapshot, fixedFeesSnapshot);
+      const marginPctSnapshot = calculateMargin(safeUnitPrice, safeUnitCostSnapshot, percentageFeesSnapshot, fixedFeesSnapshot);
 
       return {
         product_id: item?.product_id || item?.productId || null,
@@ -71,6 +75,12 @@ export function normalizeOrderItems(rawItems = []) {
         margin_pct_snapshot: marginPctSnapshot,
         cost_breakdown_snapshot: item?.cost_breakdown_snapshot || item?.cost_breakdown || {},
         cost_engine_version_snapshot: Number(item?.cost_engine_version_snapshot ?? item?.cost_engine_version ?? 1) || 1,
+        percentage_fees_snapshot: Number.isFinite(percentageFeesSnapshot) ? percentageFeesSnapshot : 0,
+        fixed_fees_snapshot: Number.isFinite(fixedFeesSnapshot) ? fixedFeesSnapshot : 0,
+        minimum_margin_snapshot: Number(item?.minimum_margin_snapshot ?? item?.minimum_margin ?? 0) || 0,
+        target_margin_snapshot: Number(item?.target_margin_snapshot ?? item?.target_margin ?? 0) || 0,
+        pricing_snapshot: item?.pricing_snapshot || {},
+        pricing_engine_version_snapshot: Number(item?.pricing_engine_version_snapshot ?? item?.pricing_engine_version ?? 1) || 1,
         total: safeQuantity * safeUnitPrice,
         sort_order: Number.isFinite(Number(item?.sort_order)) ? Number(item.sort_order) : index,
       };
@@ -168,6 +178,12 @@ export function buildInvoiceFromOrder({ order, items, invoiceNumber }) {
     margin_pct_snapshot: item.margin_pct_snapshot,
     cost_breakdown_snapshot: item.cost_breakdown_snapshot || {},
     cost_engine_version_snapshot: item.cost_engine_version_snapshot || 1,
+    percentage_fees_snapshot: item.percentage_fees_snapshot || 0,
+    fixed_fees_snapshot: item.fixed_fees_snapshot || 0,
+    minimum_margin_snapshot: item.minimum_margin_snapshot || 0,
+    target_margin_snapshot: item.target_margin_snapshot || 0,
+    pricing_snapshot: item.pricing_snapshot || {},
+    pricing_engine_version_snapshot: item.pricing_engine_version_snapshot || 1,
     quantity: item.quantity,
     total: item.total,
   }));
