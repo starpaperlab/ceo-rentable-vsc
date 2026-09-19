@@ -381,7 +381,7 @@ export default function Profitability() {
   const [isLoadingPanel, setIsLoadingPanel] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [analysisRows, setAnalysisRows] = useState([]);
-  const [analysisSource, setAnalysisSource] = useState(ANALYSIS_TABLE);
+  const [analysisSource, setAnalysisSource] = useState('products');
   const [targetMargin, setTargetMargin] = useState(40);
   const [seedApplied, setSeedApplied] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -554,7 +554,7 @@ export default function Profitability() {
             .filter((row) => (
               source === ANALYSIS_TABLE
                 ? (row.status === 'analysis' || row.status === 'approved')
-                : (row.status === 'analysis' || row.status === 'approved' || row.status === 'en_analisis')
+                : (row.status === 'analysis' || row.status === 'approved' || row.status === 'en_analisis' || row.status === 'active')
             ));
 
           if (!emptyResult) {
