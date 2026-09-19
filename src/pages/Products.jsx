@@ -634,7 +634,7 @@ function CatalogDialog({
                   {row.business_material_id ? (
                     <Select value={row.usage_unit || row.unit || 'unidad'} onValueChange={(value) => patchComponent(index, 'usage_unit', value)}>
                       <SelectTrigger className="sm:col-span-2"><SelectValue /></SelectTrigger>
-                      <SelectContent>{COST_USAGE_UNITS.map((unit) => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}</SelectContent>
+                      <SelectContent>{[...new Set([...(COST_USAGE_UNITS || []), row.usage_unit].filter(Boolean))].map((unit) => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}</SelectContent>
                     </Select>
                   ) : (
                     <Input className="sm:col-span-2" placeholder="Unidad" value={row.unit} onChange={(event) => patchComponent(index, 'unit', event.target.value)} />
