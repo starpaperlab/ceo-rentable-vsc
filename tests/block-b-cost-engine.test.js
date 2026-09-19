@@ -7,6 +7,10 @@ import {
   calculateMaterialCost,
   calculateMaterialUsageCost,
   calculateMonthlyEquivalent,
+  calculateMonthlyBusinessExpenses,
+  calculateBusinessStructure,
+  calculateOverheadAllocation,
+  recommendOverheadAllocationMethod,
   calculateOverheadPerUnit,
   calculateUnitCost,
   calculateYieldUnitCost,
@@ -83,4 +87,54 @@ test('mano de obra usa horas productivas, no 100% de las horas', () => {
   })
   assert.ok(hourly > 0)
   assert.ok(hourly > 60000 / (5 * 6 * (52 / 12)))
+})
+
+
+test('gastos mensuales suman frecuencia y porcentaje empresarial', () => {
+  assert.equal(calculateMonthlyBusinessExpenses([
+    { amount: 6000, frequency: 'annual', usage_scope: 'business', business_use_pct: 100 },
+    { amount: 4000, frequency: 'monthly', usage_scope: 'shared', business_use_pct: 25 },
+  ]), 1500)
+})
+
+test('distribución adaptativa recomienda órdenes para papelería por pedido', () => {
+  assert.equal(recommendOverheadAllocationMethod({
+    industry_codes: ['creative_stationery'],
+    operation_mode: 'made_to_order',
+  }), 'orders')
+})
+
+test('estructura aplica complejidad sin alterar la base mensual', () => {
+  const config = {
+    monthly_capacity: 40,
+    overhead_allocation_method: 'orders',
+    work_days_per_week: 5,
+    work_hours_per_day: 6,
+    productive_time_pct: 70,
+  }
+  const result = calculateBusinessStructure({
+    expenses: [{ amount: 12000, frequency: 'monthly', usage_scope: 'business', business_use_pct: 100 }],
+    equipment: [],
+    config,
+    complexity: 'high',
+  })
+  assert.equal(result.monthlyOverhead, 12000)
+  assert.equal(result.rate, 300)
+  assert.equal(result.amount, 450)
+})
+
+test('estructura por horas usa horas productivas', () => {
+  const result = calculateOverheadAllocation({
+    monthlyOverhead: 12000,
+    config: {
+      overhead_allocation_method: 'hours',
+      work_days_per_week: 5,
+      work_hours_per_day: 6,
+      productive_time_pct: 70,
+    },
+    method: 'hours',
+    hours: 2,
+  })
+  assert.ok(result.base > 0)
+  assert.ok(result.amount > 0)
 })
