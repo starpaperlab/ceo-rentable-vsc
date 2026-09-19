@@ -404,3 +404,72 @@ export function buildCostConfidence({
     ].filter(Boolean),
   }
 }
+
+
+const normalizeExpenseName = (value = '') => normalizeUnit(value)
+
+export function estimateSharedExpenseUse({
+  expenseName = '',
+  industryCodes = [],
+  workHoursPerDay = 0,
+  worksFromHome = false,
+  answers = {},
+} = {}) {
+  const name = normalizeExpenseName(expenseName)
+  const industries = new Set(industryCodes || [])
+  const hours = Math.max(0, Math.min(24, finite(workHoursPerDay)))
+  const homeFactor = worksFromHome ? Math.min(1, hours / 8) : 0
+
+  if (name.includes('internet') || name.includes('telefono') || name.includes('celular')) {
+    const profile = answers.serviceUse || 'half'
+    const mapping = { mainly_personal: 25, half: 50, mainly_business: 75, business_only: 100 }
+    return {
+      pct: mapping[profile] ?? 50,
+      reason: 'Estimación basada en si el servicio se usa principalmente de forma personal, compartida o para el negocio.',
+      method: 'guided_service_use',
+    }
+  }
+
+  if (name.includes('electric') || name.includes('luz') || name.includes('energia')) {
+    let pct = worksFromHome ? 10 + (homeFactor * 15) : 5
+    const productionHeavy = ['bakery','food_beverage','creative_stationery','personalization','nails','hair','beauty']
+    if (productionHeavy.some((code) => industries.has(code))) pct += 10
+    if (answers.usesProductionEquipment) pct += 10
+    if (answers.usesCooling) pct += 5
+    if (answers.highElectricalIntensity) pct += 10
+    pct = Math.max(5, Math.min(75, Math.round(pct / 5) * 5))
+    return {
+      pct,
+      reason: 'Estimación sugerida según horas trabajadas desde casa, industria y uso de equipos eléctricos.',
+      method: 'guided_electricity',
+    }
+  }
+
+  if (name.includes('agua')) {
+    let pct = worksFromHome ? 15 : 5
+    if (['bakery','food_beverage','nails','hair','beauty','makeup'].some((code) => industries.has(code))) pct += 10
+    if (answers.highWaterUse) pct += 10
+    pct = Math.max(5, Math.min(60, Math.round(pct / 5) * 5))
+    return {
+      pct,
+      reason: 'Estimación sugerida según el tipo de negocio y el nivel de uso de agua durante la operación.',
+      method: 'guided_water',
+    }
+  }
+
+  if (name.includes('alquiler') || name.includes('renta')) {
+    const profile = answers.spaceUse || 'small'
+    const mapping = { small: 20, medium: 35, large: 50, dedicated: 100 }
+    return {
+      pct: mapping[profile] ?? 20,
+      reason: 'Estimación sugerida según cuánto espacio del hogar se utiliza para el negocio.',
+      method: 'guided_space',
+    }
+  }
+
+  return {
+    pct: 50,
+    reason: 'Estimación inicial para un gasto compartido. Puedes ajustarla según el uso real de tu negocio.',
+    method: 'guided_generic',
+  }
+}
