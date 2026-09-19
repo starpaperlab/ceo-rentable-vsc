@@ -277,7 +277,7 @@ export default function HelpCenter() {
                   </div>
                 </Card>
               </div>
-              <Card className={\`h-fit overflow-hidden \${MODULES[0].lessons.length === 1 ? 'hidden lg:block' : ''}\`}>
+              <Card className={`h-fit overflow-hidden ${MODULES.find(m => m.number === activeLesson.moduleNumber)?.lessons.length === 1 ? 'hidden lg:block' : ''}`}>
                 <div className="border-b bg-[#FFF4F8] p-4">
                   <p className="text-xs font-bold text-[#B83E70]">MÓDULO {activeLesson.moduleNumber}</p>
                   <h3 className="mt-1 font-bold">{MODULES.find(m => m.number === activeLesson.moduleNumber)?.title}</h3>
