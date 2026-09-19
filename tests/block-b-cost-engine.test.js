@@ -11,6 +11,7 @@ import {
   calculateBusinessStructure,
   calculateOverheadAllocation,
   recommendOverheadAllocationMethod,
+  estimateSharedExpenseUse,
   calculateOverheadPerUnit,
   calculateUnitCost,
   calculateYieldUnitCost,
@@ -137,4 +138,34 @@ test('estructura por horas usa horas productivas', () => {
   })
   assert.ok(result.base > 0)
   assert.ok(result.amount > 0)
+})
+
+
+test('asistente de internet propone porcentaje editable según uso', () => {
+  const result = estimateSharedExpenseUse({
+    expenseName: 'Internet',
+    worksFromHome: true,
+    answers: { serviceUse: 'mainly_business' },
+  })
+  assert.equal(result.pct, 75)
+  assert.match(result.reason, /Estimación/)
+})
+
+test('asistente de electricidad considera trabajo desde casa e intensidad', () => {
+  const basic = estimateSharedExpenseUse({
+    expenseName: 'Electricidad',
+    industryCodes: ['creative_stationery'],
+    workHoursPerDay: 6,
+    worksFromHome: true,
+    answers: {},
+  })
+  const intensive = estimateSharedExpenseUse({
+    expenseName: 'Electricidad',
+    industryCodes: ['creative_stationery'],
+    workHoursPerDay: 6,
+    worksFromHome: true,
+    answers: { usesProductionEquipment: true, usesCooling: true, highElectricalIntensity: true },
+  })
+  assert.ok(intensive.pct > basic.pct)
+  assert.ok(intensive.pct <= 75)
 })
