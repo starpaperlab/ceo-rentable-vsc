@@ -1526,22 +1526,33 @@ export default function Products() {
       const matchesType = typeFilter === 'all' || normalizeProductType(product.product_type) === typeFilter
       const matchesCategory = categoryFilter === 'all' || product.category === categoryFilter
       const matchesProfitability = profitabilityFilter === 'all'
-        || classifyProfitability(product.sale_price, product.costo_unitario) === profitabilityFilter
+        || classifyProfitability(product.sale_price, product.costo_unitario, {
+          minimumMargin: product.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20,
+          targetMargin: product.target_margin ?? businessConfig?.target_margin_pct ?? 40,
+          percentageFees: product.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0,
+          fixedFees: product.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0,
+        }) === profitabilityFilter
       return matchesSearch && matchesStatus && matchesType && matchesCategory && matchesProfitability
     })
     .sort((left, right) => {
       if (sortOrder === 'name') return `${left.name || ''}`.localeCompare(`${right.name || ''}`)
       if (sortOrder === 'margin') {
-        return calculateMargin(right.sale_price, right.costo_unitario) - calculateMargin(left.sale_price, left.costo_unitario)
+        return calculateMargin(right.sale_price, right.costo_unitario, right.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0, right.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0)
+          - calculateMargin(left.sale_price, left.costo_unitario, left.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0, left.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0)
       }
       return new Date(right.created_at || 0) - new Date(left.created_at || 0)
-    }), [categoryFilter, products, profitabilityFilter, search, sortOrder, statusFilter, typeFilter])
+    }), [businessConfig?.minimum_margin_pct, businessConfig?.payment_fee_pct, businessConfig?.payment_fixed_fee, businessConfig?.target_margin_pct, categoryFilter, products, profitabilityFilter, search, sortOrder, statusFilter, typeFilter])
 
   const activeProducts = products.filter((product) => normalizeProductStatus(product.status) !== 'inactive')
   const averageValue = (field) => {
     if (activeProducts.length === 0) return 0
     return activeProducts.reduce((total, product) => {
-      if (field === 'margin') return total + calculateMargin(product.sale_price, product.costo_unitario)
+      if (field === 'margin') return total + calculateMargin(
+        product.sale_price,
+        product.costo_unitario,
+        product.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0,
+        product.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0
+      )
       return total + toNumber(product[field])
     }, 0) / activeProducts.length
   }
@@ -1645,9 +1656,19 @@ export default function Products() {
           ['Activos', activeProducts.length],
           ['Precio promedio', formatMoney(averageValue('sale_price'))],
           ['Margen promedio', `${averageValue('margin').toFixed(1)}%`],
-          ['Margen bajo', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario) === 'review').length],
-          ['Con pérdida', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario) === 'loss').length],
-          ['Costos por revisar', activeProducts.filter((product) => product.cost_status === 'review' || product.cost_status === 'incomplete').length],
+          ['Margen bajo', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario, {
+            minimumMargin: product.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20,
+            targetMargin: product.target_margin ?? businessConfig?.target_margin_pct ?? 40,
+            percentageFees: product.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0,
+            fixedFees: product.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0,
+          }) === 'review').length],
+          ['Con pérdida', activeProducts.filter((product) => classifyProfitability(product.sale_price, product.costo_unitario, {
+            minimumMargin: product.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20,
+            targetMargin: product.target_margin ?? businessConfig?.target_margin_pct ?? 40,
+            percentageFees: product.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0,
+            fixedFees: product.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0,
+          }) === 'loss').length],
+          ['Precios por revisar', activeProducts.filter((product) => ['review', 'outdated'].includes(product.price_status)).length],
         ].map(([label, value]) => (
           <Card key={label} className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></Card>
         ))}
@@ -1752,10 +1773,24 @@ export default function Products() {
                     <TableCell>
                       <div className="flex min-w-[150px] flex-col items-start gap-1">
                         {margin.hasCost ? <Badge className="border text-xs font-bold bg-emerald-100 text-emerald-700 border-emerald-200">{formatMoney(margin.marginValue)} · {(margin.marginPct || 0).toFixed(1)}%</Badge> : <span className="text-xs text-muted-foreground">Pendiente</span>}
-                        <ProfitabilityBadge price={product.sale_price} cost={product.costo_unitario} />
+                        <ProfitabilityBadge
+                          price={product.sale_price}
+                          cost={product.costo_unitario}
+                          minimumMargin={product.minimum_margin ?? businessConfig?.minimum_margin_pct ?? 20}
+                          targetMargin={product.target_margin ?? businessConfig?.target_margin_pct ?? 40}
+                          percentageFees={product.percentage_fees ?? businessConfig?.payment_fee_pct ?? 0}
+                          fixedFees={product.fixed_fees ?? businessConfig?.payment_fixed_fee ?? 0}
+                        />
                       </div>
                     </TableCell>
-                    <TableCell><Badge className={`border text-xs font-bold ${STATUS_COLORS[normalizeProductStatus(product.status)] || STATUS_COLORS.draft}`}>{STATUS_LABELS[normalizeProductStatus(product.status)] || STATUS_LABELS.draft}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge className={`border text-xs font-bold ${STATUS_COLORS[normalizeProductStatus(product.status)] || STATUS_COLORS.draft}`}>{STATUS_LABELS[normalizeProductStatus(product.status)] || STATUS_LABELS.draft}</Badge>
+                        {product.price_status === 'review' ? <Badge variant="outline" className="text-[10px]">⚠ Revisar precio</Badge> : null}
+                        {product.price_status === 'outdated' ? <Badge variant="outline" className="text-[10px]">⏱ Precio desactualizado</Badge> : null}
+                        {product.price_status === 'current' ? <span className="text-[10px] text-muted-foreground">✓ Precio actualizado</span> : null}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground font-medium">{product.created_at ? format(new Date(product.created_at), 'dd/MM/yy') : '-'}</TableCell>
                     <TableCell>
                       <div className="flex min-w-[320px] items-center justify-end gap-1">
