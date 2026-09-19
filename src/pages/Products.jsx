@@ -226,7 +226,7 @@ function buildProductForm(product = {}, inventoryItem = null, hasActiveInventory
   }
 }
 
-function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], currency = 'DOP') {
+function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], currency = 'DOP', businessConfig = {}) {
   return {
     name: product.name || '',
     sku: product.sku || '',
@@ -245,11 +245,11 @@ function buildCatalogForm(product = {}, costComponents = [], bundleItems = [], c
     hourly_cost: product.hourly_cost ?? 0,
     material_cost: product.material_cost ?? 0,
     other_cost: product.other_cost ?? 0,
-    target_margin: product.target_margin ?? 40,
-    minimum_margin: product.minimum_margin ?? 20,
-    percentage_fees: product.percentage_fees ?? 0,
-    fixed_fees: product.fixed_fees ?? 0,
-    commercial_rounding: product.commercial_rounding ?? 10,
+    target_margin: product.target_margin ?? businessConfig.target_margin_pct ?? 40,
+    minimum_margin: product.minimum_margin ?? businessConfig.minimum_margin_pct ?? 20,
+    percentage_fees: product.percentage_fees ?? businessConfig.payment_fee_pct ?? 0,
+    fixed_fees: product.fixed_fees ?? businessConfig.payment_fixed_fee ?? 0,
+    commercial_rounding: product.commercial_rounding ?? businessConfig.commercial_rounding ?? 10,
     cost_complexity: product.cost_complexity || 'standard',
     auto_allocate_general_tools: product.auto_allocate_general_tools !== false,
     linked_expense_ids: Array.isArray(product.linked_expense_ids) ? product.linked_expense_ids : [],
@@ -308,12 +308,12 @@ function CatalogDialog({
     if (draftKey) {
       try {
         const savedDraft = window.localStorage.getItem(draftKey)
-        if (savedDraft) return { ...buildCatalogForm({}, costComponents, bundleItems, currency), ...JSON.parse(savedDraft) }
+        if (savedDraft) return { ...buildCatalogForm({}, costComponents, bundleItems, currency, businessConfig), ...JSON.parse(savedDraft) }
       } catch {
         // Ignore an invalid local draft and start with a clean form.
       }
     }
-    return buildCatalogForm(initial || {}, costComponents, bundleItems, currency)
+    return buildCatalogForm(initial || {}, costComponents, bundleItems, currency, businessConfig)
   })
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }))
   const recommendedHourlyCost = useMemo(() => calculateLaborHourlyCost({
@@ -1201,7 +1201,15 @@ export default function Products() {
       material_cost: toNumber(form.material_cost),
       other_cost: toNumber(form.other_cost),
       target_margin: toNumber(form.target_margin),
+      minimum_margin: toNumber(form.minimum_margin),
+      percentage_fees: toNumber(form.percentage_fees),
+      fixed_fees: toNumber(form.fixed_fees),
+      commercial_rounding: toNumber(form.commercial_rounding) || 10,
       margin_pct: toNumber(form.margin_pct),
+      price_status: form.price_status || 'current',
+      price_calculated_at: form.price_calculated_at || new Date().toISOString(),
+      pricing_engine_version: toNumber(form.pricing_engine_version) || 1,
+      pricing_snapshot: form.pricing_snapshot || {},
       cost_complexity: form.cost_complexity || 'standard',
       cost_status: form.cost_status || 'current',
       direct_cost: toNumber(form.direct_cost),
