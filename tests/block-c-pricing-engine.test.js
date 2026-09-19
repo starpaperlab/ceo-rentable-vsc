@@ -14,6 +14,7 @@ import {
   calculateProfitPerHour,
   calculateUnitsForGoal,
   classifyProfitability,
+  resolvePricingSettings,
 } from '../src/lib/catalogFinancials.js'
 
 test('margen y markup no se confunden: costo 1000, precio 1500', () => {
@@ -89,4 +90,62 @@ test('buildPricingDecision entrega referencias coherentes', () => {
   assert.equal(result.targetPrice, 2450)
   assert.equal(result.recommendedPrice, 2450)
   assert.ok(result.minimumPrice < result.targetPrice)
+})
+
+
+test('jerarquía de pricing usa negocio, luego categoría y finalmente override del producto', () => {
+  const businessConfig = {
+    target_margin_pct: 40,
+    minimum_margin_pct: 20,
+    payment_fee_pct: 5,
+    payment_fixed_fee: 15,
+    commercial_rounding: 10,
+  }
+  const categorySettings = [{
+    category: 'Premium',
+    target_margin: 45,
+    minimum_margin: 30,
+    percentage_fees: null,
+    fixed_fees: null,
+    commercial_rounding: 50,
+  }]
+
+  const general = resolvePricingSettings({
+    product: { category: 'Básico', pricing_override_enabled: false },
+    businessConfig,
+    categorySettings,
+  })
+  assert.equal(general.source, 'business')
+  assert.equal(general.targetMargin, 40)
+  assert.equal(general.percentageFees, 5)
+
+  const category = resolvePricingSettings({
+    product: { category: ' premium ', pricing_override_enabled: false },
+    businessConfig,
+    categorySettings,
+  })
+  assert.equal(category.source, 'category')
+  assert.equal(category.targetMargin, 45)
+  assert.equal(category.minimumMargin, 30)
+  assert.equal(category.percentageFees, 5)
+  assert.equal(category.commercialRounding, 50)
+
+  const specific = resolvePricingSettings({
+    product: {
+      category: 'Premium',
+      pricing_override_enabled: true,
+      target_margin: 55,
+      minimum_margin: 35,
+      percentage_fees: 3,
+      fixed_fees: 0,
+      commercial_rounding: 100,
+    },
+    businessConfig,
+    categorySettings,
+  })
+  assert.equal(specific.source, 'product')
+  assert.equal(specific.targetMargin, 55)
+  assert.equal(specific.minimumMargin, 35)
+  assert.equal(specific.percentageFees, 3)
+  assert.equal(specific.commercialRounding, 100)
 })
