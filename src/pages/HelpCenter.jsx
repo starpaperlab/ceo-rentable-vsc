@@ -365,8 +365,41 @@ export default function HelpCenter() {
           </div>
 
           {activeLesson ? (
-            <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
-              <div>
+            <>
+              <Card className="mt-6 overflow-hidden border-[#F0DCE5]">
+                <div className="flex items-center justify-between border-b bg-[#FFF9FB] p-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#B83E70]">Contenido de la Academia</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{MODULES.length} módulos · {allLessons.length} lecciones disponibles</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={backToAcademy}>Ver todo</Button>
+                </div>
+                <div className="divide-y">
+                  {MODULES.map(module => (
+                    <div key={module.id} className="p-4">
+                      <p className="mb-2 text-xs font-bold text-[#B83E70]">MÓDULO {module.number} · {module.title}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {module.lessons.map(lesson => {
+                          const isActive = activeLesson.key === lesson.key;
+                          return (
+                            <button
+                              key={lesson.key}
+                              type="button"
+                              onClick={() => openLesson(lesson, module.number)}
+                              className={`rounded-full border px-3 py-2 text-left text-xs font-medium transition ${isActive ? 'border-[#D45387] bg-[#D45387] text-white' : 'border-[#F0DCE5] bg-white hover:bg-[#FFF4F8]'}`}
+                            >
+                              {completed.has(lesson.key) ? '✓ ' : ''}L{lesson.number} · {lesson.title}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <div className="mt-6">
+                <div>
                 <div className="mb-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B83E70]">Módulo {activeLesson.moduleNumber} · Lección {activeLesson.number}</p>
                   <h2 className="mt-1 text-2xl font-bold">{activeLesson.title}</h2>
@@ -400,23 +433,8 @@ export default function HelpCenter() {
                   </div>
                 </Card>
               </div>
-              <Card className={`h-fit overflow-hidden ${MODULES.find(m => m.number === activeLesson.moduleNumber)?.lessons.length === 1 ? 'hidden lg:block' : ''}`}>
-                <div className="border-b bg-[#FFF4F8] p-4">
-                  <p className="text-xs font-bold text-[#B83E70]">MÓDULO {activeLesson.moduleNumber}</p>
-                  <h3 className="mt-1 font-bold">{MODULES.find(m => m.number === activeLesson.moduleNumber)?.title}</h3>
-                </div>
-                <div className="p-2">
-                  {(MODULES.find(m => m.number === activeLesson.moduleNumber)?.lessons || []).map(lesson => (
-                    <button key={lesson.key} onClick={() => openLesson(lesson, activeLesson.moduleNumber)} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-muted/60">
-                      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${completed.has(lesson.key)?'bg-emerald-100 text-emerald-700':'bg-[#D45387]/10 text-[#B83E70]'}`}>
-                        {completed.has(lesson.key) ? '✓' : lesson.number}
-                      </div>
-                      <span className="text-sm font-medium">{lesson.title}</span>
-                    </button>
-                  ))}
-                </div>
-              </Card>
-            </div>
+              </div>
+            </>
           ) : (
             <div className="mt-6 space-y-4">
               {MODULES.map(module => (
