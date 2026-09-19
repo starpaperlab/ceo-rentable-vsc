@@ -58,7 +58,6 @@ import {
 } from '@/lib/costLibraryTypes';
 
 const ANALYSIS_TABLE = 'product_analysis';
-const ONBOARDING_AUDIT_SEED_KEY = 'ceo_onboarding_audit_seed';
 const PRODUCT_TYPES = [
   { value: 'fisico', label: '📦 Físico' },
   { value: 'digital', label: '💻 Digital' },
@@ -641,87 +640,8 @@ export default function Profitability() {
   }, [selector.open, selector.section, selector.search]);
 
   useEffect(() => {
-    if (seedApplied || typeof window === 'undefined') return;
-
-    const stateSeed = location?.state?.onboardingAuditSeed;
-    if (stateSeed && typeof stateSeed === 'object') {
-      setForm((prev) => ({
-        ...prev,
-        name: stateSeed.name || prev.name,
-        type: stateSeed.type || prev.type,
-        price: stateSeed.price || prev.price,
-        materials: stateSeed.materials || prev.materials,
-        hidden: stateSeed.hidden || prev.hidden,
-        time: stateSeed.time || prev.time,
-        hourly: stateSeed.hourly || prev.hourly,
-        commission: stateSeed.commission || prev.commission,
-        ads: stateSeed.ads || prev.ads,
-      }));
-
-      setSeedApplied(true);
-      setDraftRestored(true);
-      toast.success('Producto cargado desde onboarding. Completa los datos de auditoría y guarda en análisis.');
-      if (location?.state?.onboardingWarning) {
-        toast.warning(`Continuamos con guardado parcial: ${location.state.onboardingWarning}`);
-      }
-      return;
-    }
-
-    const normalizedEmail = `${ownerEmail || ''}`.trim().toLowerCase();
-    const candidateKeys = [
-      ownerId ? `${ONBOARDING_AUDIT_SEED_KEY}:${ownerId}` : null,
-      normalizedEmail ? `${ONBOARDING_AUDIT_SEED_KEY}:${normalizedEmail}` : null,
-      ONBOARDING_AUDIT_SEED_KEY,
-    ].filter(Boolean);
-
-    let parsedSeed = null;
-    let matchedKey = null;
-
-    for (const key of candidateKeys) {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          parsedSeed = parsed;
-          matchedKey = key;
-          break;
-        }
-      } catch {
-        window.localStorage.removeItem(key);
-      }
-    }
-
-    if (!parsedSeed) {
-      setSeedApplied(true);
-      return;
-    }
-
-    setForm((prev) => ({
-      ...prev,
-      name: parsedSeed.name || prev.name,
-      type: parsedSeed.type || prev.type,
-      price: parsedSeed.price || prev.price,
-      materials: parsedSeed.materials || prev.materials,
-      hidden: parsedSeed.hidden || prev.hidden,
-      time: parsedSeed.time || prev.time,
-      hourly: parsedSeed.hourly || prev.hourly,
-      commission: parsedSeed.commission || prev.commission,
-      ads: parsedSeed.ads || prev.ads,
-    }));
-
-    if (matchedKey) {
-      window.localStorage.removeItem(matchedKey);
-    }
-    for (const key of candidateKeys) {
-      window.localStorage.removeItem(key);
-    }
-
-    setSeedApplied(true);
-    setDraftRestored(true);
-    toast.success('Producto cargado desde onboarding. Completa los datos de auditoría y guarda en análisis.');
-  }, [seedApplied, ownerId, ownerEmail, location?.state]);
+    if (!seedApplied) setSeedApplied(true);
+  }, [seedApplied]);
 
   useEffect(() => {
     if (!seedApplied || draftRestored || typeof window === 'undefined') return;
