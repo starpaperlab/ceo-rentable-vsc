@@ -28,6 +28,7 @@ import {
   calculateCostComponentTotal,
   calculateDetailedCost,
   buildPricingDecision,
+  calculateBreakEven,
   calculateDiscountImpact,
   calculateMargin,
   calculateMarkup,
@@ -412,6 +413,16 @@ function CatalogDialog({
     commercialRounding: effectiveCommercialRounding,
   })
   const profitPerHour = calculateProfitPerHour(profit, form.service_hours)
+  const monthlyProfitGoal = Math.max(0, toNumber(businessConfig?.personal_income_goal))
+  const requiredUnitsForGoal = monthlyProfitGoal > 0 ? calculateRequiredUnits(monthlyProfitGoal, profit) : 0
+  const configuredCapacity = businessConfig?.monthly_capacity_unknown ? null : Math.max(0, toNumber(businessConfig?.monthly_capacity))
+  const capacityPrice = configuredCapacity > 0 && monthlyProfitGoal > 0
+    ? calculatePriceForDesiredProfit(cost, monthlyProfitGoal / configuredCapacity, effectiveFeePct, effectiveFixedFee)
+    : null
+  const contributionPerSale = calculateProfit(form.sale_price, directCost + laborCost, effectiveFeePct, effectiveFixedFee)
+  const breakEvenUnits = automaticCostMode && structure.monthlyOverhead > 0
+    ? calculateBreakEven(structure.monthlyOverhead, contributionPerSale)
+    : null
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
   const materialById = useMemo(() => new Map((businessMaterials || []).map((material) => [material.id, material])), [businessMaterials])
   const priceMaterialComponent = (row) => {
@@ -742,7 +753,7 @@ function CatalogDialog({
           </section> : null}
 
           {automaticCostMode ? <section className="rounded-2xl border border-border bg-background p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">¿Cómo calculamos tu costo?</h3><p className="text-xs text-muted-foreground">El total se actualiza con los datos de tu negocio.</p></div><Badge variant="outline">{confidence.score}% configuración</Badge></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">¿Cómo calculamos tu costo?</h3><p className="text-xs text-muted-foreground">El total se actualiza con los datos de tu negocio.</p></div><Badge variant="outline">{confidence.score >= 100 ? 'Cálculo completo' : 'Estimación básica'}</Badge></div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Costos directos</span><b>{formatMoney(directCost)}</b></div>
               <div className="flex justify-between rounded-lg bg-muted/30 p-2 text-sm"><span>Tu tiempo</span><b>{formatMoney(laborCost)}</b></div>
@@ -781,6 +792,25 @@ function CatalogDialog({
               <p className="text-sm font-semibold">Descuento seguro</p>
               <p className="mt-1 text-sm">Puedes descontar hasta <b>{pricingDecision.maxDiscountAtMinimumMargin.toFixed(1)}%</b> manteniendo tu margen mínimo, o hasta <b>{pricingDecision.maxDiscountToCost.toFixed(1)}%</b> antes de dejar de cubrir costo y comisiones.</p>
             </div>
+
+            {(monthlyProfitGoal > 0 || configuredCapacity > 0 || breakEvenUnits != null) ? (
+              <div className="mt-4 rounded-xl border bg-background p-3">
+                <p className="text-sm font-semibold">Meta y capacidad</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div><p className="text-xs text-muted-foreground">Unidades para tu meta</p><p className="font-bold">{requiredUnitsForGoal == null ? 'No alcanzable con este precio' : requiredUnitsForGoal || '—'}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Capacidad mensual</p><p className="font-bold">{configuredCapacity == null || configuredCapacity <= 0 ? 'Sin definir' : configuredCapacity}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Punto de equilibrio estimado</p><p className="font-bold">{breakEvenUnits == null ? '—' : `${breakEvenUnits} ventas`}</p></div>
+                </div>
+                {configuredCapacity > 0 && requiredUnitsForGoal != null && requiredUnitsForGoal > configuredCapacity ? (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>Con tu capacidad actual no alcanzarías esa meta solamente con este producto o servicio. Para lograrla dentro de {configuredCapacity} ventas, el precio tendría que acercarse a <b>{capacityPrice == null ? '—' : formatMoney(capacityPrice)}</b>, o necesitarías combinar ventas, mejorar margen o aumentar capacidad.</span>
+                  </div>
+                ) : monthlyProfitGoal > 0 && requiredUnitsForGoal != null ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Con una ganancia de {formatMoney(profit)} por venta necesitas {requiredUnitsForGoal} ventas para generar {formatMoney(monthlyProfitGoal)} de ganancia.</p>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         </fieldset>
 
