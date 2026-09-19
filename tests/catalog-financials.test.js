@@ -82,3 +82,25 @@ test('conserva snapshots del catálogo aunque cambie el producto original', () =
   assert.equal(snapshot.total, 3000)
   assert.equal(snapshot.sku, 'SRV-001')
 })
+
+
+test('conserva desglose y versión del motor de costos en snapshot', () => {
+  const [snapshot] = normalizeOrderItems([{
+    description: 'Planner',
+    quantity: 1,
+    unit_price: 1200,
+    costo_unitario: 700,
+    cost_breakdown: {
+      direct_cost: 400,
+      labor_cost: 150,
+      overhead_cost: 100,
+      equipment_cost: 50,
+      total_cost: 700,
+    },
+    cost_engine_version: 1,
+  }])
+  assert.equal(snapshot.unit_cost_snapshot, 700)
+  assert.equal(snapshot.cost_breakdown_snapshot.total_cost, 700)
+  assert.equal(snapshot.cost_breakdown_snapshot.overhead_cost, 100)
+  assert.equal(snapshot.cost_engine_version_snapshot, 1)
+})
