@@ -376,7 +376,7 @@ function CatalogDialog({
   const margin = calculateMargin(form.sale_price, cost)
   const markup = calculateMarkup(form.sale_price, cost)
   const availableItems = products.filter((product) => product.id !== initial?.id && product.status !== 'inactive')
-  const materialById = new Map((businessMaterials || []).map((material) => [material.id, material]))
+  const materialById = useMemo(() => new Map((businessMaterials || []).map((material) => [material.id, material])), [businessMaterials])
   let recommendedPrice = 0
   try {
     recommendedPrice = calculateRecommendedPrice(cost, form.target_margin)
@@ -427,6 +427,16 @@ function CatalogDialog({
       return next
     }))
   }
+
+  useEffect(() => {
+    if (!form.components.some((row) => row.business_material_id && row.needs_recalculation)) return
+    setForm((current) => ({
+      ...current,
+      components: current.components.map((row) => (
+        row.business_material_id ? priceMaterialComponent(row) : row
+      )),
+    }))
+  }, [businessMaterials])
 
   const patchBundleItem = (index, field, value) => {
     update('bundleItems', form.bundleItems.map((row, currentIndex) => (
@@ -507,6 +517,8 @@ function CatalogDialog({
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
+        {initial?.cost_status === 'review' ? <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 sm:mx-6"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Uno de tus materiales cambió de costo. CEO Rentable recalculó la vista con los datos actuales; guarda para actualizar este producto.</span></div> : null}
+
         <fieldset disabled={readOnly} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
           <section className="space-y-3">
             <h3 className="font-semibold">Información básica</h3>
@@ -556,7 +568,7 @@ function CatalogDialog({
                 <Select value={form.cost_mode} onValueChange={(value) => update('cost_mode', value)}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="manual">Costo simple</SelectItem>
+                    <SelectItem value="manual">Quiero calcular rápido</SelectItem>
                     <SelectItem value="detailed">Costeo detallado</SelectItem>
                     {isServiceProductType(form.product_type) ? <SelectItem value="service">Horas y materiales</SelectItem> : null}
                   </SelectContent>
@@ -565,7 +577,10 @@ function CatalogDialog({
             ) : null}
 
             {form.cost_mode === 'manual' && !isBundleProductType(form.product_type) ? (
-              <div className="max-w-xs"><Label>Costo directo</Label><Input type="number" min="0" step="0.01" value={form.manual_cost} onChange={(event) => update('manual_cost', event.target.value)} /></div>
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <div className="max-w-xs"><Label>Costo rápido estimado</Label><Input inputMode="decimal" type="number" min="0" step="0.01" value={form.manual_cost} onChange={(event) => update('manual_cost', event.target.value)} /></div>
+                <p className="mt-2 text-xs text-muted-foreground">Úsalo si quieres empezar rápido. Configura materiales, tiempo y gastos para obtener el costo total real automáticamente.</p>
+              </div>
             ) : null}
 
             {isServiceProductType(form.product_type) && form.cost_mode === 'service' ? (
