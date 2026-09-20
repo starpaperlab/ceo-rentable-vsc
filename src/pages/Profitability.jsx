@@ -1505,7 +1505,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === MANUAL_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === MANUAL_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
+        className={`min-h-11 h-auto rounded-xl px-3 py-2 text-center text-[13px] leading-tight whitespace-normal break-words ${mode === MANUAL_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, MANUAL_MODE)}
       >
         Ingresar total manual
@@ -1513,7 +1513,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === LIBRARY_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === LIBRARY_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
+        className={`min-h-11 h-auto rounded-xl px-3 py-2 text-center text-[13px] leading-tight whitespace-normal break-words ${mode === LIBRARY_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, LIBRARY_MODE)}
       >
         Seleccionar de mi biblioteca
@@ -1521,7 +1521,7 @@ function ModeSwitch({ section, mode, onModeChange }) {
       <Button
         type="button"
         variant={mode === MIXED_MODE ? 'default' : 'outline'}
-        className={`min-h-11 rounded-xl ${mode === MIXED_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
+        className={`min-h-11 h-auto rounded-xl px-3 py-2 text-center text-[13px] leading-tight whitespace-normal break-words ${mode === MIXED_MODE ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
         onClick={() => onModeChange(section, MIXED_MODE)}
       >
         Manual + biblioteca
