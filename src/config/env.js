@@ -57,7 +57,7 @@ export const ENV_CONFIG = {
     environment: PAYPAL_ENVIRONMENT,
     enabled: !!PAYPAL_CLIENT_ID,
     currency: PAYPAL_CURRENCY,
-    trialDays: 21,
+    trialDays: 10,
     plans: {
       founder_lifetime: {
         code: 'founder_lifetime',
