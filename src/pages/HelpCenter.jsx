@@ -181,9 +181,82 @@ const HELP_CATEGORIES = [
   { key:'receivables', title:'Cuentas por cobrar', description:'Da seguimiento a saldos y pagos pendientes.', icon:CreditCard },
   { key:'pipeline', title:'Pipeline y clientes', description:'Organiza oportunidades y seguimiento comercial.', icon:Target },
   { key:'concepts', title:'Conceptos financieros sin complicaciones', description:'Rentabilidad, margen, punto de equilibrio y otros términos explicados en lenguaje sencillo.', icon:BookOpen, concepts:true },
-  { key:'guides', title:'Guías de rentabilidad', description:'Conceptos y acciones para tomar mejores decisiones.', icon:BookOpen, path:'/Learn' },
+  { key:'guides', title:'Guías de rentabilidad', description:'Conceptos y acciones para tomar mejores decisiones.', icon:BookOpen },
   { key:'settings', title:'Configuración de tu negocio', description:'Personaliza los datos y preferencias de tu empresa.', icon:Settings },
 ];
+
+const HELP_TOPICS = {
+  dashboard: {
+    eyebrow: 'ENTIENDE TU NEGOCIO DE UN VISTAZO',
+    intro: 'El Dashboard reúne los indicadores principales de tu negocio para que sepas qué está pasando sin revisar pantalla por pantalla. El CEO Score™ resume señales clave y te ayuda a detectar dónde necesitas atención.',
+    points: [
+      'Revisa ventas, cobros, rentabilidad y desempeño general.',
+      'Usa el CEO Score™ como señal de diagnóstico, no como un número aislado.',
+      'Entra a los indicadores que necesiten revisión para entender qué los está afectando.',
+    ],
+    lessonKeys: ['m1-l2', 'm4-l4'],
+  },
+  products: {
+    eyebrow: 'CONOCE CUÁNTO TE CUESTA Y CUÁNTO GANAS',
+    intro: 'Aquí organizas tus productos y servicios, sus costos y la información que CEO Rentable necesita para calcular rentabilidad y ayudarte a tomar mejores decisiones de precio.',
+    points: [
+      'Registra correctamente materiales, costos y servicios.',
+      'Mantén tus costos actualizados cuando cambien tus compras o gastos.',
+      'Consulta la rentabilidad para saber qué realmente deja dinero.',
+    ],
+    lessonKeys: ['m2-l2', 'm4-l2'],
+  },
+  billing: {
+    eyebrow: 'DE COTIZAR A COBRAR, SIN PERDER EL CONTROL',
+    intro: 'Las cotizaciones te permiten presentar una propuesta al cliente antes de confirmar la venta. Cuando el negocio se concreta, puedes continuar el flujo con la factura y registrar los pagos recibidos.',
+    points: [
+      'Crea una cotización con los productos o servicios ofrecidos al cliente.',
+      'Convierte el proceso comercial en una factura cuando corresponda.',
+      'Registra los cobros para mantener actualizado lo pagado y lo pendiente.',
+    ],
+    lessonKeys: ['m3-l3', 'm3-l2'],
+  },
+  receivables: {
+    eyebrow: 'CONTROLA EL DINERO QUE TODAVÍA TE DEBEN',
+    intro: 'Cuentas por cobrar te muestra ventas o facturas con saldos pendientes para que sepas quién te debe, cuánto falta por cobrar y qué necesita seguimiento.',
+    points: [
+      'Identifica rápidamente facturas con saldo pendiente.',
+      'Registra abonos y pagos para mantener el saldo correcto.',
+      'Da seguimiento antes de que una cuenta pendiente se convierta en un problema de caja.',
+    ],
+    lessonKeys: ['m3-l2', 'm3-l4'],
+  },
+  pipeline: {
+    eyebrow: 'ORGANIZA CLIENTES Y OPORTUNIDADES',
+    intro: 'El pipeline te ayuda a visualizar en qué etapa está cada oportunidad comercial y qué seguimiento necesita para avanzar hacia una venta.',
+    points: [
+      'Registra clientes y oportunidades para no depender de la memoria.',
+      'Mueve cada oportunidad según su etapa comercial.',
+      'Programa seguimiento y revisa qué oportunidades necesitan acción.',
+    ],
+    lessonKeys: ['m3-l4', 'm3-l1'],
+  },
+  guides: {
+    eyebrow: 'TOMA DECISIONES CON TUS NÚMEROS',
+    intro: 'Las guías de rentabilidad te ayudan a interpretar resultados y convertir los números de CEO Rentable en decisiones concretas para tu negocio.',
+    points: [
+      'Revisa tu rentabilidad y detecta productos o servicios débiles.',
+      'Haz tu control mensual para comparar resultados.',
+      'Usa la proyección de 90 días para anticiparte a ingresos, gastos y decisiones.',
+    ],
+    lessonKeys: ['m4-l1', 'm4-l2', 'm4-l3'],
+  },
+  settings: {
+    eyebrow: 'DEJA CEO RENTABLE ADAPTADO A TU NEGOCIO',
+    intro: 'La configuración define los datos y preferencias que CEO Rentable utiliza para personalizar tu experiencia y trabajar correctamente con la información de tu empresa.',
+    points: [
+      'Completa los datos principales de tu negocio.',
+      'Revisa la configuración cuando cambie información importante.',
+      'Mantén tu perfil actualizado para que los cálculos y recomendaciones partan de datos correctos.',
+    ],
+    lessonKeys: ['m2-l1', 'm5-l1'],
+  },
+};
 
 function YouTubeLessonPlayer({ videoId, title, moduleNumber = 1, lessonNumber, onEnded }) {
   const mountRef = useRef(null);
@@ -319,6 +392,7 @@ export default function HelpCenter() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState('home');
   const [activeLesson, setActiveLesson] = useState(null);
+  const [activeTopicKey, setActiveTopicKey] = useState(null);
 
   const lessonsWithModule = useMemo(
     () => MODULES.flatMap(module => module.lessons.map(lesson => ({ ...lesson, moduleNumber: module.number }))),
@@ -329,17 +403,31 @@ export default function HelpCenter() {
     const section = searchParams.get('seccion');
     const isAcademy = section === 'academia';
     const lessonKey = searchParams.get('leccion');
+    const topicKey = searchParams.get('tema');
+
     if (section === 'conceptos') {
       setView('concepts');
       setActiveLesson(null);
+      setActiveTopicKey(null);
       return;
     }
+
+    if (section === 'tema' && topicKey && HELP_TOPICS[topicKey]) {
+      setView('topic');
+      setActiveLesson(null);
+      setActiveTopicKey(topicKey);
+      return;
+    }
+
     if (!isAcademy) {
       setView('home');
       setActiveLesson(null);
+      setActiveTopicKey(null);
       return;
     }
+
     setView('academy');
+    setActiveTopicKey(null);
     setActiveLesson(lessonKey ? lessonsWithModule.find(lesson => lesson.key === lessonKey) || null : null);
   }, [searchParams, lessonsWithModule]);
 
@@ -364,6 +452,7 @@ export default function HelpCenter() {
   const backToHelpCenter = () => {
     setView('home');
     setActiveLesson(null);
+    setActiveTopicKey(null);
     setSearchParams({});
   };
 
@@ -402,10 +491,93 @@ export default function HelpCenter() {
 
   const openCategory = (category) => {
     if (category.academy) { openAcademy(); return; }
-    if (category.concepts) { setView('concepts'); setActiveLesson(null); setSearchParams({ seccion: 'conceptos' }); return; }
-    if (category.path) { navigate(category.path); return; }
-    setSearch(category.title);
+    if (category.concepts) { setView('concepts'); setActiveLesson(null); setActiveTopicKey(null); setSearchParams({ seccion: 'conceptos' }); return; }
+    if (HELP_TOPICS[category.key]) {
+      setView('topic');
+      setActiveLesson(null);
+      setActiveTopicKey(category.key);
+      setSearchParams({ seccion: 'tema', tema: category.key });
+      return;
+    }
   };
+
+  if (view === 'topic' && activeTopicKey && HELP_TOPICS[activeTopicKey]) {
+    const topic = HELP_TOPICS[activeTopicKey];
+    const category = HELP_CATEGORIES.find(item => item.key === activeTopicKey);
+    const TopicIcon = category?.icon || HelpCircle;
+    const relatedLessons = topic.lessonKeys
+      .map(key => lessonsWithModule.find(lesson => lesson.key === key))
+      .filter(Boolean);
+
+    return (
+      <div className="min-h-full bg-gradient-to-b from-[#FFF7FA] via-background to-background">
+        <div className="mx-auto max-w-5xl p-4 lg:p-8">
+          <Button variant="ghost" className="mb-4 -ml-2 text-muted-foreground" onClick={backToHelpCenter}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Centro de Ayuda
+          </Button>
+
+          <div className="rounded-3xl border border-[#F1D7E2] bg-background p-6 shadow-sm lg:p-8">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#D45387]/10 px-3 py-1.5 text-xs font-bold text-[#B83E70]">
+              <TopicIcon className="h-4 w-4" /> {topic.eyebrow}
+            </div>
+            <h1 className="mt-4 text-2xl font-bold lg:text-3xl">{category?.title}</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{topic.intro}</p>
+
+            <div className="mt-6 rounded-2xl border border-[#F0DCE5] bg-[#FFF9FB] p-5 dark:bg-background">
+              <h2 className="font-bold">¿Qué puedes hacer aquí?</h2>
+              <div className="mt-3 space-y-3">
+                {topic.points.map((point, index) => (
+                  <div key={point} className="flex gap-3">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#D45387]/10 text-xs font-bold text-[#B83E70]">
+                      {index + 1}
+                    </div>
+                    <p className="text-sm leading-6 text-foreground/80">{point}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-4">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B83E70]">Apréndelo paso a paso</p>
+              <h2 className="mt-1 text-xl font-bold">Lecciones recomendadas</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Abre la lección relacionada directamente en la Academia CEO Rentable.</p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {relatedLessons.map(lesson => (
+                <button
+                  key={lesson.key}
+                  type="button"
+                  onClick={() => openLesson(lesson, lesson.moduleNumber)}
+                  className="group text-left"
+                >
+                  <Card className="h-full border-[#F0DCE5] p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#E3AFC5] hover:shadow-md">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D45387]/10 text-[#B83E70]">
+                        <PlayCircle className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#B83E70]">
+                          Módulo {lesson.moduleNumber} · Lección {lesson.number}
+                        </p>
+                        <h3 className="mt-1 font-bold">{lesson.title}</h3>
+                        <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{lesson.description}</p>
+                        <div className="mt-4 flex items-center text-xs font-semibold text-[#B83E70]">
+                          Ver video <ChevronRight className="ml-1 h-3.5 w-3.5 transition group-hover:translate-x-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'concepts') {
     return (
@@ -605,7 +777,7 @@ export default function HelpCenter() {
                   </div>
                   <h3 className="mt-4 font-bold">{category.title}</h3>
                   <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{category.description}</p>
-                  <div className="mt-4 flex items-center text-xs font-semibold text-[#B83E70]">Ver contenido <ChevronRight className="ml-1 h-3.5 w-3.5 transition group-hover:translate-x-1"/></div>
+                  <div className="mt-4 flex items-center text-xs font-semibold text-[#B83E70]">Abrir guía <ChevronRight className="ml-1 h-3.5 w-3.5 transition group-hover:translate-x-1"/></div>
                 </Card>
               </button>
             ))}
