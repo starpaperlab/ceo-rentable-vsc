@@ -13,7 +13,7 @@ export const blogPosts = [
       href: '/lp?utm_source=blog&utm_medium=organic&utm_campaign=precio_pastel',
       label: 'Calcular mis precios con CEO Rentable',
       title: 'Calcula el costo real, el margen y el precio recomendado en un solo lugar',
-      text: 'Prueba CEO Rentable durante 21 días y deja de fijar precios a ojo.'
+      text: 'Prueba CEO Rentable durante 10 días y deja de fijar precios a ojo.'
     },
     related: [
       { slug: 'como-calcular-precio-de-venta', label: 'Cómo calcular el precio de venta de un producto sin perder dinero' },
