@@ -101,6 +101,64 @@ const MODULES = [
       },
     ],
   },
+  {
+    id: 'm4',
+    number: 4,
+    title: 'Control financiero y rentabilidad',
+    description: 'Analiza tus resultados, mide la rentabilidad, proyecta los próximos 90 días y consulta tus reportes.',
+    lessons: [
+      {
+        key: 'm4-l1',
+        number: 1,
+        title: 'Control mensual',
+        youtubeId: 'UKAfYJrgXI4',
+        description: 'Registra y revisa el desempeño mensual de tu negocio para mantener tus números bajo control.',
+      },
+      {
+        key: 'm4-l2',
+        number: 2,
+        title: 'Rentabilidad',
+        youtubeId: 'g7ETDcxmyqg',
+        description: 'Analiza cuánto realmente gana tu negocio y qué productos o servicios son más rentables.',
+      },
+      {
+        key: 'm4-l3',
+        number: 3,
+        title: 'Proyección 90 días',
+        youtubeId: 'A--eV-_yv-c',
+        description: 'Utiliza la proyección de 90 días para anticipar ingresos, gastos y decisiones del negocio.',
+      },
+      {
+        key: 'm4-l4',
+        number: 4,
+        title: 'Centro de Reportes',
+        youtubeId: 'Pk9LwPb8PPk',
+        description: 'Consulta los reportes clave de CEO Rentable y convierte tus datos en decisiones de gestión.',
+      },
+    ],
+  },
+  {
+    id: 'm5',
+    number: 5,
+    title: 'Datos y rutina de gestión',
+    description: 'Completa la configuración de tus datos y establece una rutina de gestión para mantener el negocio actualizado.',
+    lessons: [
+      {
+        key: 'm5-l1',
+        number: 1,
+        title: 'Importar datos',
+        youtubeId: '-J2_J5IqK64',
+        description: 'Importa información existente para comenzar a trabajar en CEO Rentable sin tener que registrarlo todo desde cero.',
+      },
+      {
+        key: 'm5-l2',
+        number: 2,
+        title: 'Control final y rutina de gestión',
+        youtubeId: 'G2KnkkuTJcE',
+        description: 'Realiza el control final y establece una rutina sencilla para mantener CEO Rentable al día.',
+      },
+    ],
+  },
 ];
 
 const FINANCE_CONCEPTS = [
