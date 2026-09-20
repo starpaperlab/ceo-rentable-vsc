@@ -6,7 +6,7 @@
 
 ## Objetivo
 
-Convertir el blog de CEO Rentable en un canal de adquisición que atraiga búsquedas con intención comercial y las transforme en visitas a la LP, pruebas de 21 días y suscripciones.
+Convertir el blog de CEO Rentable en un canal de adquisición que atraiga búsquedas con intención comercial y las transforme en visitas a la LP, pruebas de 10 días y suscripciones.
 
 ## Estrategia de publicación
 
@@ -15,7 +15,7 @@ Convertir el blog de CEO Rentable en un canal de adquisición que atraiga búsqu
 - Hora operativa sugerida: 9:00 a. m. RD.
 - Cada artículo debe publicarse con imagen principal, CTA, enlaces internos y medición.
 - La frecuencia diaria de la primera semana se utiliza para construir rápidamente un clúster temático; no como supuesto “truco” de posicionamiento.
-- La prueba debe comunicarse siempre así: **21 días gratis con tarjeta registrada, sin cargos durante la prueba. Cancela antes del día 21 y no pagas.**
+- La prueba debe comunicarse siempre así: **10 días gratis con tarjeta registrada, sin cargos durante la prueba. Cancela antes del día 10 y no pagas.**
 
 ## Semana 1
 
