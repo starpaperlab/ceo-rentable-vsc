@@ -5,7 +5,7 @@
 - Plan Mensual: USD 17.99 cada mes.
 - Plan Anual: USD 179.00 cada año.
 - Ahorro anual frente a 12 mensualidades: USD 36.88.
-- Ambos planes incluyen 21 días de prueba gratis.
+- Ambos planes incluyen 10 días de prueba gratis.
 - El cliente registra el método de pago al iniciar la prueba.
 - Al terminar el trial, PayPal cobra automáticamente salvo cancelación previa.
 - Founder Lifetime permanece como plan legacy/admin-only y no forma parte de la oferta pública.
@@ -32,7 +32,7 @@ Columna de registro:
 
 Columna de compra:
 - Plan
-- 21 días gratis
+- 10 días gratis
 - Precio posterior al trial
 - Renovación automática
 - Ahorro anual cuando aplique
@@ -63,10 +63,10 @@ La llegada a una página de éxito nunca es autoridad suficiente para activar ac
 
 ## Estado final de Fase 0.2
 
-1. Billing Plans de PayPal configurados con ciclo TRIAL de 21 días + ciclo REGULAR mensual/anual.
+1. Billing Plans de PayPal configurados con ciclo TRIAL de 10 días + ciclo REGULAR mensual/anual.
 2. PayPal JS SDK integrado en modo subscription (`vault=true`, `intent=subscription`).
 3. Provider subscription ID y estado de ciclo persistidos de forma resiliente.
 4. Suscripción validada server-side antes de activar acceso.
 5. Checkout responsive público limitado a Mensual y Anual.
 6. Founder Lifetime conservado como plan interno/legacy, fuera de la oferta pública.
-7. Oferta comercial unificada en USD 17.99/mes, USD 179/año y 21 días de prueba.
+7. Oferta comercial unificada en USD 17.99/mes, USD 179/año y 10 días de prueba.
