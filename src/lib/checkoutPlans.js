@@ -1,4 +1,4 @@
-export const CHECKOUT_TRIAL_DAYS = 21;
+export const CHECKOUT_TRIAL_DAYS = 10;
 
 const MONTHLY_AMOUNT = 17.99;
 const ANNUAL_AMOUNT = 179.00;
