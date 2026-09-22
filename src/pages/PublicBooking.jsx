@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock3, Loader2 } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, Loader2, ChevronDown } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,19 @@ import { Label } from '@/components/ui/label';
 
 function isoDate(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function formatSelectedDate(value) {
+  if (!value) return 'Seleccionar fecha';
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) return 'Seleccionar fecha';
+  return parsed.toLocaleDateString('es-DO', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 export default function PublicBooking() {
@@ -178,7 +191,27 @@ export default function PublicBooking() {
 
               <div>
                 <Label>Fecha</Label>
-                <Input type="date" className="mt-1 h-11" min={minDate} max={maxDate} value={date} onChange={(e) => setDate(e.target.value)} />
+                <div className="relative mt-1">
+                  <div className={`flex h-12 w-full items-center justify-between rounded-xl border bg-white px-4 text-sm font-semibold ${date ? 'text-gray-900' : 'text-gray-500'}`}>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <CalendarDays className="h-4 w-4 shrink-0" style={{ color: primary }} />
+                      <span className="truncate capitalize">{formatSelectedDate(date)}</span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+                  </div>
+                  <input
+                    type="date"
+                    aria-label="Seleccionar fecha"
+                    min={minDate}
+                    max={maxDate}
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Toca aquí para abrir el calendario y elegir el día.
+                </p>
               </div>
 
               <div>
