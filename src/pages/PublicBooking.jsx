@@ -156,7 +156,24 @@ export default function PublicBooking() {
       time,
       service: selectedService?.name || 'Cita',
       durationMinutes: selectedService?.duration_minutes || 20,
+      email: form.email.trim() || null,
     });
+
+    if (form.email.trim()) {
+      try {
+        await fetch('/api/booking-confirmation-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appointmentId: data,
+            email: form.email.trim(),
+          }),
+        });
+      } catch (_) {
+        // La reserva ya quedó confirmada; el email no debe bloquear el flujo.
+      }
+    }
+
     setSubmitting(false);
   };
 
@@ -208,7 +225,11 @@ export default function PublicBooking() {
             Agregar a Google Calendar
             <ExternalLink className="ml-2 h-4 w-4" />
           </a>
-          <p className="mt-4 text-xs text-gray-400">También puedes guardar esta información para tu referencia.</p>
+          {confirmed.email ? (
+            <p className="mt-4 text-xs text-gray-400">Enviamos la confirmación a {confirmed.email}. Revisa también Spam o Promociones.</p>
+          ) : (
+            <p className="mt-4 text-xs text-gray-400">También puedes guardar esta información para tu referencia.</p>
+          )}
         </div>
       </main>
     );
