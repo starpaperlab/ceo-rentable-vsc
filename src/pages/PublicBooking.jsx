@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock3, Loader2, ChevronDown } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, Loader2, ChevronDown, ExternalLink } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,31 @@ function formatSelectedDate(value) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function googleCalendarUrl({ date, time, durationMinutes = 20, title, businessName, timezone }) {
+  if (!date || !time) return '#';
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const start = new Date(year, month - 1, day, hour, minute);
+  const end = new Date(start.getTime() + Number(durationMinutes || 20) * 60000);
+  const stamp = (value) => [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, '0'),
+    String(value.getDate()).padStart(2, '0'),
+    'T',
+    String(value.getHours()).padStart(2, '0'),
+    String(value.getMinutes()).padStart(2, '0'),
+    '00',
+  ].join('');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title || 'Cita',
+    dates: `${stamp(start)}/${stamp(end)}`,
+    details: `Reserva confirmada con ${businessName || 'el negocio'}.`,
+    ctz: timezone || 'America/Santo_Domingo',
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 export default function PublicBooking() {
@@ -125,7 +150,13 @@ export default function PublicBooking() {
       setTime('');
       return;
     }
-    setConfirmed({ id: data, date, time, service: selectedService?.name || 'Cita' });
+    setConfirmed({
+      id: data,
+      date,
+      time,
+      service: selectedService?.name || 'Cita',
+      durationMinutes: selectedService?.duration_minutes || 20,
+    });
     setSubmitting(false);
   };
 
@@ -159,7 +190,25 @@ export default function PublicBooking() {
             <p className="font-bold">{confirmed.service}</p>
             <p className="mt-2 text-sm text-gray-600">{confirmed.date} · {confirmed.time}</p>
           </div>
-          <p className="mt-5 text-xs text-gray-400">Puedes guardar esta información para tu referencia.</p>
+          <a
+            href={googleCalendarUrl({
+              date: confirmed.date,
+              time: confirmed.time,
+              durationMinutes: confirmed.durationMinutes,
+              title: confirmed.service,
+              businessName: page.business_name,
+              timezone: page.timezone,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl px-5 text-base font-bold text-white shadow-sm"
+            style={{ backgroundColor: primary }}
+          >
+            <CalendarDays className="mr-2 h-5 w-5" />
+            Agregar a Google Calendar
+            <ExternalLink className="ml-2 h-4 w-4" />
+          </a>
+          <p className="mt-4 text-xs text-gray-400">También puedes guardar esta información para tu referencia.</p>
         </div>
       </main>
     );
