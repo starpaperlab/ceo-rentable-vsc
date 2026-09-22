@@ -39,6 +39,10 @@
     {
       "path": "/api/follow-up-reminders",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/booking-reminders",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
