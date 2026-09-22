@@ -249,15 +249,19 @@ begin
     raise exception 'Nombre requerido.';
   end if;
 
-  select bp.*, w.owner_user_id
-  into v_page, v_owner
+  select bp.*
+  into v_page
   from public.booking_pages bp
-  join public.workspaces w on w.id = bp.workspace_id
   where bp.slug = lower(trim(p_slug))
     and bp.is_active = true
   limit 1;
 
   if v_page.id is null then raise exception 'Página de reservas no disponible.'; end if;
+
+  select w.owner_user_id
+  into v_owner
+  from public.workspaces w
+  where w.id = v_page.workspace_id;
 
   select * into v_service
   from public.booking_services
