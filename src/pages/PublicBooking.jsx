@@ -57,6 +57,8 @@ export default function PublicBooking() {
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [time, setTime] = useState('');
+  const [holdToken, setHoldToken] = useState('');
+  const [holdingTime, setHoldingTime] = useState('');
   const [form, setForm] = useState({ name: '', email: '', phone: '', notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -96,12 +98,16 @@ export default function PublicBooking() {
     if (!serviceId || !date) {
       setSlots([]);
       setTime('');
+      setHoldToken('');
+      setHoldingTime('');
       return;
     }
     let cancelled = false;
     void (async () => {
       setLoadingSlots(true);
       setTime('');
+      setHoldToken('');
+      setHoldingTime('');
       const { data, error: rpcError } = await supabase.rpc('get_public_booking_slots', {
         p_slug: slug,
         p_service_id: serviceId,
@@ -120,6 +126,50 @@ export default function PublicBooking() {
     return () => { cancelled = true; };
   }, [slug, serviceId, date]);
 
+  const releaseHold = async (token) => {
+    if (!token) return;
+    try {
+      await supabase.rpc('release_public_booking_hold', { p_hold_token: token });
+    } catch (_) {
+      // El bloqueo también expira automáticamente.
+    }
+  };
+
+  const handleSlotSelect = async (slot) => {
+    setError('');
+    setHoldingTime(slot);
+
+    if (holdToken) {
+      await releaseHold(holdToken);
+      setHoldToken('');
+    }
+
+    const { data: token, error: holdError } = await supabase.rpc('hold_public_booking_slot', {
+      p_slug: slug,
+      p_service_id: serviceId,
+      p_date: date,
+      p_time: slot,
+    });
+
+    if (holdError || !token) {
+      setHoldingTime('');
+      setTime('');
+      setError(holdError?.message || 'Ese horario ya no está disponible.');
+
+      const { data: refreshed } = await supabase.rpc('get_public_booking_slots', {
+        p_slug: slug,
+        p_service_id: serviceId,
+        p_date: date,
+      });
+      setSlots((refreshed || []).map((row) => row.slot_time));
+      return;
+    }
+
+    setHoldToken(token);
+    setTime(slot);
+    setHoldingTime('');
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -137,6 +187,7 @@ export default function PublicBooking() {
       p_client_email: form.email.trim() || null,
       p_client_phone: form.phone.trim() || null,
       p_notes: form.notes.trim() || null,
+      p_hold_token: holdToken || null,
     });
     if (rpcError) {
       setError(rpcError.message || 'No se pudo completar la reserva.');
@@ -296,11 +347,12 @@ export default function PublicBooking() {
                       <button
                         key={slot}
                         type="button"
-                        onClick={() => setTime(slot)}
+                        onClick={() => handleSlotSelect(slot)}
+                        disabled={Boolean(holdingTime)}
                         className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${time === slot ? 'text-white' : 'bg-white hover:bg-gray-50'}`}
                         style={time === slot ? { backgroundColor: primary, borderColor: primary } : undefined}
                       >
-                        {slot}
+                        {holdingTime === slot ? '...' : slot}
                       </button>
                     ))}
                   </div>
