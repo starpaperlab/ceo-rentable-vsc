@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Calendar, Plus, Pencil, Trash2, Phone, Clock, Loader2, Eye } from 'lucide-react';
 import AgendaCalendar from '@/components/agenda/AgendaCalendar';
+import PublicBookingSettings from '@/components/agenda/PublicBookingSettings';
 import { toast } from 'sonner';
 import format from 'date-fns/format';
 import { es } from 'date-fns/locale';
@@ -449,6 +450,8 @@ export default function Agenda() {
           </Button>
         ) : null}
       </div>
+
+      <PublicBookingSettings workspaceId={activeWorkspaceId} writable={writable} />
 
       {!writable ? (
         <Card className="p-4 border-dashed bg-muted/20">
