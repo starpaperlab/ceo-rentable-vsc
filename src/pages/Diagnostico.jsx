@@ -206,6 +206,7 @@ export default function Diagnostico() {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [lead, setLead] = useState({ name: '', email: '' })
   const [saving, setSaving] = useState(false)
+  const [captureError, setCaptureError] = useState('')
 
   const handleAnswer = async (value) => {
     const q = QUESTIONS[qIndex]
@@ -242,6 +243,7 @@ export default function Diagnostico() {
   const handleCapture = async () => {
     if (!lead.name.trim() || !lead.email.trim()) return
     setSaving(true)
+    setCaptureError('')
 
     const params = new URLSearchParams(window.location.search)
     const utmSource = (params.get('utm_source') || params.get('source') || '').trim().toLowerCase()
@@ -269,7 +271,9 @@ export default function Diagnostico() {
 
     setSaving(false)
     if (error) {
-      console.error(error)
+      console.error('Error al guardar diagnóstico:', error)
+      setCaptureError('No pudimos guardar tu diagnóstico. Inténtalo de nuevo.')
+      return
     }
 
     trackLead({
@@ -306,9 +310,9 @@ export default function Diagnostico() {
     )
   }
 
-  const handleFounderCTA = () => {
-    trackInitiateCheckout('founder_lifetime')
-    navigate('/paywall?plan=founder_lifetime&checkout=true')
+  const handleTrialCTA = () => {
+    trackInitiateCheckout('monthly_trial')
+    window.location.assign('https://app.ceorentable.com/checkout?plan=monthly&utm_source=diagnostico&utm_medium=lead&utm_campaign=ceo_score')
   }
 
   return (
@@ -463,6 +467,7 @@ export default function Diagnostico() {
                           >
                             {saving ? 'Un momento...' : 'Desbloquear mi diagnóstico'} <ArrowRight className="h-4 w-4 ml-1" />
                           </Button>
+                          {captureError && <p role="alert" className="text-center text-sm text-red-600">{captureError}</p>}
                           <p className="text-center text-xs text-slate-400">Sin spam. Solo resultados.</p>
                         </div>
                       </div>
@@ -519,15 +524,15 @@ export default function Diagnostico() {
 
                 <div className="space-y-3">
                   <Button
-                    onClick={handleFounderCTA}
+                    onClick={handleTrialCTA}
                     className="w-full h-14 text-base font-bold bg-[#D45387] hover:bg-[#C24578] text-white border-0 rounded-xl"
                   >
-                    Conviértete en Founder ahora <ArrowRight className="h-5 w-5 ml-1" />
+                    Comienza tus 10 días gratis <ArrowRight className="h-5 w-5 ml-1" />
                   </Button>
                   <Button
                     variant="outline"
                     className="w-full h-12 text-sm font-semibold border-slate-200 bg-white text-slate-800 hover:bg-slate-50 rounded-xl"
-                    onClick={() => navigate('/paywall')}
+                    onClick={() => window.location.assign('https://app.ceorentable.com/checkout?plan=monthly&utm_source=diagnostico&utm_medium=lead&utm_campaign=ceo_score')}
                   >
                     Ver planes y precios
                   </Button>
