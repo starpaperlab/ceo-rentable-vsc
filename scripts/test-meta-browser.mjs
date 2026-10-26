@@ -43,10 +43,10 @@ try {
  await page.goto(base+'/checkout?plan=annual');
  await page.getByRole('heading',{name:/Empieza tus/}).waitFor();
  assert.equal(sdkLoads,0);assert.equal(await count('PageView'),0);
- await page.getByRole('button',{name:'Cookies',exact:true}).click();
+ await page.getByRole('button',{name:'Abrir preferencias de cookies',exact:true}).click();
  await page.getByRole('button',{name:'Solo necesarias',exact:true}).click();
  assert.equal(sdkLoads,0);
- await page.getByRole('button',{name:'Preferencias de cookies',exact:true}).click();
+ await page.getByRole('button',{name:'Abrir preferencias de cookies',exact:true}).click();
  await page.getByRole('button',{name:'Permitir medición publicitaria',exact:true}).click();
  await page.waitForFunction(()=>window.__metaCalls?.some(c=>c[2]==='InitiateCheckout'));
  assert.equal(sdkLoads,1);assert.equal(await count('PageView'),1);assert.equal(await count('InitiateCheckout'),1);
@@ -90,12 +90,12 @@ try {
  assert.equal(await count('Purchase'),1);assert.equal(await count('StartTrial'),1);
  const purchase=(await calls()).find(c=>c[2]==='Purchase');assert.equal(purchase[3].value,17.99);assert.equal(purchase[3].currency,'USD');assert.equal(purchase[4].eventID,'Purchase:paypal:MOCK-CAPTURE');
  assert.equal(await page.evaluate(()=>window.__capiFixture.event_id),purchase[4].eventID);
- await page.getByRole('button',{name:'Preferencias de cookies',exact:true}).click();await page.getByRole('button',{name:'Solo necesarias',exact:true}).click();
+ await page.getByRole('button',{name:'Abrir preferencias de cookies',exact:true}).click();await page.getByRole('button',{name:'Solo necesarias',exact:true}).click();
  const before=await count('PageView');await spa('/checkout?plan=monthly');assert.equal(await count('PageView'),before);
  assert.ok((await calls()).some(c=>c[0]==='consent'&&c[1]==='revoke'));
  // Previously emitted conversions stay deduplicated after a page reload.
  await page.goto(base+'/checkout?plan=monthly');assert.equal(await count('PageView'),0);
- await page.getByRole('button',{name:'Preferencias de cookies',exact:true}).click();
+ await page.getByRole('button',{name:'Abrir preferencias de cookies',exact:true}).click();
  await page.getByRole('button',{name:'Permitir medición publicitaria',exact:true}).click();
  await page.waitForFunction(()=>window.__metaCalls?.some(c=>c[2]==='PageView'));
  await page.evaluate(async()=>{const m=await import('/src/lib/metaPixel.js');m.trackVerifiedPurchase({success:true,status:'completed',captureId:'MOCK-CAPTURE',amount:'17.99',currency:'USD',planCode:'monthly'});});
