@@ -127,7 +127,7 @@ export async function capturePayPalOrder(orderId) {
     currency: payload?.currency || null,
     planCode: payload?.planCode || null,
     planType: payload?.planType || null,
-    status: payload?.status || 'completed',
+    status: payload?.status || null,
   };
 }
 
@@ -179,6 +179,7 @@ export async function verifyPayPalSubscription(subscriptionId, planCode) {
     planCode: payload.planCode || normalizedPlanCode,
     status: payload.status || null,
     nextBillingTime: payload.nextBillingTime || null,
+    tracking: payload.tracking || null,
   };
 }
 

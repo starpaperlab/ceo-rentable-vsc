@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { getLoginPath, normalizeCheckoutPlan } from '@/lib/pendingCheckout';
 import { CHECKOUT_TRIAL_DAYS, getCheckoutPlan } from '@/lib/checkoutPlans';
-import { trackPurchase } from '@/lib/metaPixel';
+import { trackVerifiedPurchase } from '@/lib/metaPixel';
 
 const AUTH_SESSION_ERROR = 'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
 
@@ -58,12 +58,11 @@ export default function PaymentSuccess() {
           return;
         }
         const normalizedCapturePlan = normalizeCheckoutPlan(capture.planCode);
-        const resolvedPlanCode = normalizedCapturePlan || nextPlanCode || planCode || null;
         if (normalizedCapturePlan) setPlanCode(normalizedCapturePlan);
 
         if (!hasTrackedPurchaseRef.current && `${capture.status || ''}`.toLowerCase() === 'completed') {
           hasTrackedPurchaseRef.current = true;
-          trackPurchase(resolvedPlanCode, capture.captureId || orderId || null, { value: capture.amount, currency: capture.currency });
+          trackVerifiedPurchase(capture);
         }
 
         setMessage('Actualizando tu acceso...');

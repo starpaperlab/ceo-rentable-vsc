@@ -1,3 +1,4 @@
+import { trialTrackingEvidence } from '../../server/metaTrackingEvidence.js';
 import { createClient } from '@supabase/supabase-js';
 
 const PAYPAL_API_BASES = {
@@ -287,6 +288,7 @@ export default async function handler(req, res) {
       providerStatus,
       nextBillingTime: activated.nextBillingTime,
       persistenceDeferred: activated.persistenceDeferred,
+      tracking: trialTrackingEvidence(subscription,{subscriptionId,planCode,appStatus:activated.appStatus}),
     });
   } catch (error) {
     console.error('verify PayPal subscription failed', error?.message || error, error?.causeCode || '');

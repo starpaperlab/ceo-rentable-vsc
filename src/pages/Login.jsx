@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/AuthContext';
-import { trackCompleteRegistration } from '@/lib/metaPixel';
+import { trackCompleteRegistration, createMetaEventId } from '@/lib/metaPixel';
 import {
   getCheckoutPath,
   getPendingCheckoutPlan,
@@ -275,6 +275,7 @@ export default function Login() {
           emailRedirectTo: getEmailConfirmationRedirectUrl(),
         });
 
+        trackCompleteRegistration(checkoutPlan,{eventId:createMetaEventId('registration')});
         if (result.needsEmailConfirmation) {
           setInfo(
             checkoutPlan
@@ -289,7 +290,6 @@ export default function Login() {
           return;
         }
 
-        trackCompleteRegistration(checkoutPlan);
         navigate(getPostAuthRedirect(result.profile, result.redirectTo), { replace: true });
         return;
       }

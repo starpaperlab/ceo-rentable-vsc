@@ -1,0 +1,38 @@
+name: Meta Pixel validation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/metaPixel.js'
+      - 'src/lib/marketingConsent.js'
+      - 'src/components/tracking/**'
+      - 'src/pages/Checkout.jsx'
+      - 'src/pages/Diagnostico.jsx'
+      - 'src/pages/PaymentSuccess.jsx'
+      - 'src/pages/Login.jsx'
+      - 'server/metaTrackingEvidence.js'
+      - 'api/paypal/verify-subscription.js'
+      - 'scripts/test-meta-browser.mjs'
+      - 'tests/meta-tracking-evidence.test.js'
+      - '.github/workflows/meta-pixel.yml'
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node --test tests/*.test.js tests/security/*.test.js
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:tracking

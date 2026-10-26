@@ -1,11 +1,11 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
 import { generateBusinessDiagnosis, getCeoScoreClassification } from '@/lib/geminiService'
-import { trackLead, trackContact, trackCustomEvent, trackInitiateCheckout } from '@/lib/metaPixel'
+import { createMetaEventId, trackLead, trackContact, trackCustomEvent } from '@/lib/metaPixel'
 import { ENV_CONFIG } from '@/config/env'
 import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle, Lock } from 'lucide-react'
 
@@ -206,6 +206,8 @@ export default function Diagnostico() {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [lead, setLead] = useState({ name: '', email: '' })
   const [saving, setSaving] = useState(false)
+  const captureInFlight = useRef(false)
+  const capturedEventId = useRef(null)
   const [captureError, setCaptureError] = useState('')
 
   const handleAnswer = async (value) => {
@@ -241,7 +243,8 @@ export default function Diagnostico() {
   }
 
   const handleCapture = async () => {
-    if (!lead.name.trim() || !lead.email.trim()) return
+    if (captureInFlight.current || capturedEventId.current || !lead.name.trim() || !lead.email.trim()) return
+    captureInFlight.current = true
     setSaving(true)
     setCaptureError('')
 
@@ -270,20 +273,15 @@ export default function Diagnostico() {
     })
 
     setSaving(false)
+    captureInFlight.current = false
     if (error) {
       console.error('Error al guardar diagnóstico:', error)
       setCaptureError('No pudimos guardar tu diagnóstico. Inténtalo de nuevo.')
       return
     }
 
-    trackLead({
-      content_name: 'diagnostico_gratuito',
-      status: 'new',
-      ceo_score: score,
-      segment_business: segments?.segment_business,
-      segment_score: segments?.segment_score,
-      segment_problem: segments?.segment_problem,
-    })
+    capturedEventId.current = createMetaEventId('diagnostic')
+    trackLead({content_name:'diagnostico_gratuito'},{eventId:capturedEventId.current})
 
     trackCustomEvent('DiagnosticoCompletado', {
       ceo_score: score,
@@ -311,7 +309,6 @@ export default function Diagnostico() {
   }
 
   const handleTrialCTA = () => {
-    trackInitiateCheckout('monthly_trial')
     window.location.assign('https://app.ceorentable.com/checkout?plan=monthly&utm_source=diagnostico&utm_medium=lead&utm_campaign=ceo_score')
   }
 

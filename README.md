@@ -307,3 +307,7 @@ Ver `.env.example` para documentación completa.
 - `notificaciones@ceorentable.com` — remitente transaccional y automatizaciones
 - `privacidad@ceorentable.com` — privacidad y datos personales
 - `demo@ceorentable.com` — cuenta de demostración
+
+## Meta Pixel y consentimiento
+
+La auditoría, condiciones de los eventos, pruebas de navegador y límites de verificación están en [docs/META_PIXEL_AUDIT.md](docs/META_PIXEL_AUDIT.md). Ejecutar `npm run test:tracking` para probar las páginas reales con Meta/PayPal/Supabase aislados. El píxel 339342380789724 solo se carga al permitir medición publicitaria; una prueba local no confirma recepción en Meta Events Manager.

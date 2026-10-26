@@ -39,7 +39,6 @@ import {
   calculateProfit,
   calculateProfitPerHour,
   calculateRequiredUnits,
-  calculateServiceCost,
   classifyProfitability,
   resolvePricingSettings,
 } from '@/lib/catalogFinancials'

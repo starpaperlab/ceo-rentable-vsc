@@ -1,0 +1,7 @@
+import { useState } from 'react';
+import { getMarketingConsent, setMarketingConsent } from '@/lib/marketingConsent';
+export default function MarketingConsent() {
+  const [open,setOpen] = useState(()=>getMarketingConsent() === null);
+  const choose = choice => {setMarketingConsent(choice);setOpen(false);};
+  return open ? <aside aria-label="Preferencias de medición publicitaria" className="fixed bottom-0 left-0 right-0 z-[100] border-t border-gray-200 bg-white p-4 shadow-2xl sm:p-6"><div className="mx-auto max-w-5xl"><h2 className="text-lg font-bold text-gray-900">Tu privacidad y la medición publicitaria</h2><p className="mt-2 text-sm leading-6 text-gray-700">Con tu permiso, Meta Pixel mide las visitas y acciones completadas para evaluar nuestros anuncios. Es opcional: rechazarlo no afecta tu registro, prueba ni pagos. Consulta <a href="/cookies" className="underline">Cookies</a> y <a href="/privacidad" className="underline">Privacidad</a>.</p><div className="mt-3 flex flex-wrap gap-3"><button type="button" className="min-h-11 rounded-xl border border-gray-400 px-4 text-base font-semibold" onClick={()=>choose('denied')}>Solo necesarias</button><button type="button" className="min-h-11 rounded-xl border border-gray-400 px-4 text-base font-semibold" onClick={()=>choose('granted')}>Permitir medición publicitaria</button></div></div></aside> : <button type="button" onClick={()=>setOpen(true)} className="fixed bottom-2 left-2 z-[90] min-h-11 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-sm">Preferencias de cookies</button>;
+}

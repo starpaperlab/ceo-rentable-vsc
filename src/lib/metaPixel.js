@@ -1,375 +1,117 @@
-const META_PIXEL_SCRIPT_ID = 'meta-pixel-script';
-const META_PIXEL_DEDUPE_KEY = 'ceo_meta_pixel_fired_events';
-const INITIATE_CHECKOUT_DEDUPE_MS = 5000;
-const DEFAULT_META_PIXEL_ID = '339342380789724';
-
-const PLAN_EVENT_CONFIG = {
-  monthly: {
-    slug: 'monthly',
-    content_name: 'CEO Rentable Plan Mensual',
-    content_ids: ['monthly'],
-    content_type: 'product',
-    currency: 'DOP',
-    value: 1497,
-  },
-  founder_lifetime: {
-    slug: 'lifetime',
-    content_name: 'CEO Rentable Acceso Lifetime',
-    content_ids: ['lifetime'],
-    content_type: 'product',
-    currency: 'DOP',
-    value: 4997,
-  },
-  lifetime: {
-    slug: 'lifetime',
-    content_name: 'CEO Rentable Acceso Lifetime',
-    content_ids: ['lifetime'],
-    content_type: 'product',
-    currency: 'DOP',
-    value: 4997,
-  },
-};
-
-let isPixelInitialized = false;
-let lastTrackedPagePath = null;
-let lastViewContentSignature = null;
-let lastInitiateCheckoutSignature = null;
-let lastInitiateCheckoutAt = 0;
-
-function isBrowser() {
-  return typeof window !== 'undefined' && typeof document !== 'undefined';
+import { getCheckoutPlan } from './checkoutPlans.js';
+import { getMarketingConsent } from './marketingConsent.js';
+const PIXEL_ID = '339342380789724';
+const SCRIPT_ID = 'meta-pixel-script';
+const DEDUPE_KEY = 'ceo_meta_pixel_fired_events_v2';
+let initialized = false;
+let lastPage = null;
+let lastCheckout = null;
+let lastCheckoutAt = 0;
+let lastViewContent = null;
+const memoryEvents = new Set();
+function browser() { return typeof window !== 'undefined' && typeof document !== 'undefined'; }
+export function createMetaEventId(prefix = 'event') {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}:${id}`;
 }
-
-function isDev() {
-  return import.meta.env.DEV;
-}
-
-function getMetaPixelId() {
-  return `${import.meta.env.VITE_META_PIXEL_ID || DEFAULT_META_PIXEL_ID}`.trim();
-}
-
-function getCurrentPath() {
-  if (!isBrowser()) return '/';
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-}
-
-function getCurrentUrl() {
-  if (!isBrowser()) return '';
-  return window.location.href;
-}
-
-function normalizePlan(plan) {
-  const normalized = `${plan || ''}`.trim().toLowerCase();
-  return PLAN_EVENT_CONFIG[normalized] ? normalized : null;
-}
-
-function getPlanEventConfig(plan) {
-  const normalized = normalizePlan(plan);
-  return normalized ? PLAN_EVENT_CONFIG[normalized] : null;
-}
-
-function logMetaEvent(eventName, payload = {}) {
-  if (!isDev()) return;
-  console.log('[Meta Pixel] Event fired:', eventName, payload);
-}
-
-function getStoredDedupeEvents() {
-  if (!isBrowser()) return {};
-
-  try {
-    const raw = window.sessionStorage.getItem(META_PIXEL_DEDUPE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function setStoredDedupeEvent(signature) {
-  if (!isBrowser()) return;
-
-  const current = getStoredDedupeEvents();
-  current[signature] = Date.now();
-  window.sessionStorage.setItem(META_PIXEL_DEDUPE_KEY, JSON.stringify(current));
-}
-
-function hasStoredDedupeEvent(signature) {
-  return Boolean(getStoredDedupeEvents()[signature]);
-}
-
-function ensureFbqStub() {
-  if (!isBrowser()) return null;
-
-  if (typeof window.fbq === 'function') {
-    return window.fbq;
-  }
-
-  const fbq = function fbqProxy(...args) {
-    if (fbq.callMethod) {
-      fbq.callMethod(...args);
-      return;
-    }
-
-    fbq.queue.push(args);
-  };
-
-  fbq.queue = fbq.queue || [];
-  fbq.loaded = true;
-  fbq.version = '2.0';
-  window.fbq = fbq;
-  window._fbq = fbq;
-
+function ensureFbq() {
+  if (typeof window.fbq === 'function') return window.fbq;
+  const fbq = function(...args) { if (fbq.callMethod) fbq.callMethod(...args); else fbq.queue.push(args); };
+  fbq.queue = []; fbq.push = fbq; fbq.loaded = true; fbq.version = '2.0';
+  window.fbq = fbq; window._fbq = fbq;
   return fbq;
 }
-
-function injectMetaPixelScript() {
-  if (!isBrowser()) return;
-  if (document.getElementById(META_PIXEL_SCRIPT_ID)) return;
-
-  const script = document.createElement('script');
-  script.id = META_PIXEL_SCRIPT_ID;
-  script.async = true;
-  script.src = 'https://connect.facebook.net/en_US/fbevents.js';
-  document.head.appendChild(script);
-}
-
-function trackStandardEvent(eventName, payload = {}) {
-  if (!isBrowser()) return false;
-
-  const fbq = ensureFbqStub();
-  if (typeof fbq !== 'function') {
-    return false;
-  }
-
-  fbq('track', eventName, payload);
-  logMetaEvent(eventName, payload);
-  return true;
-}
-
-export function buildConversionApiEvent(eventName, payload = {}, { eventId = null, userData = {} } = {}) {
-  if (!eventName) {
-    return null;
-  }
-
-  return {
-    event_name: eventName,
-    event_time: Math.floor(Date.now() / 1000),
-    action_source: 'website',
-    event_source_url: getCurrentUrl(),
-    custom_data: payload,
-    ...(eventId ? { event_id: eventId } : {}),
-    ...(Object.keys(userData).length ? { user_data: userData } : {}),
-  };
-}
-
-function buildPlanPayload(plan, extra = {}) {
-  const planConfig = getPlanEventConfig(plan);
-  if (!planConfig) {
-    return {
-      ...extra,
-    };
-  }
-
-  return {
-    content_name: planConfig.content_name,
-    content_ids: planConfig.content_ids,
-    content_type: planConfig.content_type,
-    currency: planConfig.currency,
-    value: planConfig.value,
-    plan_selected: planConfig.slug,
-    ...extra,
-  };
-}
-
-function normalizeEventValue(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function normalizeEventCurrency(currency, fallback) {
-  const normalized = `${currency || ''}`.trim().toUpperCase();
-  return normalized || fallback;
-}
-
 export function initializeMetaPixel() {
-  const pixelId = getMetaPixelId();
-  if (!isBrowser() || !pixelId) {
-    return false;
+  if (!browser() || getMarketingConsent() !== 'granted') return false;
+  const fbq = ensureFbq();
+  fbq('consent', 'grant');
+  if (!initialized) {
+    // Own one pixel; disable automatic event detection so conversions only reflect verified actions.
+    fbq('set', 'autoConfig', false, PIXEL_ID);
+    const alreadyRegistered = fbq.getState?.()?.pixels?.some(p => `${p.id}` === PIXEL_ID) || fbq.queue?.some(args => args[0] === 'init' && `${args[1]}` === PIXEL_ID);
+    if (!alreadyRegistered) fbq('init', PIXEL_ID);
+    initialized = true;
   }
-
-  ensureFbqStub();
-  injectMetaPixelScript();
-
-  if (isPixelInitialized) {
-    return true;
+  const existing = document.getElementById(SCRIPT_ID) || document.querySelector('script[src*="connect.facebook.net"][src*="fbevents.js"]');
+  if (!existing) {
+    const script = document.createElement('script');script.id = SCRIPT_ID;script.async = true;
+    script.src = 'https://connect.facebook.net/en_US/fbevents.js';document.head.appendChild(script);
   }
-
-  window.fbq('init', pixelId);
-  isPixelInitialized = true;
-
-  if (isDev()) {
-    console.log('[Meta Pixel] Initialized:', pixelId);
-  }
-
-  trackPageView({ force: true });
   return true;
 }
-
-export function trackPageView({ path = null, force = false } = {}) {
-  const pixelId = getMetaPixelId();
-  if (!pixelId) return false;
-
-  initializeMetaPixel();
-
-  const nextPath = path || getCurrentPath();
-  if (!force && nextPath === lastTrackedPagePath) {
-    return false;
-  }
-
-  const tracked = trackStandardEvent('PageView', {});
-  if (tracked) {
-    lastTrackedPagePath = nextPath;
-  }
-
-  return tracked;
+export function revokeMetaPixelConsent() {
+  if (!browser()) return;
+  if (typeof window.fbq === 'function') window.fbq('consent', 'revoke');
+  lastPage = null; lastCheckout = null; lastViewContent = null;
+  // Remove Meta advertising cookies for the app and parent domain; authentication cookies are untouched.
+  const domains = ['', window.location.hostname, ...(window.location.hostname.endsWith('.ceorentable.com') ? ['.ceorentable.com'] : [])];
+  for (const name of ['_fbp','_fbc']) for (const domain of domains) document.cookie = `${name}=; Max-Age=0; path=/;${domain ? ` domain=${domain};` : ''} SameSite=Lax; Secure`;
 }
-
-export function trackViewContent(plan = null, { path = null } = {}) {
-  if (!getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-
-  const normalizedPlan = normalizePlan(plan);
-  const signature = `${path || getCurrentPath()}::${normalizedPlan || 'plans'}`;
-  if (signature === lastViewContentSignature) {
-    return false;
-  }
-
-  lastViewContentSignature = signature;
-
-  const payload = normalizedPlan
-    ? buildPlanPayload(normalizedPlan)
-    : {
-        content_name: 'CEO Rentable Planes',
-        content_ids: ['plans'],
-        content_type: 'product_group',
-      };
-
-  return trackStandardEvent('ViewContent', payload);
+function wasFired(id) {
+  if (memoryEvents.has(id)) return true;
+  try { return Boolean(JSON.parse(window.localStorage.getItem(DEDUPE_KEY) || '{}')[id]); } catch { return false; }
 }
-
-export function trackLead(payload = {}) {
-  if (!getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-  return trackStandardEvent('Lead', payload);
+function remember(id) {
+  memoryEvents.add(id);
+  try {
+    const all = JSON.parse(window.localStorage.getItem(DEDUPE_KEY) || '{}');all[id] = Date.now();
+    const retained = Object.fromEntries(Object.entries(all).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,250));
+    window.localStorage.setItem(DEDUPE_KEY,JSON.stringify(retained));
+  } catch { /* Tracking cannot interrupt registration or a payment. */ }
 }
-
-export function trackContact(payload = {}) {
-  if (!getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-  return trackStandardEvent('Contact', payload);
-}
-
-export function trackCustomEvent(eventName, payload = {}) {
-  if (!eventName || !isBrowser() || !getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-
-  const fbq = ensureFbqStub();
-  if (typeof fbq !== 'function') {
-    return false;
-  }
-
-  fbq('trackCustom', eventName, payload);
-  logMetaEvent(eventName, payload);
+function emit(name, payload = {}, {eventId = null, once = false, custom = false} = {}) {
+  if (!initializeMetaPixel()) return false;
+  const id = eventId || createMetaEventId(name);
+  if (once && wasFired(`${name}:${id}`)) return false;
+  window.fbq(custom ? 'trackSingleCustom' : 'trackSingle', PIXEL_ID, name, payload, {eventID:id});
+  if (once) remember(`${name}:${id}`);
   return true;
 }
-
+function planPayload(code) {
+  const normalized = code === 'monthly_trial' ? 'monthly' : code;
+  const plan = getCheckoutPlan(normalized);
+  if (plan) return {content_name:`CEO Rentable ${plan.name}`,content_ids:[plan.code],content_type:'product',plan_selected:plan.code};
+  return {content_name:'CEO Rentable',...(normalized?{content_ids:[normalized],content_type:'product',plan_selected:normalized}:{})};
+}
+export function trackPageView({path = null} = {}) {
+  if (!browser()) return false;
+  const current = path || `${window.location.pathname}${window.location.search}`;
+  if (current === lastPage) return false;
+  const sent = emit('PageView');if (sent) lastPage = current;return sent;
+}
+export function trackViewContent(plan = null, {path = null} = {}) {
+  const key = `${path || (browser() ? window.location.pathname : '')}:${plan}`;
+  if (lastViewContent === key) return false;
+  const sent = emit('ViewContent',planPayload(plan));if(sent)lastViewContent = key;return sent;
+}
+export function trackLead(payload = {}, options = {}) { return emit('Lead', payload, {...options,once:true}); }
+export function trackContact(payload = {}) { return emit('Contact',payload); }
+export function trackCustomEvent(name,payload = {}) { return name ? emit(name,payload,{custom:true}) : false; }
 export function trackInitiateCheckout(plan) {
-  const planConfig = getPlanEventConfig(plan);
-  if (!planConfig || !getMetaPixelId()) {
-    return false;
-  }
-
-  initializeMetaPixel();
-
-  const signature = JSON.stringify({
-    event: 'InitiateCheckout',
-    plan: planConfig.slug,
-    path: getCurrentPath(),
-  });
-  const now = Date.now();
-
-  if (
-    signature === lastInitiateCheckoutSignature &&
-    now - lastInitiateCheckoutAt < INITIATE_CHECKOUT_DEDUPE_MS
-  ) {
-    return false;
-  }
-
-  lastInitiateCheckoutSignature = signature;
-  lastInitiateCheckoutAt = now;
-
-  return trackStandardEvent('InitiateCheckout', buildPlanPayload(planConfig.slug));
+  const normalized = plan === 'monthly_trial' ? 'monthly' : plan;
+  if (!browser() || !normalized) return false;
+  const signature = `${window.location.pathname}:${normalized}`;
+  if (signature === lastCheckout && Date.now()-lastCheckoutAt < 5000) return false;
+  const configured = getCheckoutPlan(normalized);
+  // Recurring checkout starts with an actual free trial; never copy obsolete DOP prices.
+  const sent = emit('InitiateCheckout',{...planPayload(normalized),...(configured?{value:0,currency:configured.currency}:{})});
+  if (sent) {lastCheckout = signature;lastCheckoutAt = Date.now();}return sent;
 }
-
-export function trackCompleteRegistration(plan = null) {
-  if (!getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-  return trackStandardEvent('CompleteRegistration', buildPlanPayload(plan));
+export function trackCompleteRegistration(plan = null, options = {}) { return emit('CompleteRegistration',planPayload(plan),{...options,once:true}); }
+export function trackStartTrial(receipt) {
+  if (receipt?.trialActivated !== true || !receipt?.eventId || !receipt?.subscriptionId) return false;
+  return emit('StartTrial',{...planPayload(receipt.planCode),value:0,currency:'USD'},{eventId:receipt.eventId,once:true});
 }
-
-export function trackPurchase(plan, transactionId = null, extraPayload = {}) {
-  const planConfig = getPlanEventConfig(plan);
-  if (!planConfig || !getMetaPixelId()) {
-    return false;
-  }
-
-  const signature = `Purchase::${transactionId || 'no-transaction'}::${planConfig.slug}`;
-  if (transactionId && hasStoredDedupeEvent(signature)) {
-    return false;
-  }
-
-  initializeMetaPixel();
-
-  const payload = buildPlanPayload(planConfig.slug, {
-    ...extraPayload,
-    value: normalizeEventValue(extraPayload?.value, planConfig.value),
-    currency: normalizeEventCurrency(extraPayload?.currency, planConfig.currency),
-    ...(transactionId ? { transaction_id: transactionId } : {}),
-  });
-
-  const tracked = trackStandardEvent(
-    'Purchase',
-    payload
-  );
-
-  if (tracked && transactionId) {
-    setStoredDedupeEvent(signature);
-  }
-
-  return tracked;
+export function trackVerifiedPurchase(receipt) {
+  if (receipt?.success !== true || `${receipt.status}`.toLowerCase() !== 'completed' || !receipt.captureId || receipt.amount == null || !Number.isFinite(Number(receipt.amount)) || Number(receipt.amount)<=0 || !/^[A-Z]{3}$/.test(receipt.currency || '')) return false;
+  return emit('Purchase',{...planPayload(receipt.planCode),value:Number(receipt.amount),currency:receipt.currency},{eventId:`Purchase:paypal:${receipt.captureId}`,once:true});
 }
-
-export function trackSubscribe(plan = null, extra = {}) {
-  if (!getMetaPixelId()) return false;
-
-  initializeMetaPixel();
-  return trackStandardEvent('Subscribe', buildPlanPayload(plan, extra));
+// Compatibility wrapper requires a verified receipt; URL parameters and plan prices are never proof of payment.
+export function trackPurchase(_plan,_transactionId,receipt = {}) { return trackVerifiedPurchase(receipt); }
+export function trackSubscribe(plan = null, extra = {}) { return emit('Subscribe',{...planPayload(plan),...extra}); }
+// Existing payload builder only: no server transport/CAPI integration is installed here.
+export function buildConversionApiEvent(eventName,payload = {},{eventId = null,userData = {}} = {}) {
+  if (!browser() || getMarketingConsent() !== 'granted' || !eventName || !eventId) return null;
+  return {event_name:eventName,event_id:eventId,event_time:Math.floor(Date.now()/1000),action_source:'website',event_source_url:`${window.location.origin}${window.location.pathname}`,custom_data:payload,...(Object.keys(userData).length?{user_data:userData}:{})};
 }
-
-export default {
-  initializeMetaPixel,
-  buildConversionApiEvent,
-  trackPageView,
-  trackViewContent,
-  trackLead,
-  trackContact,
-  trackCustomEvent,
-  trackInitiateCheckout,
-  trackCompleteRegistration,
-  trackPurchase,
-  trackSubscribe,
-};
+export default {initializeMetaPixel,trackPageView,trackViewContent,trackLead,trackContact,trackCustomEvent,trackInitiateCheckout,trackCompleteRegistration,trackPurchase,trackVerifiedPurchase,trackStartTrial,trackSubscribe,buildConversionApiEvent};
