@@ -53,7 +53,7 @@ export function diagnosticEmail(lead) {
   const text = `Hola ${lead.name},\n\n${d.diagnosis}\n\n${d.profitability}\n${d.cashflow}\n\n${d.recommendations.join("\n")}\n\nPuedes comenzar la prueba de 10 días revisando las condiciones y confirmando la activación en CEO Rentable: ${url}\n\nEste diagnóstico se basa en tus respuestas, no acredita ingresos ni sustituye una revisión financiera.\nPreferencias de comunicaciones: https://app.ceorentable.com/api/commercial-unsubscribe?token=${lead.unsubscribe_token}`;
   return {
     to: lead.email,
-    subject: "Tu diagnóstico CEO Rentable y próximos pasos",
+    subject: `${lead.is_test?"[PRUEBA] ":""}Tu diagnóstico CEO Rentable y próximos pasos`,
     text,
     html: `<div style="font-family:Arial;max-width:640px;margin:auto;line-height:1.7"><h1>Tu diagnóstico CEO Rentable</h1><p>${htmlEscape(text).replaceAll("\n", "<br>")}</p><a href="${htmlEscape(url.href)}">Revisar y comenzar mi prueba de 10 días</a></div>`,
   };
@@ -133,7 +133,8 @@ export async function runCommercialDeliveryBatch({
           status = "delivered";
           provider = ack.lead_id;
         } else {
-          if (item.lead.is_test) {
+          const controlledTest = item.lead.is_test && typeof env.DIAGNOSTIC_TEST_EMAIL_TO === "string" && env.DIAGNOSTIC_TEST_EMAIL_TO.trim().toLowerCase() === item.lead.email.toLowerCase();
+          if (item.lead.is_test && !controlledTest) {
             await client.rpc("ceo_prepare_delivery", {
               p_id: j.id,
               p_token: j.lease_token,

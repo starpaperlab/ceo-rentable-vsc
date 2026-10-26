@@ -375,3 +375,15 @@ test('Cobro recurrente con firma válida registra monto real y pide retry si no 
  const accepted=await handlePayPalSubscriptionWebhookPayload(event,options);assert.equal(accepted.status,200);assert.equal(recorded[0].p_data.amount,17.99);assert.equal(recorded[0].p_data.currency,'USD');assert.equal(recorded[0].p_data.is_test,false);
  fail=true;const retry=await handlePayPalSubscriptionWebhookPayload(event,options);assert.equal(retry.status,503);assert.equal(retry.body.code,'COMMERCIAL_RETRY_REQUIRED');
 });
+
+test('Correo de prueba solo se envía al destinatario explícito y conserva su procedencia',async()=>{
+ let claimed=false,prepared,finished,sends=0;const job={id:randomUUID(),lease_token:randomUUID(),created_at:new Date().toISOString()};const lead={capture_id:randomUUID(),name:'Prueba controlada',email:'own@example.invalid',is_test:true,unsubscribe_token:randomUUID(),attribution:{},diagnostic_result:{diagnosis:'Fixture real de reglas',profitability:'Sin inventar ingresos',cashflow:'Sin predicciones',recommendations:['Revisar costos']}};
+ const client={rpc:async(name,args)=>{
+  if(name==='ceo_claim_delivery'){if(args.p_destination==='crm'||claimed)return {data:null,error:null};claimed=true;return {data:{job,event:{},lead},error:null};}
+  if(name==='ceo_prepare_delivery'){prepared=args.p_payload;return {data:prepared,error:null};}
+  if(name==='ceo_finish_delivery'){finished=args;return {data:true,error:null};}
+  throw new Error('Unexpected function');
+ }};
+ await runCommercialDeliveryBatch({client,env:{COMMERCIAL_DELIVERY_ENABLED:'true',DIAGNOSTIC_EMAIL_ENABLED:'true',DIAGNOSTIC_TEST_EMAIL_TO:lead.email},sendEmail:async(payload)=>{sends++;assert.equal(payload.to,lead.email);assert.ok(payload.subject.startsWith('[PRUEBA]'));return {ok:true,body:{messageId:'fixture-message'}};}});
+ assert.equal(sends,1);assert.equal(finished.p_status,'delivered');assert.equal(lead.is_test,true);
+});
