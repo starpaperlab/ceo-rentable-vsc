@@ -43,6 +43,7 @@ try {
  await page.goto(base+'/checkout?plan=annual');
  await page.getByRole('heading',{name:/Empieza tus/}).waitFor();
  assert.equal(sdkLoads,0);assert.equal(await count('PageView'),0);
+ await page.getByRole('button',{name:'Cookies',exact:true}).click();
  await page.getByRole('button',{name:'Solo necesarias',exact:true}).click();
  assert.equal(sdkLoads,0);
  await page.getByRole('button',{name:'Preferencias de cookies',exact:true}).click();
