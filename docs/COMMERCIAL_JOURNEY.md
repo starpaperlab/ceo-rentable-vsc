@@ -29,6 +29,14 @@ Se guardan cinco pasos por prueba: 0 bienvenida, 2 costos, 4 precios, 7 herramie
 
 `/api/commercial-unsubscribe` muestra confirmación por GET y registra la baja por POST con un token aleatorio. No cambia la suscripción ni mensajes imprescindibles de la cuenta. No se envían campañas masivas ni correos de conversión en esta fase. El diagnóstico solicitado sí puede incluir la invitación descrita antes de enviar el formulario.
 
+## Si aparece «public.leads does not exist»
+
+La migración CEO 202610260001 es exclusiva del proyecto Supabase de **app.ceorentable.com**. No ejecutarla en AI OS ni crear leads allí para hacerla pasar. Ejecutar primero `docs/sql/commercial-project-preflight.sql` en ambos proyectos y anotar el nombre visible en el panel. El SQL de auditoría solo inspecciona catálogo/columnas y no falla por tablas ausentes.
+
+Si `ceo.leads=false`, confirmar el proyecto asociado a las variables de Supabase de la aplicación. Si es el proyecto correcto y falta leads, revisar su historial/esquema antes de aplicar una migración fundacional: la app tiene captación existente y no debe crearse una base paralela por suposición. La migración ahora se detiene con CEO_PRECHECK antes de escribir.
+
+En AI OS, el error de crm_capture_sources corresponde a la dependencia 006. Usar la guía del otro repositorio; no aplicar el esquema CEO como solución. Mantener las banderas de la conexión nueva deshabilitadas durante esta comprobación.
+
 ## Activación manual exacta (una vez desplegado)
 
 Las versiones finales de ambas migraciones se pueden reaplicar sin perder datos; si se ejecutó una copia intermedia, usar los archivos finales del commit de entrega.

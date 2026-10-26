@@ -387,3 +387,15 @@ test('Correo de prueba solo se envía al destinatario explícito y conserva su p
  await runCommercialDeliveryBatch({client,env:{COMMERCIAL_DELIVERY_ENABLED:'true',DIAGNOSTIC_EMAIL_ENABLED:'true',DIAGNOSTIC_TEST_EMAIL_TO:lead.email},sendEmail:async(payload)=>{sends++;assert.equal(payload.to,lead.email);assert.ok(payload.subject.startsWith('[PRUEBA]'));return {ok:true,body:{messageId:'fixture-message'}};}});
  assert.equal(sends,1);assert.equal(finished.p_status,'delivered');assert.equal(lead.is_test,true);
 });
+
+test('SQL CEO se detiene antes de modificar una base sin leads y el preflight tolera tablas ausentes',async()=>{
+ const db=new PGlite();try{
+  await db.exec('create table public.crm_leads(id uuid)');
+  const migration=await readFile('supabase/migrations/202610260001_commercial_journey.sql','utf8');
+  await assert.rejects(()=>db.exec(migration),/CEO_PRECHECK/);
+  await db.exec('rollback');
+  assert.equal((await db.query("select to_regclass('public.ceo_commercial_events') is null missing")).rows[0].missing,true);
+  const audit=(await db.query(await readFile('docs/sql/commercial-project-preflight.sql','utf8'))).rows[0].preflight;
+  assert.equal(audit.ceo.leads,false);assert.equal(audit.ai_os.crm_leads,true);
+ }finally{await db.close();}
+});

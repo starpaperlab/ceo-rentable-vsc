@@ -1,4 +1,11 @@
 begin;
+-- EXCLUSIVO del Supabase de CEO Rentable, conectado a app.ceorentable.com.
+-- Antes de modificar nada, verificar el esquema real; no crear leads en AI OS.
+do $$ begin
+ if to_regclass('public.leads') is null then
+  raise exception 'CEO_PRECHECK: falta public.leads. Este archivo es exclusivo del proyecto CEO Rentable. Verifica el proyecto conectado a app.ceorentable.com y ejecuta docs/sql/commercial-project-preflight.sql; no crees leads en AI OS.' using errcode='P0001';
+ end if;
+end $$;
 -- New columns do not grant public read/update access to diagnostic results or preferences.
 alter table public.leads add column if not exists capture_id uuid unique, add column if not exists diagnostic_answers jsonb, add column if not exists diagnostic_result jsonb,
  add column if not exists attribution jsonb not null default '{}'::jsonb, add column if not exists is_test boolean not null default false,
