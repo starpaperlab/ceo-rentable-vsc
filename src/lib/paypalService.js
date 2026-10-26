@@ -1,3 +1,4 @@
+import { CAPTURE_KEY } from './journeyAttribution';
 import { ENV_CONFIG } from '@/config/env';
 import { supabase } from '@/lib/supabase';
 
@@ -159,6 +160,7 @@ export async function verifyPayPalSubscription(subscriptionId, planCode) {
       subscriptionId: normalizedSubscriptionId,
       planCode: normalizedPlanCode,
       provider: 'paypal',
+      capture_id: (()=>{try{return sessionStorage.getItem(CAPTURE_KEY)}catch{return null}})(),
     }),
   });
 

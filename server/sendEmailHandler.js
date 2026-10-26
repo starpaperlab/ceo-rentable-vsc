@@ -349,6 +349,7 @@ export async function sendEmailWithResend(payload = {}, { env = process.env, fet
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...(payload.idempotencyKey ? { 'Idempotency-Key': payload.idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from,

@@ -2,17 +2,26 @@
 import assert from 'node:assert/strict';
 import {chromium} from '@playwright/test';
 import {createServer} from 'vite';
+import {captureDiagnostic} from '../server/commercialJourney.js';
 process.env.VITE_SUPABASE_URL='https://tracking-fixture.invalid';
 process.env.VITE_SUPABASE_ANON_KEY='isolated-public-browser-fixture';
 process.env.VITE_GEMINI_API_KEY='';
 process.env.VITE_PAYPAL_CLIENT_ID='';
+process.env.VITE_COMMERCIAL_JOURNEY_ENABLED='true';
 const server=await createServer({server:{host:'127.0.0.1',port:5193,strictPort:true}});
 await server.listen();
 const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
 const context=await browser.newContext();
-let sdkLoads=0,leadAttempts=0,failLead=true;const errors=[];
+let sdkLoads=0,leadAttempts=0,failLead=true;const errors=[],captureRequests=[];
 await context.route('**/*',async route=>{
  const request=route.request(),url=new URL(request.url());
+ if(url.hostname==='127.0.0.1'&&url.pathname==='/api/diagnostic'){
+  leadAttempts++;const input=request.postDataJSON();captureRequests.push(input);
+  if(failLead)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'No pudimos guardar tu diagnóstico. Inténtalo de nuevo.'})});
+  const result=await captureDiagnostic(input,{env:{COMMERCIAL_JOURNEY_ENABLED:'true',VERCEL_ENV:'preview'},client:{rpc:async(_name,args)=>({error:null,data:{result:args.p_result,email_status:'prepared_test'}})}});
+  return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});
+ }
+ if(url.hostname==='127.0.0.1'&&url.pathname.startsWith('/api/commercial-'))return route.fulfill({status:200,contentType:'application/json',body:'{"accepted":true}'});
  if(url.hostname==='127.0.0.1')return route.continue();
  if(url.hostname==='connect.facebook.net'&&url.pathname.endsWith('/fbevents.js')){
   sdkLoads++;return route.fulfill({contentType:'text/javascript',body:`window.__metaCalls=window.__metaCalls||[];const f=window.fbq;f.callMethod=(...a)=>window.__metaCalls.push(a);f.queue.splice(0).forEach(a=>f.callMethod(...a));`});
@@ -45,7 +54,7 @@ try {
  await spa('/register');await page.getByRole('heading',{name:/CEO Rentable|Bienvenid|Crear|Iniciar|cuenta/i}).first().waitFor();
  assert.ok(await count('PageView')>=2);assert.equal(await count('CompleteRegistration'),0);assert.equal(await count('StartTrial'),0);assert.equal(await count('Purchase'),0);
  const beforeDiagnostic=await count('PageView');
- await spa('/diagnostico');await page.getByText('Pregunta 1 de 8',{exact:true}).waitFor();
+ await spa('/diagnostico?utm_source=facebook&utm_medium=paid_social&utm_campaign=fixture-campaign');await page.getByText('Pregunta 1 de 8',{exact:true}).waitFor();
  assert.equal(await count('PageView'),beforeDiagnostic+1);assert.equal(await count('Lead'),0);
  for(let q=1;q<=8;q++){
   await page.getByText(`Pregunta ${q} de 8`,{exact:true}).waitFor();
@@ -56,7 +65,7 @@ try {
  await page.getByRole('button',{name:/Desbloquear mi diagnóstico/}).click();
  await page.getByRole('alert').filter({hasText:'No pudimos guardar'}).waitFor();assert.equal(await count('Lead'),0);
  failLead=false;await page.getByRole('button',{name:/Desbloquear mi diagnóstico/}).click();
- await page.waitForFunction(()=>window.__metaCalls.some(c=>c[2]==='Lead'));assert.equal(await count('Lead'),1);assert.equal(leadAttempts,2);
+ await page.waitForFunction(()=>window.__metaCalls.some(c=>c[2]==='Lead'));assert.equal(await count('Lead'),1);assert.equal(leadAttempts,2);assert.equal(captureRequests[0].capture_id,captureRequests[1].capture_id);assert.equal(captureRequests[1].attribution.utm_campaign,'fixture-campaign');assert.equal(captureRequests[1].promotional_consent,false);await page.getByText('Diagnóstico de prueba guardado; correo preparado sin enviar.',{exact:true}).waitFor();
  await spa('/payment-success?provider=paypal&order_id=FORGED-TEST&plan=monthly');
  await page.getByText('No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.',{exact:true}).waitFor();
  assert.equal(await count('Purchase'),0);assert.equal(await count('StartTrial'),0);

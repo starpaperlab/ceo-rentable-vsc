@@ -1,10 +1,12 @@
+import {diagnosticResult} from '@/lib/diagnosticModel';
+import {captureAttribution,CAPTURE_KEY,journeyLink} from '@/lib/journeyAttribution';
 import React, { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
-import { generateBusinessDiagnosis, getCeoScoreClassification } from '@/lib/geminiService'
+import { getCeoScoreClassification } from '@/lib/geminiService'
 import { createMetaEventId, trackLead, trackContact, trackCustomEvent } from '@/lib/metaPixel'
 import { ENV_CONFIG } from '@/config/env'
 import { ArrowRight, CheckCircle, XCircle, TrendingUp, Zap, Loader, MessageCircle, Lock } from 'lucide-react'
@@ -209,6 +211,9 @@ export default function Diagnostico() {
   const captureInFlight = useRef(false)
   const capturedEventId = useRef(null)
   const [captureError, setCaptureError] = useState('')
+  const [promotionalConsent,setPromotionalConsent] = useState(false)
+  const [deliveryStatus,setDeliveryStatus] = useState(null)
+  const requestId = useRef(globalThis.crypto.randomUUID())
 
   const handleAnswer = async (value) => {
     const q = QUESTIONS[qIndex]
@@ -237,7 +242,7 @@ export default function Diagnostico() {
     setStep(1)
 
     setLoadingAnalysis(true)
-    const geminiAnalysis = await generateBusinessDiagnosis({ ...newAnswers, ceo_score: finalScore })
+    const geminiAnalysis = diagnosticResult(newAnswers)
     setAnalysis(geminiAnalysis)
     setLoadingAnalysis(false)
   }
@@ -252,7 +257,18 @@ export default function Diagnostico() {
     const utmSource = (params.get('utm_source') || params.get('source') || '').trim().toLowerCase()
     const leadSource = utmSource ? `diagnostico_${utmSource}` : 'diagnostico'
 
-    const { error } = await supabase.from('leads').insert({
+    let error=null
+    if(import.meta.env.VITE_COMMERCIAL_JOURNEY_ENABLED==='true'){
+      try {
+        const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(lead.email.trim().toLowerCase()+JSON.stringify(answers))))).map(v=>v.toString(16).padStart(2,'0')).join('')
+        try{const pending=JSON.parse(sessionStorage.getItem('ceo_pending_diagnostic')||'null');if(pending?.fingerprint===fingerprint)requestId.current=pending.capture_id;sessionStorage.setItem('ceo_pending_diagnostic',JSON.stringify({fingerprint,capture_id:requestId.current}))}catch{/* Storage optional; in-page retries remain idempotent. */}
+        const response=await fetch('/api/diagnostic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capture_id:requestId.current,name:lead.name.trim(),email:lead.email.trim(),answers,attribution:captureAttribution(),email_requested:true,promotional_consent:promotionalConsent,is_test:false})})
+        const saved=await response.json()
+        if(!response.ok)error={message:saved.error}
+        else {setAnalysis(saved.diagnostic);setDeliveryStatus(saved.delivery_status);try{sessionStorage.setItem(CAPTURE_KEY,saved.capture_id);sessionStorage.removeItem('ceo_pending_diagnostic')}catch{/* optional */}}
+      } catch {error={message:'No se pudo conectar. Intenta nuevamente.'}}
+    }else {
+    const legacy=await supabase.from('leads').insert({
       name: lead.name.trim(),
       email: lead.email.trim(),
       source: leadSource,
@@ -271,16 +287,18 @@ export default function Diagnostico() {
       segment_problem: segments?.segment_problem,
       created_at: new Date(),
     })
+    error=legacy.error
+    }
 
     setSaving(false)
     captureInFlight.current = false
     if (error) {
       console.error('Error al guardar diagnóstico:', error)
-      setCaptureError('No pudimos guardar tu diagnóstico. Inténtalo de nuevo.')
+      setCaptureError(error.message||'No pudimos guardar tu diagnóstico. Inténtalo de nuevo.')
       return
     }
 
-    capturedEventId.current = createMetaEventId('diagnostic')
+    capturedEventId.current = import.meta.env.VITE_COMMERCIAL_JOURNEY_ENABLED==='true'?`diagnostic:${requestId.current}`:createMetaEventId('diagnostic')
     trackLead({content_name:'diagnostico_gratuito'},{eventId:capturedEventId.current})
 
     trackCustomEvent('DiagnosticoCompletado', {
@@ -309,7 +327,7 @@ export default function Diagnostico() {
   }
 
   const handleTrialCTA = () => {
-    window.location.assign('https://app.ceorentable.com/checkout?plan=monthly&utm_source=diagnostico&utm_medium=lead&utm_campaign=ceo_score')
+    window.location.assign(journeyLink('/checkout?plan=monthly'))
   }
 
   return (
@@ -457,6 +475,7 @@ export default function Diagnostico() {
                             className="bg-white border-slate-200 text-slate-950 placeholder:text-slate-400 h-12 rounded-xl"
                             onKeyDown={(e) => e.key === 'Enter' && handleCapture()}
                           />
+                          {import.meta.env.VITE_COMMERCIAL_JOURNEY_ENABLED==='true'&&<><p className="text-xs text-slate-600">Al continuar solicitas guardar y recibir tu diagnóstico por correo, con la invitación a la prueba de 10 días. <a href="/privacidad" className="underline">Privacidad</a>.</p><label className="flex items-start gap-2 text-left text-sm text-slate-600"><input type="checkbox" checked={promotionalConsent} onChange={e=>setPromotionalConsent(e.target.checked)}/>Quiero recibir el acompañamiento opcional. Puedo darme de baja.</label></>}
                           <Button
                             className="w-full h-12 text-base font-bold bg-[#D45387] hover:bg-[#C24578] text-white border-0 rounded-xl"
                             onClick={handleCapture}
@@ -475,6 +494,7 @@ export default function Diagnostico() {
             </motion.div>
           )}
 
+          {deliveryStatus&&<p role="status" className="mt-3 text-sm text-slate-600">{deliveryStatus==='prepared_test'?'Diagnóstico de prueba guardado; correo preparado sin enviar.':'Diagnóstico guardado. El correo está en cola; todavía no se ha confirmado su envío.'}</p>}
           {/* STEP 2 — RESULTADO COMPLETO */}
           {step === 2 && (
             <motion.div
@@ -529,7 +549,7 @@ export default function Diagnostico() {
                   <Button
                     variant="outline"
                     className="w-full h-12 text-sm font-semibold border-slate-200 bg-white text-slate-800 hover:bg-slate-50 rounded-xl"
-                    onClick={() => window.location.assign('https://app.ceorentable.com/checkout?plan=monthly&utm_source=diagnostico&utm_medium=lead&utm_campaign=ceo_score')}
+                    onClick={() => window.location.assign(journeyLink('/checkout?plan=monthly'))}
                   >
                     Ver planes y precios
                   </Button>

@@ -1,12 +1,13 @@
-import { handlePayPalWebhookPayload } from '../../server/paypalWebhookHandler.js';
+import { captureWebhookCommercialPayment } from "../../server/commercialPayPalFacts.js";
+import { handlePayPalWebhookPayload } from "../../server/paypalWebhookHandler.js";
 import {
   handlePayPalSubscriptionWebhookPayload,
   isPayPalSubscriptionEvent,
-} from '../../server/paypalSubscriptionWebhookHandler.js';
+} from "../../server/paypalSubscriptionWebhookHandler.js";
 
 function parseRequestBody(body) {
   if (!body) return {};
-  if (typeof body === 'string') {
+  if (typeof body === "string") {
     try {
       return JSON.parse(body);
     } catch (_) {
@@ -17,18 +18,18 @@ function parseRequestBody(body) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.status(204).end();
     return;
   }
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ success: false, error: 'Método no permitido' });
+  if (req.method !== "POST") {
+    res.status(405).json({ success: false, error: "Método no permitido" });
     return;
   }
 
   const payload = parseRequestBody(req.body);
-  const eventType = `${payload?.event_type || ''}`.trim();
+  const eventType = `${payload?.event_type || ""}`.trim();
 
   const result = isPayPalSubscriptionEvent(eventType)
     ? await handlePayPalSubscriptionWebhookPayload(payload, {
@@ -40,5 +41,19 @@ export default async function handler(req, res) {
         headers: req.headers || {},
       });
 
-  res.status(result?.status || 500).json(result?.body || { success: false, error: 'Error interno' });
+  try {
+    const stored = await captureWebhookCommercialPayment(payload, result);
+    if (stored?.error)
+      return res
+        .status(503)
+        .json({ success: false, code: "COMMERCIAL_RETRY_REQUIRED" });
+  } catch {
+    console.warn("commercial_webhook_pending");
+    return res
+      .status(503)
+      .json({ success: false, code: "COMMERCIAL_RETRY_REQUIRED" });
+  }
+  res
+    .status(result?.status || 500)
+    .json(result?.body || { success: false, error: "Error interno" });
 }

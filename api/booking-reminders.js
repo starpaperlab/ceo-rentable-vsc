@@ -1,3 +1,4 @@
+import {runCommercialDeliveryBatch} from '../server/commercialDelivery.js';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmailWithResend } from '../server/sendEmailHandler.js';
 
@@ -56,6 +57,8 @@ export default async function handler(req, res) {
   if (!authorizedBySecret && !authorizedVercelCronFallback) {
     return res.status(401).json({ success: false });
   }
+
+  if (authorizedBySecret) { try { await runCommercialDeliveryBatch(); } catch { console.warn('commercial_delivery_pending'); } }
 
   const service = getServiceClient();
   if (!service) {

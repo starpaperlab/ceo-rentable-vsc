@@ -1,3 +1,4 @@
+import {journeyLink} from '@/lib/journeyAttribution';
 import { trackStartTrial, trackCompleteRegistration, createMetaEventId } from '@/lib/metaPixel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -100,7 +101,7 @@ export default function Checkout() {
     try {
       validateRegistration(); setCreatingAccount(true);
       sessionStorage.setItem(CHECKOUT_CONSENT_KEY, JSON.stringify({ email: form.email.trim(), termsAccepted: true, marketingAccepted }));
-      const result = await register({ email: form.email, password: form.password, fullName, businessName: form.businessName, phone: form.phone, emailRedirectTo: `${window.location.origin}/checkout?plan=${plan.code}` });
+      const result = await register({ email: form.email, password: form.password, fullName, businessName: form.businessName, phone: form.phone, emailRedirectTo: `${window.location.origin}${journeyLink(`/checkout?plan=${plan.code}`)}` });
       trackCompleteRegistration(plan.code,{eventId:createMetaEventId('registration')});
       if (result.needsEmailConfirmation) { setAccountReady(false); setMessage('Tu cuenta fue creada. Confirma tu correo y vuelve a este checkout para continuar con PayPal.'); return; }
       setAccountReady(true); setTermsAccepted(true); setMessage(`Cuenta creada. Continúa con PayPal para iniciar tus ${plan.trialDays} días gratis.`);

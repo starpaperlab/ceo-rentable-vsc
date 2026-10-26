@@ -1,3 +1,4 @@
+import {captureCommercialPayment} from '../../server/commercialPayPalFacts.js';
 import { handleCapturePayPalOrderPayload } from '../../server/paypalHandler.js';
 
 function parseRequestBody(body) {
@@ -29,5 +30,6 @@ export default async function handler(req, res) {
     headers: req.headers || {},
   });
 
+  try { await captureCommercialPayment(req,result.body); } catch { console.warn('commercial_payment_pending'); }
   res.status(result.status || 500).json(result.body || { success: false, error: 'Error interno' });
 }

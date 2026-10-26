@@ -311,3 +311,7 @@ Ver `.env.example` para documentación completa.
 ## Meta Pixel y consentimiento
 
 La auditoría, condiciones de los eventos, pruebas de navegador y límites de verificación están en [docs/META_PIXEL_AUDIT.md](docs/META_PIXEL_AUDIT.md). Ejecutar `npm run test:tracking` para probar las páginas reales con Meta/PayPal/Supabase aislados. El píxel 339342380789724 solo se carga al permitir medición publicitaria; una prueba local no confirma recepción en Meta Events Manager.
+
+## Diagnóstico conectado al CRM y correo
+
+Consulta [activación y evidencia del recorrido comercial](docs/COMMERCIAL_JOURNEY.md). Las banderas están deshabilitadas por defecto para conservar el flujo actual hasta aplicar ambas migraciones y configurar la conexión privada. No se modifican Meta ni los planes de pago.

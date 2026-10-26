@@ -1,3 +1,4 @@
+import {journeyLink} from '@/lib/journeyAttribution';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -90,7 +91,7 @@ export default function Login() {
         ? window.location.origin
         : '';
 
-    return baseUrl ? `${baseUrl}${path}` : undefined;
+    return baseUrl ? `${baseUrl}${journeyLink(path)}` : undefined;
   };
 
   const getPostAuthRedirect = (profile, fallbackPath) => {

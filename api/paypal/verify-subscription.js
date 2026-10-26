@@ -1,3 +1,4 @@
+import {bestEffortLifecycle} from '../../server/commercialJourney.js';
 import { trialTrackingEvidence } from '../../server/metaTrackingEvidence.js';
 import { createClient } from '@supabase/supabase-js';
 
@@ -280,6 +281,9 @@ export default async function handler(req, res) {
     }
 
     const activated = await activateVerifiedSubscription({ service, userId: user.id, subscription, subscriptionId, planCode });
+    const evidence=trialTrackingEvidence(subscription,{subscriptionId,planCode,appStatus:activated.appStatus});
+    if (process.env.COMMERCIAL_JOURNEY_ENABLED==='true'&&req.body?.capture_id) { try { await service.rpc('ceo_link_diagnostic_user',{p_capture:req.body.capture_id,p_user:user.id,p_email:user.email.toLowerCase()}); } catch { /* Commercial linkage cannot block access. */ } }
+    if(process.env.COMMERCIAL_JOURNEY_ENABLED==='true'&&evidence.trialActivated&&activated.nextBillingTime){await bestEffortLifecycle(service,user.id,{eventId:`StartTrial:paypal:${subscriptionId}`,kind:'trial.started',occurredAt:subscription.start_time||new Date().toISOString(),data:{subscription_id:subscriptionId,ends_at:activated.nextBillingTime,provider:'paypal',is_test:(process.env.PAYPAL_ENVIRONMENT||'sandbox').toLowerCase()!=='live'}});}
     return json(res, 200, {
       success: true,
       subscriptionId,
