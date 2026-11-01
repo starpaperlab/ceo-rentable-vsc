@@ -1,3 +1,6 @@
+import { createWhopCheckout } from './server/whopCheckout.js'
+import { whopStatus } from './server/whopStatus.js'
+import { handleWhopWebhook } from './server/whopWebhook.js'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -38,6 +41,27 @@ function devEmailApiPlugin() {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const pathname = req.url?.split('?')[0];
+        if (['/api/whop/create-checkout', '/api/whop/status', '/api/whop/webhook'].includes(pathname)) {
+          res.setHeader('Cache-Control', 'no-store');
+          const expectedMethod = pathname.endsWith('/status') ? 'GET' : 'POST';
+          if (req.method !== expectedMethod) { res.setHeader('Allow', expectedMethod); sendJson(res, 405, { error: 'Método no permitido' }); return; }
+          try {
+            let result;
+            if (pathname.endsWith('/webhook')) {
+              const chunks = []; let size = 0;
+              for await (const chunk of req) {
+                size += Buffer.byteLength(chunk);
+                if (size > 1_048_576) { sendJson(res, 413, { code: 'PAYLOAD_TOO_LARGE' }); return; }
+                chunks.push(Buffer.from(chunk));
+              }
+              result = await handleWhopWebhook(Buffer.concat(chunks).toString('utf8'), { headers: req.headers });
+            } else if (pathname.endsWith('/status')) result = await whopStatus({ headers: req.headers });
+            else result = await createWhopCheckout(await parseJsonBody(req), { headers: req.headers });
+            sendJson(res, result.status, result.body);
+          } catch { sendJson(res, 400, { error: 'Solicitud inválida' }); }
+          return;
+        }
+
         if (
           pathname !== '/api/send-email' &&
           pathname !== '/api/accept-invitation' &&

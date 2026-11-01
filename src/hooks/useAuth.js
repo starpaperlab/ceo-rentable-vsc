@@ -471,6 +471,8 @@ export function hasActiveAccess(profile) {
     return false;
   }
 
+  if (profile.payment_provider === 'whop' && !(Date.parse(profile.whop_access_until) > Date.now())) return false;
+
   const accessStatus = profile.access_status ?? 'active';
 
   if (accessStatus !== 'active') {

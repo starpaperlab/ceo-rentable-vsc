@@ -1,10 +1,9 @@
 import React from 'react';
 import { XCircle, ArrowLeft } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import BuyButton from '@/components/shared/BuyButton';
 import { normalizeCheckoutPlan } from '@/lib/pendingCheckout';
 
 export default function PaymentCancel() {
@@ -27,7 +26,7 @@ export default function PaymentCancel() {
             <p className="text-muted-foreground text-sm mt-2">No se completó el pago, pero puedes finalizarlo ahora mismo y empezar a organizar tu negocio en minutos.</p>
           </div>
           <div className="space-y-3">
-            <BuyButton label="Intentar de nuevo" className="w-full" plan={selectedPlan} checkout={Boolean(selectedPlan)} />
+            <Link className="block w-full rounded-xl bg-[#D45387] px-5 py-3 font-bold text-white" to={`/checkout?plan=${selectedPlan === 'monthly' ? 'monthly' : 'annual'}`}>Intentar de nuevo</Link>
             <Button variant="ghost" className="w-full" onClick={() => window.location.href = '/'}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Volver al inicio
             </Button>

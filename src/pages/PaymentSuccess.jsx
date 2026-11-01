@@ -1,3 +1,4 @@
+import WhopPaymentResult from '@/components/payments/WhopPaymentResult';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -13,7 +14,7 @@ import { trackVerifiedPurchase } from '@/lib/metaPixel';
 
 const AUTH_SESSION_ERROR = 'No pudimos validar tu sesión. Inicia sesión nuevamente para continuar.';
 
-export default function PaymentSuccess() {
+function LegacyPaymentSuccess() {
   const navigate = useNavigate();
   const { refreshUserProfile } = useAuth();
   const [status, setStatus] = useState('loading');
@@ -134,4 +135,8 @@ export default function PaymentSuccess() {
       </motion.div>
     </div>
   );
+}
+
+export default function PaymentSuccess() {
+  return new URLSearchParams(window.location.search).get('provider') === 'whop' ? <WhopPaymentResult /> : <LegacyPaymentSuccess />;
 }

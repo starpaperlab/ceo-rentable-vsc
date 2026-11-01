@@ -65,6 +65,8 @@ export default function Login() {
   const checkoutPlanLabel =
     checkoutPlan === 'monthly'
       ? 'Plan Mensual'
+      : checkoutPlan === 'annual'
+        ? 'Plan Anual'
       : checkoutPlan === 'founder_lifetime'
         ? 'Acceso Lifetime'
         : null;

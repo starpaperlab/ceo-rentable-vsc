@@ -5,12 +5,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Check, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { CHECKOUT_PLANS, getCheckoutPlan, isRecurringCheckoutPlan } from '@/lib/checkoutPlans';
 import { useAuth } from '@/lib/AuthContext';
+import { whopRequest } from '@/lib/whopService';
 
 
 const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#D45387] focus:ring-2 focus:ring-[#D45387]/15 disabled:bg-gray-50 disabled:text-gray-500';
 const legalLinkClass = 'font-semibold text-[#D45387] underline decoration-[#D45387]/30 underline-offset-2 hover:decoration-[#D45387]';
 const CHECKOUT_CONSENT_KEY = 'ceo-rentable-checkout-consent';
-const WHOP_LINKS = Object.freeze({ monthly: 'https://whop.com/checkout/plan_erGFyQYebyWFZ', annual: 'https://whop.com/checkout/plan_rx46nFwgZymzX' });
+
 
 const INITIAL_FORM = {
   firstName: '', lastName: '', email: '', businessName: '', phone: '', country: 'DO', password: '', confirmPassword: '',
@@ -42,11 +43,13 @@ export default function Checkout() {
   const [marketingAccepted, setMarketingAccepted] = useState(false);
   const [accountReady, setAccountReady] = useState(Boolean(user));
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [startingPayment, setStartingPayment] = useState(false);
+  const [confirmationPending, setConfirmationPending] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setAccountReady(false); return; }
     const fullName = `${userProfile?.full_name || user.user_metadata?.full_name || ''}`.trim();
     const parts = fullName.split(/\s+/).filter(Boolean);
     setForm((current) => ({ ...current, firstName: current.firstName || parts[0] || '', lastName: current.lastName || parts.slice(1).join(' '), email: current.email || user.email || '', businessName: current.businessName || userProfile?.business_name || user.user_metadata?.business_name || '', phone: current.phone || userProfile?.phone || user.user_metadata?.phone || '' }));
@@ -86,7 +89,7 @@ export default function Checkout() {
   };
   const validateRegistration = () => {
     if (!form.firstName.trim() || !form.lastName.trim()) throw new Error('Escribe tu nombre y apellido.');
-    if (!form.email.trim()) throw new Error('Escribe tu correo electrónico.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error('Escribe un correo electrónico válido.');
     if (!form.businessName.trim()) throw new Error('Escribe el nombre de tu empresa o marca.');
     if (form.password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.');
     if (form.password !== form.confirmPassword) throw new Error('Las contraseñas no coinciden.');
@@ -94,21 +97,36 @@ export default function Checkout() {
   };
 
   const handleCreateAccount = async (event) => {
-    event.preventDefault(); setError(''); setMessage('');
-    if (user) { setAccountReady(true); return; }
+    event?.preventDefault(); setError(''); setMessage('');
+    if (user) { await continueToWhop(); return; }
+    if (creatingAccount || startingPayment || confirmationPending) return;
     try {
       validateRegistration(); setCreatingAccount(true);
-      sessionStorage.setItem(CHECKOUT_CONSENT_KEY, JSON.stringify({ email: form.email.trim(), termsAccepted: true, marketingAccepted }));
+      try { sessionStorage.setItem(CHECKOUT_CONSENT_KEY, JSON.stringify({ email: form.email.trim().toLowerCase(), termsAccepted: true, marketingAccepted })); } catch { /* optional storage */ }
       const result = await register({ email: form.email, password: form.password, fullName, businessName: form.businessName, phone: form.phone, emailRedirectTo: `${window.location.origin}${journeyLink(`/checkout?plan=${plan.code}`)}` });
       trackCompleteRegistration(plan.code,{eventId:createMetaEventId('registration')});
-      if (result.needsEmailConfirmation) { setAccountReady(false); setMessage('Tu cuenta fue creada. Confirma tu correo y vuelve a este checkout para continuar con Whop.'); return; }
-      setAccountReady(true); setTermsAccepted(true); setMessage(`Cuenta creada. Continúa con Whop para iniciar tus ${plan.trialDays} días gratis.`);
+      if (result.needsEmailConfirmation) { setConfirmationPending(true); setAccountReady(false); setMessage('Revisa tu correo para confirmar la cuenta. Si ese correo ya está registrado, inicia sesión; no necesitas crear otra cuenta. Conservaremos tu plan.'); return; }
+      setAccountReady(true); setTermsAccepted(true);
+      await continueToWhop();
     } catch (registrationError) { setError(registrationError?.message || 'No pudimos crear tu cuenta.'); }
     finally { setCreatingAccount(false); }
   };
 
-  const paymentDisabled = isLoadingAuth;
-  const planSelectionDisabled = false;
+  const continueToWhop = async () => {
+    if (!termsAccepted) { setError('Acepta los Términos de Servicio y la Política de Privacidad para continuar.'); return; }
+    if (!form.businessName.trim()) { setError('Escribe el nombre de tu empresa o marca.'); return; }
+    setError(''); setStartingPayment(true);
+    try {
+      const result = await whopRequest('create-checkout', { planCode: plan.code, termsAccepted: true, marketingAccepted,
+        businessName: form.businessName, phone: form.phone, country: form.country });
+      const url = new URL(result.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'whop.com' || !url.pathname.startsWith('/checkout/')) throw new Error('El enlace de pago no es válido.');
+      window.location.assign(url.href);
+    } catch (paymentError) { setError(paymentError.message || 'No pudimos preparar tu pago. Inténtalo nuevamente.'); }
+    finally { setStartingPayment(false); }
+  };
+  const paymentDisabled = isLoadingAuth || creatingAccount || startingPayment;
+  const planSelectionDisabled = creatingAccount || startingPayment;
 
   return <main className="min-h-screen bg-[#F7F3EE] px-3.5 py-5 sm:px-6 sm:py-8 lg:py-12"><div className="mx-auto max-w-6xl">
     <header className="mb-5 flex items-center justify-center gap-2.5 sm:mb-8 lg:justify-start"><img src="/brand/isotipo.png" alt="CEO Rentable OS" className="h-10 w-10 sm:h-11 sm:w-11" /><div><p className="text-base font-black text-gray-900 sm:text-lg">CEO Rentable OS</p><p className="text-[11px] text-gray-500 sm:text-xs">Checkout seguro</p></div></header>
@@ -120,12 +138,12 @@ export default function Checkout() {
         <form className="space-y-4 sm:space-y-5" onSubmit={handleCreateAccount}>
           <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4"><label className="text-sm font-semibold text-gray-700">Nombre<input value={form.firstName} onChange={(e)=>updateField('firstName',e.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Tu nombre" /></label><label className="text-sm font-semibold text-gray-700">Apellido<input value={form.lastName} onChange={(e)=>updateField('lastName',e.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Tu apellido" /></label></div>
           <label className="block text-sm font-semibold text-gray-700">Correo electrónico<input value={form.email} onChange={(e)=>updateField('email',e.target.value)} disabled={Boolean(user)} type="email" className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="nombre@empresa.com" /></label>
-          <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input value={form.businessName} onChange={(e)=>updateField('businessName',e.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Ej. Dulce Studio" /></label>
-          <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4"><label className="text-sm font-semibold text-gray-700">WhatsApp<input value={form.phone} onChange={(e)=>updateField('phone',e.target.value)} disabled={Boolean(user)} type="tel" className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="+1 809 000 0000" /></label><label className="text-sm font-semibold text-gray-700">País<select value={form.country} onChange={(e)=>updateField('country',e.target.value)} disabled={Boolean(user)} className={`${fieldClass} mt-1.5 sm:mt-2`}><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label></div>
+          <label className="block text-sm font-semibold text-gray-700">Nombre de la empresa o marca<input value={form.businessName} onChange={(e)=>updateField('businessName',e.target.value)} className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Ej. Dulce Studio" /></label>
+          <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4"><label className="text-sm font-semibold text-gray-700">WhatsApp<input value={form.phone} onChange={(e)=>updateField('phone',e.target.value)} type="tel" className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="+1 809 000 0000" /></label><label className="text-sm font-semibold text-gray-700">País<select value={form.country} onChange={(e)=>updateField('country',e.target.value)} className={`${fieldClass} mt-1.5 sm:mt-2`}><option value="DO">República Dominicana</option><option value="US">Estados Unidos</option><option value="OTHER">Otro</option></select></label></div>
           {user && <div className="rounded-2xl border border-[#F0D4DF] bg-[#FFF8FB] p-4 sm:p-5"><p className="text-sm font-black text-gray-900">Actualiza tu consentimiento</p><p className="mt-1 text-xs leading-5 text-gray-600">Como tu cuenta fue creada antes de este checkout, solo necesitamos que revises y aceptes las políticas actuales. No te pediremos una contraseña nueva.</p><label className="mt-4 flex items-start gap-3 text-sm leading-5 text-gray-700"><input type="checkbox" checked={termsAccepted} onChange={(e)=>handleSignedInTermsChange(e.target.checked)} className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Acepto los <a href="/terminos" target="_blank" rel="noreferrer" className={legalLinkClass}>Términos de Servicio</a> y la <a href="/privacidad" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Privacidad</a> de CEO Rentable.</span></label><label className="mt-3 flex items-start gap-3 text-sm leading-5 text-gray-600"><input type="checkbox" checked={marketingAccepted} onChange={(e)=>handleSignedInMarketingChange(e.target.checked)} className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Quiero recibir novedades y consejos de CEO Rentable. <strong className="font-medium">Opcional.</strong></span></label><p className="mt-3 pl-7 text-xs leading-5 text-gray-500">Consulta también nuestra <a href="/cookies" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Cookies</a>.</p>{!termsAccepted && <p className="mt-3 text-xs font-semibold text-amber-700">Al aceptar los términos se habilitará el pago seguro con Whop.</p>}</div>}
           {!user && <><div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4"><label className="text-sm font-semibold text-gray-700">Contraseña<input value={form.password} onChange={(e)=>updateField('password',e.target.value)} type="password" className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Mínimo 8 caracteres" /></label><label className="text-sm font-semibold text-gray-700">Confirmar contraseña<input value={form.confirmPassword} onChange={(e)=>updateField('confirmPassword',e.target.value)} type="password" className={`${fieldClass} mt-1.5 sm:mt-2`} placeholder="Repite tu contraseña" /></label></div><label className="flex items-start gap-3 text-sm leading-5 text-gray-600"><input type="checkbox" checked={termsAccepted} onChange={(e)=>setTermsAccepted(e.target.checked)} required className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Acepto los <a href="/terminos" target="_blank" rel="noreferrer" className={legalLinkClass}>Términos de Servicio</a> y la <a href="/privacidad" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Privacidad</a> de CEO Rentable.</span></label><label className="flex items-start gap-3 text-sm leading-5 text-gray-600"><input type="checkbox" checked={marketingAccepted} onChange={(e)=>setMarketingAccepted(e.target.checked)} className="mt-1 h-4 w-4 accent-[#D45387]" /><span>Quiero recibir novedades y consejos de CEO Rentable. <strong className="font-medium">Opcional.</strong></span></label><p className="pl-7 text-xs leading-5 text-gray-500">Consulta también nuestra <a href="/cookies" target="_blank" rel="noreferrer" className={legalLinkClass}>Política de Cookies</a>.</p></>}
-          {!accountReady && <button type="submit" disabled={creatingAccount} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:opacity-60">{creatingAccount ? 'Creando cuenta…' : 'Crear cuenta y continuar con Whop'}</button>}
-          {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-5 text-emerald-800">{message}</div>}{error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">{error}</div>}
+          {!accountReady && <button type="submit" disabled={paymentDisabled || confirmationPending} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:opacity-60">{creatingAccount ? 'Creando cuenta…' : 'Crear cuenta y continuar con Whop'}</button>}
+          {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-5 text-emerald-800">{message}</div>}{error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700">{error}</div>}
         </form>
       </section>
       <aside className="border-t border-gray-200 bg-gray-50 p-5 sm:p-9 lg:border-l lg:border-t-0 lg:p-10"><div className="lg:sticky lg:top-8">
@@ -133,7 +151,7 @@ export default function Checkout() {
         <div className="mb-3 sm:mb-4"><p className="text-xs text-gray-500 sm:text-sm">Plan seleccionado</p><h3 className="text-xl font-black text-gray-900 sm:text-2xl">CEO Rentable {plan.name}</h3></div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5"><div className="flex items-center justify-between border-b border-gray-100 pb-4"><span className="font-semibold text-gray-700">Prueba gratis</span><strong>{plan.trialDays} días</strong></div><div className="flex items-center justify-between py-4"><span className="font-semibold text-gray-700">Hoy pagas</span><strong className="text-2xl">US$0</strong></div><div className="border-t border-gray-100 pt-4"><p className="text-sm text-gray-500">Después de la prueba</p><p className="mt-1 text-2xl font-black">{plan.renewalLabel}</p><p className="mt-1 text-xs text-gray-500">Renovación automática. Cancela antes de finalizar la prueba para evitar el primer cobro.</p></div></div>
         {plan.code === 'annual' && <div className="mt-4 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5 shrink-0" /><span><strong>Ahorras US${plan.savingsAmount} al año.</strong> Frente a 12 pagos mensuales.</span></div>}
-        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 sm:mt-6 sm:p-5"><div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold">Método de pago</h3></div><button type="button" disabled={paymentDisabled} onClick={() => { if (!termsAccepted) { setError('Acepta los Términos de Servicio y la Política de Privacidad para continuar.'); return; } if (!accountReady || !user) { setError('Primero crea tu cuenta o inicia sesión para vincular correctamente tu suscripción.'); return; } const url = WHOP_LINKS[plan.code]; if (!url) { setError('No hay un enlace de pago disponible para este plan.'); return; } window.location.assign(url); }} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Continuar al pago seguro con Whop</button><p className="mt-2 text-xs leading-5 text-gray-500">Whop verificará tu método de pago. La prueba y el acceso se activan cuando CEO Rentable confirme tu suscripción; abrir el enlace no activa tu cuenta.</p></div>
+        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 sm:mt-6 sm:p-5"><div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold">Método de pago</h3></div><button type="button" disabled={paymentDisabled} onClick={user ? continueToWhop : handleCreateAccount} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{startingPayment ? 'Preparando pago seguro…' : confirmationPending && !user ? 'Confirma tu correo o inicia sesión para continuar' : 'Continuar al pago seguro con Whop'}</button><p className="mt-2 text-xs leading-5 text-gray-500">Whop verificará tu método de pago. La prueba y el acceso se activan cuando CEO Rentable confirme tu suscripción; abrir el enlace no activa tu cuenta. Si ya usaste la prueba en Whop, revisa el importe final antes de confirmar.</p></div>
         <div className="mt-4 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con Whop. CEO Rentable no almacena los datos de tu tarjeta.</p></div><p className="mt-5 text-center text-xs text-gray-400">¿Ya tienes cuenta? <Link to={`/login?plan=${plan.code}`} className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
       </div></aside>
     </div>

@@ -2,11 +2,13 @@ export const PENDING_CHECKOUT_PLAN_KEY = 'ceo_os_pending_checkout_plan';
 
 export const CHECKOUT_PLANS = {
   monthly: 'monthly',
+  annual: 'annual',
   founder_lifetime: 'founder_lifetime',
 };
 
 const CHECKOUT_PLAN_ALIASES = {
   monthly: CHECKOUT_PLANS.monthly,
+  annual: CHECKOUT_PLANS.annual,
   lifetime: CHECKOUT_PLANS.founder_lifetime,
   founder: CHECKOUT_PLANS.founder_lifetime,
   founder_lifetime: CHECKOUT_PLANS.founder_lifetime,
