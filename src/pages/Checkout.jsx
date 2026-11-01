@@ -1,11 +1,10 @@
 import {journeyLink} from '@/lib/journeyAttribution';
-import { trackStartTrial, trackCompleteRegistration, createMetaEventId } from '@/lib/metaPixel';
+import { trackCompleteRegistration, createMetaEventId } from '@/lib/metaPixel';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { CHECKOUT_PLANS, getCheckoutPlan, isRecurringCheckoutPlan } from '@/lib/checkoutPlans';
 import { useAuth } from '@/lib/AuthContext';
-import { verifyPayPalSubscription } from '@/lib/paypalService';
 
 
 const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-[#D45387] focus:ring-2 focus:ring-[#D45387]/15 disabled:bg-gray-50 disabled:text-gray-500';
@@ -32,9 +31,9 @@ function PlanSelector({ plan, onSelect, disabled = false, compact = false }) {
 }
 
 export default function Checkout() {
-  const navigate = useNavigate();
+  
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, userProfile, register, refreshUserProfile, isLoadingAuth } = useAuth();
+  const { user, userProfile, register, isLoadingAuth } = useAuth();
   const requestedPlan = searchParams.get('plan');
   const selectedPlanCode = isRecurringCheckoutPlan(requestedPlan) ? requestedPlan : 'annual';
   const plan = getCheckoutPlan(selectedPlanCode) || getCheckoutPlan('annual');
@@ -43,10 +42,8 @@ export default function Checkout() {
   const [marketingAccepted, setMarketingAccepted] = useState(false);
   const [accountReady, setAccountReady] = useState(Boolean(user));
   const [creatingAccount, setCreatingAccount] = useState(false);
-  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [subscriptionConfirmed, setSubscriptionConfirmed] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -110,31 +107,8 @@ export default function Checkout() {
     finally { setCreatingAccount(false); }
   };
 
-  const handleSubscriptionApproved = async ({ subscriptionId, planCode }) => {
-    setError(''); setMessage('Confirmando tu suscripción con PayPal…'); setVerifyingPayment(true);
-    try {
-      const result = await verifyPayPalSubscription(subscriptionId, planCode);
-      if (!result.success) throw new Error(result.error || 'No pudimos confirmar la suscripción.');
-      trackStartTrial(result.tracking);
-      setSubscriptionConfirmed(true);
-      sessionStorage.removeItem(CHECKOUT_CONSENT_KEY);
-      await refreshUserProfile?.();
-      const params = new URLSearchParams({
-        provider: 'paypal',
-        plan: planCode,
-        subscription_id: subscriptionId,
-        trial_days: String(plan.trialDays),
-      });
-      navigate(`/payment-success?${params.toString()}`, { replace: true });
-    } catch (verificationError) {
-      setError(verificationError?.message || 'PayPal recibió la solicitud, pero no pudimos confirmar el acceso todavía.');
-      setMessage('');
-    }
-    finally { setVerifyingPayment(false); }
-  };
-
-  const paymentDisabled = isLoadingAuth || !accountReady || !termsAccepted || subscriptionConfirmed || verifyingPayment;
-  const planSelectionDisabled = verifyingPayment || subscriptionConfirmed;
+  const paymentDisabled = isLoadingAuth || !accountReady || !termsAccepted;
+  const planSelectionDisabled = false;
 
   return <main className="min-h-screen bg-[#F7F3EE] px-3.5 py-5 sm:px-6 sm:py-8 lg:py-12"><div className="mx-auto max-w-6xl">
     <header className="mb-5 flex items-center justify-center gap-2.5 sm:mb-8 lg:justify-start"><img src="/brand/isotipo.png" alt="CEO Rentable OS" className="h-10 w-10 sm:h-11 sm:w-11" /><div><p className="text-base font-black text-gray-900 sm:text-lg">CEO Rentable OS</p><p className="text-[11px] text-gray-500 sm:text-xs">Checkout seguro</p></div></header>
@@ -159,7 +133,7 @@ export default function Checkout() {
         <div className="mb-3 sm:mb-4"><p className="text-xs text-gray-500 sm:text-sm">Plan seleccionado</p><h3 className="text-xl font-black text-gray-900 sm:text-2xl">CEO Rentable {plan.name}</h3></div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5"><div className="flex items-center justify-between border-b border-gray-100 pb-4"><span className="font-semibold text-gray-700">Prueba gratis</span><strong>{plan.trialDays} días</strong></div><div className="flex items-center justify-between py-4"><span className="font-semibold text-gray-700">Hoy pagas</span><strong className="text-2xl">US$0</strong></div><div className="border-t border-gray-100 pt-4"><p className="text-sm text-gray-500">Después de la prueba</p><p className="mt-1 text-2xl font-black">{plan.renewalLabel}</p><p className="mt-1 text-xs text-gray-500">Renovación automática. Cancela antes de finalizar la prueba para evitar el primer cobro.</p></div></div>
         {plan.code === 'annual' && <div className="mt-4 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5 shrink-0" /><span><strong>Ahorras US${plan.savingsAmount} al año.</strong> Frente a 12 pagos mensuales.</span></div>}
-        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 sm:mt-6 sm:p-5"><div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold">Método de pago</h3></div>{subscriptionConfirmed ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-sm text-emerald-800"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />PayPal confirmó tu suscripción.<button type="button" onClick={()=>navigate('/payment-success')} className="mt-3 block w-full rounded-lg bg-emerald-700 px-4 py-2.5 font-bold text-white">Continuar</button></div> : <button type="button" disabled={paymentDisabled} onClick={() => { const url = WHOP_LINKS[plan.code]; if (!url) { setError('No hay un enlace de pago disponible para este plan.'); return; } window.location.assign(url); }} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Continuar al pago seguro con Whop</button><p className="mt-2 text-xs leading-5 text-gray-500">Whop verificará tu método de pago. La prueba y el acceso se activan cuando CEO Rentable confirme tu suscripción; abrir el enlace no activa tu cuenta.</p>}</div>
+        <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-4 sm:mt-6 sm:p-5"><div className="mb-4 flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-gray-500" /><h3 className="font-bold">Método de pago</h3></div><button type="button" disabled={paymentDisabled} onClick={() => { const url = WHOP_LINKS[plan.code]; if (!url) { setError('No hay un enlace de pago disponible para este plan.'); return; } window.location.assign(url); }} className="w-full rounded-xl bg-[#D45387] px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Continuar al pago seguro con Whop</button><p className="mt-2 text-xs leading-5 text-gray-500">Whop verificará tu método de pago. La prueba y el acceso se activan cuando CEO Rentable confirme tu suscripción; abrir el enlace no activa tu cuenta.</p></div>
         <div className="mt-4 flex items-start gap-3 text-xs leading-5 text-gray-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>Tu método de pago se procesa con Whop. CEO Rentable no almacena los datos de tu tarjeta.</p></div><p className="mt-5 text-center text-xs text-gray-400">¿Ya tienes cuenta? <Link to={`/login?plan=${plan.code}`} className="font-semibold text-[#D45387]">Inicia sesión</Link></p>
       </div></aside>
     </div>
